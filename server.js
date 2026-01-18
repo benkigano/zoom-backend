@@ -35,15 +35,7 @@ app.post("/send-test-email", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.get("/test-email", async (req, res) => {
-  try {
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD
-      }
-    });
+
 
     await transporter.sendMail({
       from: process.env.GMAIL_USER,
@@ -57,8 +49,7 @@ app.get("/test-email", async (req, res) => {
     res.status(500).send(err.toString());
   }
 });
-app.get("/test-email", async (req, res) => {
-  console.log("HIT /test-email", new Date().toISOString());
+
 
   try {
     const transporter = nodemailer.createTransport({
@@ -92,6 +83,38 @@ app.get("/ping", (req, res) => {
 app.get("/ping", (req, res) => {
   console.log("HIT /ping", new Date().toISOString());
   res.status(200).send("pong");
+});
+app.get("/test-email", (req, res) => {
+  console.log("HIT /test-email", new Date().toISOString());
+
+  // respond immediately so browser never spins
+  res.status(200).send("Sending email... check Render Logs for result.");
+
+  (async () => {
+    try {
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: process.env.GMAIL_USER,
+          pass: process.env.GMAIL_APP_PASSWORD,
+        },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 10000,
+      });
+
+      await transporter.sendMail({
+        from: process.env.GMAIL_USER,
+        to: req.query.to || process.env.GMAIL_USER,
+        subject: "Zoom Backend Email Test",
+        text: "Your backend email configuration is working.",
+      });
+
+      console.log("✅ TEST EMAIL SENT");
+    } catch (err) {
+      console.log("❌ TEST EMAIL ERROR:", err);
+    }
+  })();
 });
 
 app.listen(PORT, () => {
