@@ -39,7 +39,7 @@ const PORT = process.env.PORT || 3000;
 
     await transporter.sendMail({
       from: process.env.GMAIL_USER,
-      to: process.env.GMAIL_USER,
+      to: req.query.to || process.env.GMAIL_USER,
       subject: "Zoom Backend Email Test",
       text: "Your backend email configuration is working."
     });
@@ -51,8 +51,7 @@ const PORT = process.env.PORT || 3000;
 });
 
 
-  try {
-    const transporter = nodemailer.createTransport({
+      const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
         user: process.env.GMAIL_USER,
