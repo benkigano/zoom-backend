@@ -110,6 +110,12 @@ app.get("/test-email", (req, res) => {
       });
 
       console.log("✅ TEST EMAIL SENT");
+        } catch (err) {
+      console.log("❌ TEST EMAIL ERROR:", err);
+    }
+  })();
+});
+ 
     } catch (err) {
       console.log("❌ TEST EMAIL ERROR:", err);
     }
