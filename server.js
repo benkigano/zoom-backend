@@ -85,6 +85,10 @@ app.get("/test-email", async (req, res) => {
     res.status(500).send(String(err));
   }
 });
+app.get("/ping", (req, res) => {
+  console.log("HIT /ping", new Date().toISOString());
+  res.status(200).send("pong");
+});
 
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
