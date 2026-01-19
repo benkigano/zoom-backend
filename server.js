@@ -76,7 +76,52 @@ app.get("/test-email", (req, res) => {
     }
   })();
 });
- 
+ app.get("/test-email", (req, res) => {
+  // ... your existing test-email code ...
+});
+
+
+/* ✅ PASTE THE NEW BLOCK HERE */
+app.post("/send-email", async (req, res) => {
+  try {
+    const { to, subject, text, replyTo } = req.body || {};
+
+    if (!to || !subject || !text) {
+      return res.status(400).json({ error: "Missing to/subject/text" });
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD,
+      },
+    });
+
+    await transporter.sendMail({
+      from: process.env.GMAIL_USER,
+      to,
+      subject,
+      text,
+      replyTo: replyTo || undefined,
+    });
+
+    console.log("✅ SEND-EMAIL: sent to", to);
+    res.json({ success: true });
+  } catch (err) {
+    console.log("❌ SEND-EMAIL ERROR:", err);
+    res.status(500).json({ success: false, error: String(err) });
+  }
+});
+
+
+/* 🚨 NOTHING after this except listen */
+app.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
+});
+
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
