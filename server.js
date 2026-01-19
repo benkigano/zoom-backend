@@ -60,15 +60,7 @@ app.get("/test-email", (req, res) => {
     pass: process.env.GMAIL_APP_PASSWORD,
   },
 });
-app.post("/api/interview-request", async (req, res) => {
-  try {
-    const { name, email, phone, proposedTopic, notes, pageUrl } = req.body || {};
 
-    if (!name || !email || !proposedTopic) {
-      return res.status(400).json({
-        ok: false,
-        error: "Missing required fields: name, email, proposedTopic",
-      });
     }
 
     const transporter = nodemailer.createTransport({
