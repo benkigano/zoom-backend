@@ -60,25 +60,64 @@ app.get("/test-email", (req, res) => {
     pass: process.env.GMAIL_APP_PASSWORD,
   },
 });
- 
+app.post("/api/interview-request", async (req, res) => {
+  try {
+    const { name, email, phone, proposedTopic, notes, pageUrl } = req.body || {};
 
-      await transporter.sendMail({
-        from: process.env.GMAIL_USER,
-        to: req.query.to || process.env.GMAIL_USER,
-        subject: "Zoom Backend Email Test",
-        text: "Your backend email configuration is working.",
+    if (!name || !email || !proposedTopic) {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing required fields: name, email, proposedTopic",
       });
-
-     console.log("✅ TEST EMAIL SENT");
-    } catch (err) {
-
-      console.log("❌ TEST EMAIL ERROR:", err);
     }
-  })();
+
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD,
+      },
+    });
+
+    const toAddress = process.env.NOTIFY_TO || process.env.GMAIL_USER;
+
+    const subject = `New Interview Request: ${name} — ${proposedTopic}`;
+    const text =
+`New Interview Request
+
+Name: ${name}
+Email: ${email}
+Phone: ${phone || "(none)"}
+
+Proposed Topic:
+${proposedTopic}
+
+Notes:
+${notes || "(none)"}
+
+Page URL:
+${pageUrl || "(unknown)"}
+`;
+
+    await transporter.sendMail({
+      from: process.env.GMAIL_USER,
+      to: toAddress,
+      replyTo: email,
+      subject,
+      text,
+    });
+
+    console.log("✅ interview-request email sent:", email);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.log("❌ interview-request error:", err);
+    return res.status(500).json({ ok: false, error: String(err) });
+  }
 });
  
-
-
+      
 /* ✅ PASTE THE NEW BLOCK HERE */
 app.post("/send-email", async (req, res) => {
   try {
