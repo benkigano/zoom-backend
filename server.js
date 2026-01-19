@@ -118,9 +118,7 @@ app.post("/send-email", async (req, res) => {
 
 
 /* 🚨 NOTHING after this except listen */
-app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
-});
+
 
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
