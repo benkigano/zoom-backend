@@ -76,9 +76,7 @@ app.get("/test-email", (req, res) => {
     }
   })();
 });
- app.get("/test-email", (req, res) => {
-  // ... your existing test-email code ...
-});
+ 
 
 
 /* ✅ PASTE THE NEW BLOCK HERE */
