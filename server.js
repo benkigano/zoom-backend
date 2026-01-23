@@ -113,6 +113,65 @@ app.post("/send-email", async (req, res) => {
 /* 🚨 NOTHING after this except listen */
  
 
+// ---- ZOOM OAUTH (OWNER = YOU) ----
+let zoomTokens = null; // stored in memory for now
+
+app.get("/zoom/oauth/start", (req, res) => {
+  const redirectUri = process.env.ZOOM_REDIRECT_URL;
+  const clientId = process.env.ZOOM_CLIENT_ID;
+
+  if (!redirectUri || !clientId) {
+    return res.status(500).send("Missing ZOOM_CLIENT_ID or ZOOM_REDIRECT_URL");
+  }
+
+  const url =
+    `https://zoom.us/oauth/authorize?response_type=code` +
+    `&client_id=${encodeURIComponent(clientId)}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}`;
+
+  return res.redirect(url);
+});
+
+app.get("/zoom/oauth/callback", async (req, res) => {
+  try {
+    const code = req.query.code;
+    if (!code) return res.status(400).send("Missing code");
+
+    const basic = Buffer.from(
+      `${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`
+    ).toString("base64");
+
+    const tokenRes = await fetch("https://zoom.us/oauth/token", {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${basic}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code: String(code),
+        redirect_uri: process.env.ZOOM_REDIRECT_URL,
+      }),
+    });
+
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok) {
+      throw new Error(`Token exchange failed: ${JSON.stringify(tokenData)}`);
+    }
+
+    zoomTokens = { ...tokenData, obtained_at: Date.now() };
+
+    return res.send("✅ Zoom connected. You can close this tab.");
+  } catch (err) {
+    console.error(err);
+    return res.status(500).send(String(err));
+  }
+});
+
+app.get("/zoom/status", (req, res) => {
+  res.json({ connected: Boolean(zoomTokens) });
+});
+
 
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
