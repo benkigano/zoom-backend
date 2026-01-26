@@ -178,6 +178,60 @@ app.post("/zoom/webhook", express.json({ type: "*/*" }), (req, res) => {
   // Always acknowledge Zoom immediately
   res.status(200).send("ok");
 });
+import crypto from "crypto";
+
+// ✅ Optional: GET handler so you can test in browser
+app.get("/zoom/webhook", (req, res) => {
+  res.status(200).send("ok");
+});
+
+// ✅ Webhook handler (Zoom will POST here)
+app.post("/zoom/webhook", express.raw({ type: "application/json" }), (req, res) => {
+  try {
+    const raw = req.body?.toString("utf8") || "";
+    let body = {};
+    try {
+      body = raw ? JSON.parse(raw) : {};
+    } catch {
+      body = { _parseError: true, raw };
+    }
+
+    console.log("📩 ZOOM WEBHOOK HIT");
+    console.log("Headers:", {
+      "x-zm-request-timestamp": req.headers["x-zm-request-timestamp"],
+      "x-zm-signature": req.headers["x-zm-signature"],
+      "user-agent": req.headers["user-agent"],
+    });
+    console.log("Event:", body?.event);
+    console.log("Payload keys:", body?.payload ? Object.keys(body.payload) : null);
+
+    // ✅ Zoom URL validation handshake (required)
+    // Zoom sends: { event: "endpoint.url_validation", payload: { plainToken: "..." } }
+    if (body?.event === "endpoint.url_validation") {
+      const plainToken = body?.payload?.plainToken;
+      const secret = process.env.ZOOM_WEBHOOK_SECRET || "";
+
+      if (!plainToken || !secret) {
+        console.log("❌ Missing plainToken or ZOOM_WEBHOOK_SECRET");
+        return res.status(400).json({ error: "Missing plainToken or secret" });
+      }
+
+      const encryptedToken = crypto
+        .createHmac("sha256", secret)
+        .update(plainToken)
+        .digest("hex");
+
+      console.log("✅ Responding to endpoint.url_validation");
+      return res.status(200).json({ plainToken, encryptedToken });
+    }
+
+    // ✅ For normal events, acknowledge fast
+    return res.status(200).send("ok");
+  } catch (err) {
+    console.log("❌ ZOOM WEBHOOK ERROR:", err);
+    return res.status(200).send("ok"); // still 200 so Zoom doesn't keep retrying endlessly
+  }
+});
 
 
    app.listen(PORT, () => {
