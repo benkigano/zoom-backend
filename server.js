@@ -232,6 +232,41 @@ app.post("/zoom/webhook", express.raw({ type: "application/json" }), (req, res) 
     return res.status(200).send("ok"); // still 200 so Zoom doesn't keep retrying endlessly
   }
 });
+// ---- ZOOM WEBHOOK (probe + validation) ----
+import crypto from "crypto";
+
+app.post("/zoom/webhook", (req, res) => {
+  console.log("📩 ZOOM WEBHOOK HIT", new Date().toISOString());
+  console.log("Headers:", req.headers);
+  console.log("Body:", req.body);
+
+  // Zoom "URL Validation" handshake (required to activate Event Subscriptions)
+  // Zoom will send: { event: "endpoint.url_validation", payload: { plainToken: "..." } }
+  try {
+    if (req.body?.event === "endpoint.url_validation") {
+      const plainToken = req.body?.payload?.plainToken;
+
+      const secret = process.env.ZOOM_WEBHOOK_SECRET;
+      if (!secret) {
+        console.log("❌ Missing ZOOM_WEBHOOK_SECRET env var");
+        return res.status(500).json({ error: "Missing ZOOM_WEBHOOK_SECRET" });
+      }
+
+      const encryptedToken = crypto
+        .createHmac("sha256", secret)
+        .update(plainToken)
+        .digest("hex");
+
+      console.log("✅ Responding to Zoom URL validation");
+      return res.status(200).json({ plainToken, encryptedToken });
+    }
+  } catch (e) {
+    console.log("❌ URL validation error:", e);
+  }
+
+  // Normal webhook events
+  return res.status(200).send("ok");
+});
 
 
    app.listen(PORT, () => {
