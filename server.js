@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import nodemailer from "nodemailer";
+import crypto from "crypto";
+
 
 const app = express();
 app.use(cors());
@@ -171,42 +173,14 @@ app.get("/zoom/oauth/callback", async (req, res) => {
 app.get("/zoom/status", (req, res) => {
   res.json({ connected: Boolean(zoomTokens) });
 });
-app.post("/zoom/webhook", express.json({ type: "*/*" }), (req, res) => {
-  console.log("📩 Zoom webhook received");
-  console.log(JSON.stringify(req.body, null, 2));
-
-  // Always acknowledge Zoom immediately
-  res.status(200).send("ok");
-});
-import crypto from "crypto";
-
-// ✅ Optional: GET handler so you can test in browser
-app.get("/zoom/webhook", (req, res) => {
-  res.status(200).send("ok");
-});
-
-// ✅ Webhook handler (Zoom will POST here)
 app.post("/zoom/webhook", express.raw({ type: "application/json" }), (req, res) => {
   try {
     const raw = req.body?.toString("utf8") || "";
-    let body = {};
-    try {
-      body = raw ? JSON.parse(raw) : {};
-    } catch {
-      body = { _parseError: true, raw };
-    }
+    const body = raw ? JSON.parse(raw) : {};
 
-    console.log("📩 ZOOM WEBHOOK HIT");
-    console.log("Headers:", {
-      "x-zm-request-timestamp": req.headers["x-zm-request-timestamp"],
-      "x-zm-signature": req.headers["x-zm-signature"],
-      "user-agent": req.headers["user-agent"],
-    });
-    console.log("Event:", body?.event);
-    console.log("Payload keys:", body?.payload ? Object.keys(body.payload) : null);
+    console.log("📩 ZOOM WEBHOOK HIT:", body?.event || "(no event)");
 
-    // ✅ Zoom URL validation handshake (required)
-    // Zoom sends: { event: "endpoint.url_validation", payload: { plainToken: "..." } }
+    // Zoom URL validation handshake
     if (body?.event === "endpoint.url_validation") {
       const plainToken = body?.payload?.plainToken;
       const secret = process.env.ZOOM_WEBHOOK_SECRET || "";
@@ -221,52 +195,23 @@ app.post("/zoom/webhook", express.raw({ type: "application/json" }), (req, res) 
         .update(plainToken)
         .digest("hex");
 
-      console.log("✅ Responding to endpoint.url_validation");
       return res.status(200).json({ plainToken, encryptedToken });
     }
 
-    // ✅ For normal events, acknowledge fast
+    // Normal events
     return res.status(200).send("ok");
   } catch (err) {
     console.log("❌ ZOOM WEBHOOK ERROR:", err);
-    return res.status(200).send("ok"); // still 200 so Zoom doesn't keep retrying endlessly
+    return res.status(200).send("ok");
   }
 });
-// ---- ZOOM WEBHOOK (probe + validation) ----
-import crypto from "crypto";
 
-app.post("/zoom/webhook", (req, res) => {
-  console.log("📩 ZOOM WEBHOOK HIT", new Date().toISOString());
-  console.log("Headers:", req.headers);
-  console.log("Body:", req.body);
 
-  // Zoom "URL Validation" handshake (required to activate Event Subscriptions)
-  // Zoom will send: { event: "endpoint.url_validation", payload: { plainToken: "..." } }
-  try {
-    if (req.body?.event === "endpoint.url_validation") {
-      const plainToken = req.body?.payload?.plainToken;
+// ✅ Optional: GET handler so you can test in browser
 
-      const secret = process.env.ZOOM_WEBHOOK_SECRET;
-      if (!secret) {
-        console.log("❌ Missing ZOOM_WEBHOOK_SECRET env var");
-        return res.status(500).json({ error: "Missing ZOOM_WEBHOOK_SECRET" });
-      }
+// ✅ Webhook handler (Zoom will POST here)
 
-      const encryptedToken = crypto
-        .createHmac("sha256", secret)
-        .update(plainToken)
-        .digest("hex");
 
-      console.log("✅ Responding to Zoom URL validation");
-      return res.status(200).json({ plainToken, encryptedToken });
-    }
-  } catch (e) {
-    console.log("❌ URL validation error:", e);
-  }
-
-  // Normal webhook events
-  return res.status(200).send("ok");
-});
 
 
    app.listen(PORT, () => {
