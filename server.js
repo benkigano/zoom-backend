@@ -181,8 +181,10 @@ app.get("/zoom/status", (req, res) => {
 });
 // ✅ Browser test route (GET)
 app.get("/zoom/webhook", (req, res) => {
+  console.log("✅ GET /zoom/webhook HIT");
   res.status(200).send("ok");
 });
+
 
 app.post("/zoom/webhook", express.raw({ type: "application/json" }), (req, res) => {
   try {
