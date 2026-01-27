@@ -173,6 +173,11 @@ app.get("/zoom/oauth/callback", async (req, res) => {
 app.get("/zoom/status", (req, res) => {
   res.json({ connected: Boolean(zoomTokens) });
 });
+// ✅ Browser test route (GET)
+app.get("/zoom/webhook", (req, res) => {
+  res.status(200).send("ok");
+});
+
 app.post("/zoom/webhook", express.raw({ type: "application/json" }), (req, res) => {
   try {
     const raw = req.body?.toString("utf8") || "";
