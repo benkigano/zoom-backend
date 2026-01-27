@@ -6,7 +6,13 @@ import crypto from "crypto";
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use((req, res, next) => {
+  if (req.originalUrl === "/zoom/webhook") {
+    next(); // skip JSON parser for Zoom
+  } else {
+    express.json()(req, res, next);
+  }
+});
 
 app.get("/", (req, res) => {
   res.send("Zoom backend is running");
