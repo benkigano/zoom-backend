@@ -7,6 +7,11 @@ import crypto from "crypto";
 const app = express();
 app.use(cors());
 app.use((req, res, next) => {
+  console.log("➡️", req.method, req.originalUrl);
+  next();
+});
+
+app.use((req, res, next) => {
   if (req.originalUrl === "/zoom/webhook") {
     next(); // skip JSON parser for Zoom
   } else {
