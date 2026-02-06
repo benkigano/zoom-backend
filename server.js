@@ -59,6 +59,27 @@ app.get("/ping", (req, res) => {
 app.get("/health", (req, res) => {
   res.status(200).json({ message: "Backend is available" });
 });
+// ---- /api compatibility layer (supports Wix calling /api/*) ----
+app.get("/api/health", (req, res) => {
+  res.status(200).json({ message: "Backend is available" });
+});
+
+app.get("/api/zoom/meetings", (req, res) => {
+  res.json({ meetings: [] });
+});
+
+app.post("/api/zoom/meetings", async (req, res) => {
+  if (!zoomTokens?.access_token) {
+    return res.status(401).json({
+      error: "Zoom not connected yet. Visit /zoom/oauth/start to authorize.",
+    });
+  }
+
+  return res.status(501).json({
+    error: "Backend route exists, but meeting creation is not wired to Zoom yet.",
+  });
+});
+
 // ---- Wix frontend expected routes ----
 
 // GET meetings (basic response so Wix always receives JSON)
