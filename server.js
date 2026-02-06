@@ -51,6 +51,10 @@ app.get("/ping", (req, res) => {
   console.log("HIT /ping", new Date().toISOString());
   res.status(200).send("pong");
 });
+app.get("/health", (req, res) => {
+  res.status(200).json({ message: "Backend is available" });
+});
+
 app.get("/test-email", (req, res) => {
   console.log("HIT /test-email", new Date().toISOString());
 
