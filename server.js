@@ -380,6 +380,12 @@ app.post("/zoom/webhook", express.raw({ type: "application/json" }), (req, res) 
     return res.status(200).send("ok");
   }
 });
+app.get("/zoom/token-scope", (req, res) => {
+  res.json({
+    connected: Boolean(zoomTokens),
+    scope: zoomTokens?.scope || null,
+  });
+});
 
 
 // ✅ Optional: GET handler so you can test in browser
