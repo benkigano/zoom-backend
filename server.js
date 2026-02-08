@@ -69,15 +69,72 @@ app.get("/api/zoom/meetings", (req, res) => {
 });
 
 app.post("/api/zoom/meetings", async (req, res) => {
-  if (!zoomTokens?.access_token) {
-    return res.status(401).json({
-      error: "Zoom not connected yet. Visit /zoom/oauth/start to authorize.",
-    });
-  }
+  try {
+    if (!zoomTokens?.access_token) {
+      return res.status(401).json({
+        error: "Zoom not connected yet. Visit /zoom/oauth/start to authorize.",
+      });
+    }
 
-  return res.status(501).json({
-    error: "Backend route exists, but meeting creation is not wired to Zoom yet.",
-  });
+    const { topic, startTime, duration, agenda, timezone, password, settings } = req.body || {};
+
+    if (!topic || !startTime || !duration) {
+      return res.status(400).json({
+        error: "Missing required fields: topic, startTime, duration",
+      });
+    }
+
+    const zoomPayload = {
+      topic: String(topic),
+      type: 2,
+      start_time: String(startTime),
+      duration: Number(duration),
+      timezone: timezone ? String(timezone) : undefined,
+      agenda: agenda ? String(agenda) : undefined,
+      password: password ? String(password) : undefined,
+      settings: {
+        join_before_host: false,
+        waiting_room: true,
+        approval_type: 2,
+        meeting_authentication: false,
+        ...((settings && typeof settings === "object") ? settings : {}),
+      },
+    };
+
+    const zoomRes = await fetch("https://api.zoom.us/v2/users/me/meetings", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${zoomTokens.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(zoomPayload),
+    });
+
+    const zoomData = await zoomRes.json().catch(() => ({}));
+
+    if (!zoomRes.ok) {
+      return res.status(zoomRes.status).json({
+        error: zoomData?.message || "Zoom API error creating meeting",
+        details: zoomData,
+      });
+    }
+
+    const meeting = {
+      id: zoomData.id,
+      topic: zoomData.topic,
+      startTime: zoomData.start_time,
+      duration: zoomData.duration,
+      joinUrl: zoomData.join_url,
+      password: zoomData.password,
+      hostEmail: zoomData.host_email,
+      timezone: zoomData.timezone,
+    };
+
+    return res.json({ success: true, meeting, raw: zoomData });
+  } catch (err) {
+    console.error("❌ create meeting error:", err);
+    return res.status(500).json({ error: String(err) });
+  }
 });
 
 // ---- Wix frontend expected routes ----
