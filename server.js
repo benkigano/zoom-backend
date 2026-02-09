@@ -294,11 +294,15 @@ app.get("/zoom/oauth/start", (req, res) => {
   if (!redirectUri || !clientId) {
     return res.status(500).send("Missing ZOOM_CLIENT_ID or ZOOM_REDIRECT_URL");
   }
+const state = req.query.state ? String(req.query.state) : undefined;
 
-  const url =
+  let url =
     `https://zoom.us/oauth/authorize?response_type=code` +
     `&client_id=${encodeURIComponent(clientId)}` +
     `&redirect_uri=${encodeURIComponent(redirectUri)}`;
+if (state) {
+  url += `&state=${encodeURIComponent(state)}`;
+}
 
   return res.redirect(url);
 });
