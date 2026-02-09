@@ -331,6 +331,8 @@ app.get("/zoom/oauth/callback", async (req, res) => {
     }
 
     zoomTokens = { ...tokenData, obtained_at: Date.now() };
+const hostKey = String(req.query.state || "default");
+zoomTokenStore.set(hostKey, { ...tokenData, obtained_at: Date.now() });
 
     return res.send("✅ Zoom connected. You can close this tab.");
   } catch (err) {
