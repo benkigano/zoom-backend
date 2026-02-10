@@ -290,6 +290,7 @@ let zoomTokens = null; // stored in memory for now
 app.get("/zoom/oauth/start", (req, res) => {
   const redirectUri = process.env.ZOOM_REDIRECT_URL;
   const clientId = process.env.ZOOM_CLIENT_ID;
+  console.log("ZOOM_CLIENT_ID used by backend:", process.env.ZOOM_CLIENT_ID);
 
   if (!redirectUri || !clientId) {
     return res.status(500).send("Missing ZOOM_CLIENT_ID or ZOOM_REDIRECT_URL");
