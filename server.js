@@ -399,6 +399,11 @@ app.get("/zoom/token-scope", (req, res) => {
 // ✅ Optional: GET handler so you can test in browser
 
 // ✅ Webhook handler (Zoom will POST here)
+app.post("/zoom/disconnect", (req, res) => {
+  zoomTokens = null;
+  zoomTokenStore.clear();
+  return res.json({ ok: true, connected: false });
+});
 
 
 
