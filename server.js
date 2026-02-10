@@ -303,6 +303,7 @@ const state = req.query.state ? String(req.query.state) : undefined;
 if (state) {
   url += `&state=${encodeURIComponent(state)}`;
 }
+url += `&prompt=consent`;
 
   return res.redirect(url);
 });
