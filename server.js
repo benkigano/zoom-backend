@@ -286,6 +286,58 @@ app.post("/send-email", async (req, res) => {
 
 // ---- ZOOM OAUTH (OWNER = YOU) ----
 let zoomTokens = null; // stored in memory for now
+// ✅ Refresh Zoom access token when it expires
+async function refreshZoomAccessToken() {
+  if (!zoomTokens?.refresh_token) {
+    throw new Error("No refresh_token saved. Please re-authorize at /zoom/oauth/start");
+  }
+
+  const basic = Buffer.from(
+    `${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`
+  ).toString("base64");
+
+  const refreshRes = await fetch("https://zoom.us/oauth/token", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${basic}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: String(zoomTokens.refresh_token),
+    }),
+  });
+
+  const refreshData = await refreshRes.json().catch(() => ({}));
+
+  if (!refreshRes.ok) {
+    throw new Error(
+      `Refresh failed: ${refreshData?.reason || refreshData?.message || JSON.stringify(refreshData)}`
+    );
+  }
+
+  // Zoom sometimes returns a new refresh_token — always save what Zoom returns
+  zoomTokens = { ...refreshData, obtained_at: Date.now() };
+
+  return zoomTokens.access_token;
+}
+
+// ✅ Get a valid token (refreshes automatically if expired)
+async function getValidZoomAccessToken() {
+  if (!zoomTokens?.access_token) return null;
+
+  const expiresInSec = Number(zoomTokens.expires_in || 0);
+  const obtainedAt = Number(zoomTokens.obtained_at || 0);
+
+  // Refresh 60 seconds early to avoid timing issues
+  const expiresAt = obtainedAt + Math.max(0, expiresInSec - 60) * 1000;
+
+  if (!obtainedAt || !expiresInSec || Date.now() >= expiresAt) {
+    return await refreshZoomAccessToken();
+  }
+
+  return zoomTokens.access_token;
+}
 
 app.get("/zoom/oauth/start", (req, res) => {
   const redirectUri = process.env.ZOOM_REDIRECT_URL;
