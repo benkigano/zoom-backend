@@ -287,10 +287,9 @@ app.post("/send-email", async (req, res) => {
 // ---- ZOOM OAUTH (OWNER = YOU) ----
 let zoomTokens = null; // stored in memory for now
 const zoomTokenStore = new Map();
-async function refreshZoomAccessToken() { ... }
-async function getValidZoomAccessToken() { ... }
-// ✅ Refresh Zoom access token when it expires
 
+// ✅ Refresh Zoom access token when it expires
+async function refreshZoomAccessToken() {
   if (!zoomTokens?.refresh_token) {
     throw new Error("No refresh_token saved. Please re-authorize at /zoom/oauth/start");
   }
@@ -341,6 +340,7 @@ async function getValidZoomAccessToken() {
 
   return zoomTokens.access_token;
 }
+
 
 app.get("/zoom/oauth/start", (req, res) => {
   const redirectUri = process.env.ZOOM_REDIRECT_URL;
