@@ -404,8 +404,12 @@ app.get("/zoom/oauth/callback", async (req, res) => {
 });
 
 app.get("/zoom/status", (req, res) => {
-  res.json({ connected: Boolean(zoomTokens) });
+  res.json({
+    connected: Boolean(zoomTokens?.access_token),
+    hasRefreshToken: Boolean(zoomTokens?.refresh_token),
+  });
 });
+
 // ✅ Browser test route (GET)
 app.get("/zoom/webhook", (req, res) => {
   console.log("✅ GET /zoom/webhook HIT");
