@@ -286,6 +286,9 @@ app.post("/send-email", async (req, res) => {
 
 // ---- ZOOM OAUTH (OWNER = YOU) ----
 let zoomTokens = null; // stored in memory for now
+const zoomTokenStore = new Map();
+async function refreshZoomAccessToken() { ... }
+async function getValidZoomAccessToken() { ... }
 // ✅ Refresh Zoom access token when it expires
 async function refreshZoomAccessToken() {
   if (!zoomTokens?.refresh_token) {
