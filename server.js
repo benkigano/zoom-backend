@@ -290,7 +290,7 @@ const zoomTokenStore = new Map();
 async function refreshZoomAccessToken() { ... }
 async function getValidZoomAccessToken() { ... }
 // ✅ Refresh Zoom access token when it expires
-async function refreshZoomAccessToken() {
+
   if (!zoomTokens?.refresh_token) {
     throw new Error("No refresh_token saved. Please re-authorize at /zoom/oauth/start");
   }
