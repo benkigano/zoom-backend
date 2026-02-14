@@ -71,11 +71,13 @@ app.get("/api/zoom/meetings", (req, res) => {
 
 app.post("/api/zoom/meetings", async (req, res) => {
   try {
-    if (!zoomTokens?.access_token) {
-      return res.status(401).json({
-        error: "Zoom not connected yet. Visit /zoom/oauth/start to authorize.",
-      });
-    }
+   const accessToken = await getValidZoomAccessToken();
+if (!accessToken) {
+  return res.status(401).json({
+    error: "Zoom not connected yet. Visit /zoom/oauth/start to authorize.",
+  });
+}
+
 
     const { topic, startTime, duration, agenda, timezone, password, settings } = req.body || {};
 
@@ -105,7 +107,8 @@ app.post("/api/zoom/meetings", async (req, res) => {
     const zoomRes = await fetch("https://api.zoom.us/v2/users/me/meetings", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${zoomTokens.access_token}`,
+      Authorization: `Bearer ${accessToken}`,
+ 
         "Content-Type": "application/json",
       },
       body: JSON.stringify(zoomPayload),
@@ -146,11 +149,13 @@ app.get("/zoom/meetings", (req, res) => {
 });
 app.post("/zoom/meetings", async (req, res) => {
   try {
-    if (!zoomTokens?.access_token) {
-      return res.status(401).json({
-        error: "Zoom not connected yet. Visit /zoom/oauth/start to authorize.",
-      });
-    }
+   const accessToken = await getValidZoomAccessToken();
+if (!accessToken) {
+  return res.status(401).json({
+    error: "Zoom not connected yet. Visit /zoom/oauth/start to authorize.",
+  });
+}
+ 
 
     const { topic, startTime, duration, agenda, timezone, password, settings } = req.body || {};
 
@@ -180,7 +185,8 @@ app.post("/zoom/meetings", async (req, res) => {
     const zoomRes = await fetch("https://api.zoom.us/v2/users/me/meetings", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${zoomTokens.access_token}`,
+      Authorization: `Bearer ${accessToken}`,
+ 
         "Content-Type": "application/json",
       },
       body: JSON.stringify(zoomPayload),
