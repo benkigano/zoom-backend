@@ -35,7 +35,9 @@ app.post("/send-test-email", async (req, res) => {
     });
 
     await transporter.sendMail({
-      from: process.env.GMAIL_USER,
+     from: `"Court of Compassion" <${process.env.GMAIL_USER}>`,
+     replyTo: process.env.GMAIL_USER,
+
       to: process.env.GMAIL_USER,
       subject: "Zoom Backend Email Test",
       text: "Your backend email configuration is working."
@@ -238,7 +240,9 @@ app.get("/test-email", (req, res) => {
   },
 });
       await transporter.sendMail({
-        from: process.env.GMAIL_USER,
+       from: `"Court of Compassion" <${process.env.GMAIL_USER}>`,
+       replyTo: process.env.GMAIL_USER,
+
         to: req.query.to || process.env.GMAIL_USER,
         subject: "Zoom Backend Email Test",
         text: "Your backend email configuration is working.",
@@ -270,7 +274,9 @@ app.post("/send-email", async (req, res) => {
     });
 
     await transporter.sendMail({
-      from: process.env.GMAIL_USER,
+     from: `"Court of Compassion" <${process.env.GMAIL_USER}>`,
+     replyTo: process.env.GMAIL_USER,
+
       to,
       subject,
       text,
