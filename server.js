@@ -298,6 +298,53 @@ app.post("/send-email", async (req, res) => {
 
 // ---- ZOOM OAUTH (OWNER = YOU) ----
 let zoomTokens = null; // stored in memory for now
+// =========================
+// ZOOM S2S OAUTH (ACCOUNT)
+// =========================
+let zoomS2SToken = null;
+let zoomS2STokenExpiresAt = 0; // unix ms
+
+async function getS2SAccessToken() {
+  const accountId = process.env.ZOOM_S2S_ACCOUNT_ID;
+  const clientId = process.env.ZOOM_S2S_CLIENT_ID;
+  const clientSecret = process.env.ZOOM_S2S_CLIENT_SECRET;
+
+  if (!accountId || !clientId || !clientSecret) {
+    throw new Error("Missing ZOOM_S2S_ACCOUNT_ID / ZOOM_S2S_CLIENT_ID / ZOOM_S2S_CLIENT_SECRET");
+  }
+
+  // If we still have a valid token, reuse it (refresh ~60 seconds early)
+  if (zoomS2SToken && Date.now() < (zoomS2STokenExpiresAt - 60_000)) {
+    return zoomS2SToken;
+  }
+
+  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+
+  // IMPORTANT: this request is form-encoded (not JSON)
+  const tokenRes = await fetch("https://zoom.us/oauth/token", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${basic}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "account_credentials",
+      account_id: String(accountId),
+    }),
+  });
+
+  const tokenData = await tokenRes.json().catch(() => ({}));
+  if (!tokenRes.ok) {
+    throw new Error(`S2S token failed: ${tokenData?.reason || tokenData?.message || JSON.stringify(tokenData)}`);
+  }
+
+  zoomS2SToken = tokenData.access_token;
+  const expiresInSec = Number(tokenData.expires_in || 0);
+  zoomS2STokenExpiresAt = Date.now() + Math.max(0, expiresInSec) * 1000;
+
+  return zoomS2SToken;
+}
+
 const zoomTokenStore = new Map();
 
 // ✅ Refresh Zoom access token when it expires
