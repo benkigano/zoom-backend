@@ -151,13 +151,7 @@ app.get("/zoom/meetings", (req, res) => {
 });
 app.post("/zoom/meetings", async (req, res) => {
   try {
-   const accessToken = await getValidZoomAccessToken();
-if (!accessToken) {
-  return res.status(401).json({
-    error: "Zoom not connected yet. Visit /zoom/oauth/start to authorize.",
-  });
-}
- 
+  const accessToken = await getS2SAccessToken();
 
     const { topic, startTime, duration, agenda, timezone, password, settings } = req.body || {};
 
