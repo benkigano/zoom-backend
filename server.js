@@ -249,8 +249,16 @@ app.post("/send-email", async (req, res) => {
 // 🧹 CLEAN incoming text to remove any existing Meeting Details
 let cleanText = text;
 
-if (cleanText && cleanText.includes("MEETING DETAILS")) {
-  cleanText = cleanText.split("MEETING DETAILS")[0].trim();
+if (cleanText) {
+  // Remove frontend section
+  if (cleanText.includes("Your Meeting Details")) {
+    cleanText = cleanText.split("Your Meeting Details")[0].trim();
+  }
+
+  // Remove backend section (safety)
+  if (cleanText.includes("MEETING DETAILS")) {
+    cleanText = cleanText.split("MEETING DETAILS")[0].trim();
+  }
 }
     if (!to || !subject || !text) {
       return res.status(400).json({ error: "Missing to/subject/text" });
