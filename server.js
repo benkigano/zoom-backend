@@ -246,7 +246,12 @@ app.get("/test-email", (req, res) => {
 app.post("/send-email", async (req, res) => {
   try {
     const { to, subject, text, replyTo } = req.body || {};
+// 🧹 CLEAN incoming text to remove any existing Meeting Details
+let cleanText = text;
 
+if (cleanText && cleanText.includes("MEETING DETAILS")) {
+  cleanText = cleanText.split("MEETING DETAILS")[0].trim();
+}
     if (!to || !subject || !text) {
       return res.status(400).json({ error: "Missing to/subject/text" });
     }
@@ -304,7 +309,7 @@ app.post("/send-email", async (req, res) => {
       to,
       subject,
       text: `
-${text}
+${cleanText}
 
 ------------------------
 MEETING DETAILS
