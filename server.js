@@ -242,7 +242,34 @@ app.get("/test-email", (req, res) => {
     }
   })();
 });
+// ✅ ADD THIS BLOCK HERE (above /send-email)
 
+app.get("/send-test-email", async (req, res) => {
+  try {
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD,
+      },
+    });
+
+    await transporter.sendMail({
+      from: `"Court of Compassion" <${process.env.GMAIL_USER}>`,
+      to: process.env.GMAIL_USER,
+      subject: "Zoom Backend Test Email",
+      text: "Your backend email configuration is working.",
+    });
+
+    console.log("✅ TEST EMAIL SENT");
+    res.send("Test email sent");
+  } catch (err) {
+    console.log("❌ TEST EMAIL ERROR:", err);
+    res.status(500).send("Error sending test email");
+  }
+});
+
+// 🔽 EXISTING CODE (DO NOT MOVE)
 app.post("/send-email", async (req, res) => {
   try {
     const { to, subject, text, replyTo } = req.body || {};
