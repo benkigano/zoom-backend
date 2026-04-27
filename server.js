@@ -337,6 +337,8 @@ if (cleanText) {
     });
 
     // 🔵 STEP 4 — Send enhanced email
+    console.log("📧 Sending email TO:", to);
+   
     await transporter.sendMail({
       from: `"Court of Compassion" <${process.env.GMAIL_USER}>`,
       replyTo: process.env.GMAIL_USER,
