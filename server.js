@@ -24,7 +24,32 @@ app.use((req, res, next) => {
 app.get("/", (req, res) => {
   res.send("Zoom backend is running");
 });
+// TEMP STORAGE (in-memory)
+let interviewRequests = [];
 
+// SAVE interview request
+app.post("/request", (req, res) => {
+  const data = req.body;
+
+  const newRequest = {
+    id: Date.now(),
+    name: data.name,
+    email: data.email,
+    topic: data.topic,
+    createdAt: new Date()
+  };
+
+  interviewRequests.push(newRequest);
+
+  console.log("📥 New request saved:", newRequest);
+
+  res.json({ success: true });
+});
+
+// GET all requests (ADMIN PANEL)
+app.get("/requests", (req, res) => {
+  res.json(interviewRequests);
+});
 app.post("/send-test-email", async (req, res) => {
   try {
     const transporter = nodemailer.createTransport({
