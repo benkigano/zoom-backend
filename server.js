@@ -25,7 +25,6 @@ app.get("/", (req, res) => {
   res.send("Zoom backend is running");
 });
 // TEMP STORAGE (in-memory)
-let interviewRequests = [];
 
 // SAVE interview request
 app.post("/request", (req, res) => {
