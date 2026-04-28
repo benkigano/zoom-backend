@@ -5,6 +5,7 @@ import crypto from "crypto";
 
 
 const app = express();
+const interviewRequests = [];
 app.use(cors());
 app.use((req, res, next) => {
   console.log("➡️", req.method, req.originalUrl);
