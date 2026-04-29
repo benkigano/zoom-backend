@@ -661,7 +661,7 @@ app.get("/zoom/disconnect", (req, res) => {
   return res.json({ ok: true, connected: false });
 });
 
-let interviewRequests = [];
+
 
 // Create request
 app.post("/request", (req, res) => {
