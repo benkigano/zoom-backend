@@ -5,6 +5,7 @@ import crypto from "crypto";
 
 
 const app = express();
+app.use(express.json());
 const interviewRequests = [];
 app.use(cors());
 app.use((req, res, next) => {
@@ -660,7 +661,66 @@ app.get("/zoom/disconnect", (req, res) => {
   return res.json({ ok: true, connected: false });
 });
 
+let interviewRequests = [];
 
+// Create request
+app.post("/request", (req, res) => {
+  const data = req.body;
+
+  const newRequest = {
+    id: Date.now(),
+    name: data.name,
+    email: data.email,
+    topic: data.topic,
+    status: "pending"
+  };
+
+  interviewRequests.push(newRequest);
+
+  res.json({ success: true });
+});
+
+// Get all requests
+app.get("/requests", (req, res) => {
+  res.json(interviewRequests);
+});
+
+// Approve request + send email
+app.post("/approve/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+
+  const request = interviewRequests.find(r => r.id === id);
+
+  if (!request) {
+    return res.status(404).json({ error: "Request not found" });
+  }
+
+  request.status = "approved";
+
+  try {
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD,
+      },
+    });
+
+    await transporter.sendMail({
+      from: `"Court of Compassion" <${process.env.GMAIL_USER}>`,
+      to: request.email,
+      subject: "Interview Approved",
+      text: `Hello ${request.name}, your interview request has been approved.`,
+    });
+
+    console.log("📧 Approval email sent to:", request.email);
+
+  } catch (err) {
+    console.error("❌ Email failed:", err.message);
+  }
+
+  res.json({ success: true });
+});
 
 
    app.listen(PORT, () => {
