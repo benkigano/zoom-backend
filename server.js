@@ -54,6 +54,17 @@ app.post("/approve/:id", (req, res) => {
 
   const request = interviewRequests.find(r => r.id === id);
 
+  if (request) {
+    request.status = "approved";
+  }
+
+  res.json({ success: true });
+});
+app.post("/approve/:id", (req, res) => {
+  const id = parseInt(req.params.id);
+
+  const request = interviewRequests.find(r => r.id === id);
+
   if (!request) {
     return res.status(404).json({ error: "Request not found" });
   }
