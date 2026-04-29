@@ -49,6 +49,21 @@ app.post("/request", (req, res) => {
 app.get("/requests", (req, res) => {
   res.json(interviewRequests);
 });
+app.post("/approve/:id", (req, res) => {
+  const id = parseInt(req.params.id);
+
+  const request = interviewRequests.find(r => r.id === id);
+
+  if (!request) {
+    return res.status(404).json({ error: "Request not found" });
+  }
+
+  request.status = "approved";
+
+  console.log("✅ Approved:", request);
+
+  res.json({ success: true });
+});
 app.post("/send-test-email", async (req, res) => {
   try {
     const transporter = nodemailer.createTransport({
