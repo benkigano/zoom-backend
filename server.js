@@ -722,6 +722,35 @@ app.post("/approve/:id", async (req, res) => {
   res.json({ success: true });
 });
 
+app.post("/approve/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+
+  const request = interviewRequests.find(r => r.id === id);
+
+  if (!request) {
+    return res.status(404).send("Request not found");
+  }
+
+  // Update status
+  request.status = "approved";
+
+  // ✅ SEND EMAIL
+  try {
+    await transporter.sendMail({
+      from: `"Court of Compassion" <${process.env.GMAIL_USER}>`,
+      to: request.email,
+      subject: "Interview Approved",
+      text: `Hello ${request.name}, your interview request has been approved.`
+    });
+
+    console.log("✅ Approval email sent to", request.email);
+
+  } catch (err) {
+    console.error("❌ Email failed:", err);
+  }
+
+  res.json({ success: true });
+});
 
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
