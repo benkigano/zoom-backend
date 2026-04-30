@@ -2,11 +2,20 @@ import express from "express";
 import cors from "cors";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
-
-
+import fs from "fs";
+import path from "path";
+const DATA_FILE = "./data.json";
 const app = express();
 app.use(express.json());
-const interviewRequests = [];
+let interviewRequests = [];
+
+if (fs.existsSync(DATA_FILE)) {
+  const raw = fs.readFileSync(DATA_FILE);
+  interviewRequests = JSON.parse(raw);
+}
+function saveData() {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(interviewRequests, null, 2));
+}
 app.use(cors());
 app.use((req, res, next) => {
   console.log("➡️", req.method, req.originalUrl);
@@ -39,8 +48,8 @@ app.post("/request", (req, res) => {
     createdAt: new Date()
   };
 
-  interviewRequests.push(newRequest);
-
+interviewRequests.push(newRequest);
+saveData(); // ✅ THIS is Step 5
   console.log("📥 New request saved:", newRequest);
 
   res.json({ success: true });
