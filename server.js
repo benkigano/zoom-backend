@@ -59,17 +59,7 @@ saveData(); // ✅ THIS is Step 5
 app.get("/requests", (req, res) => {
   res.json(interviewRequests);
 });
-app.post("/approve/:id", (req, res) => {
-  const id = parseInt(req.params.id);
 
-  const request = interviewRequests.find(r => r.id === id);
-
-  if (request) {
-    request.status = "approved";
-  }
-
-  res.json({ success: true });
-});
 app.post("/approve/:id", (req, res) => {
   const id = parseInt(req.params.id);
 
@@ -79,7 +69,8 @@ app.post("/approve/:id", (req, res) => {
     return res.status(404).json({ error: "Request not found" });
   }
 
-  request.status = "approved";
+ request.status = "approved";
+saveData(); // ✅ ADD THIS
 
   console.log("✅ Approved:", request);
 
