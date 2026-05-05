@@ -566,8 +566,16 @@ app.get("/zoom/webhook", (req, res) => {
 
 app.post("/zoom/webhook", express.raw({ type: "application/json" }), (req, res) => {
   try {
-    const raw = req.body?.toString("utf8") || "";
-    const body = raw ? JSON.parse(raw) : {};
+   let body = {};
+
+if (Buffer.isBuffer(req.body)) {
+  const raw = req.body.toString("utf8");
+  body = raw ? JSON.parse(raw) : {};
+} else if (typeof req.body === "object" && req.body !== null) {
+  body = req.body;
+} else if (typeof req.body === "string") {
+  body = req.body ? JSON.parse(req.body) : {};
+}
 
     console.log("📩 ZOOM WEBHOOK HIT:", body?.event || "(no event)");
 
