@@ -342,42 +342,9 @@ if (cleanText) {
       return res.status(400).json({ error: "Missing to/subject/text" });
     }
 
-    // 🔵 STEP 1 — Create Zoom meeting
-    const accessToken = await getS2SAccessToken();
+    
 
-    const zoomRes = await fetch("https://api.zoom.us/v2/users/me/meetings", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        topic: subject || "Interview Session",
-        type: 2,
-        start_time: new Date().toISOString(),
-        duration: 60,
-        settings: {
-          waiting_room: true,
-        },
-      }),
-    });
-
-    const zoomData = await zoomRes.json();
-
-    if (!zoomRes.ok) {
-      console.log("❌ Zoom creation failed:", zoomData);
-      return res.status(500).json({
-        error: "Zoom meeting creation failed",
-        details: zoomData,
-      });
-    }
-
-    // 🔵 STEP 2 — Extract real meeting data
-    const joinUrl = zoomData.join_url;
-    const zoomMeetingId = zoomData.id;
-    const password = zoomData.password;
-
-    // 🔵 STEP 3 — Email transporter
+    // 🔵 STEP 1 — Email transporter
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
       port: 465,
@@ -388,38 +355,23 @@ if (cleanText) {
       },
     });
 
-    // 🔵 STEP 4 — Send enhanced email
+   // 🔵 STEP 2 — Send email
     console.log("📧 Sending email TO:", to);
    
     await transporter.sendMail({
       from: `"Court of Compassion" <${process.env.GMAIL_USER}>`,
-      replyTo: process.env.GMAIL_USER,
+     
       to,
       subject,
-      text: `
-${cleanText}
-
-------------------------
-MEETING DETAILS
-------------------------
-Zoom Meeting ID: ${zoomMeetingId}
-PIN: ${password}
-
-Join your interview:
-${joinUrl}
-`,
+    text: cleanText,
       replyTo: replyTo || undefined,
     });
 
-    console.log("✅ SEND-EMAIL + ZOOM SUCCESS");
-
-    // 🔵 STEP 5 — Return to Wix
-    res.json({
-      success: true,
-      zoomMeetingId,
-      password,
-      joinUrl,
-    });
+    console.log("✅ SEND-EMAIL SUCCESS");
+    // 🔵 STEP 3 — Return to Wix
+   res.json({
+  success: true,
+});
 
   } catch (err) {
     console.log("❌ SEND-EMAIL ERROR:", err);
