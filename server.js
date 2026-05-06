@@ -200,7 +200,9 @@ app.post("/zoom/meetings", async (req, res) => {
   const accessToken = await getS2SAccessToken();
 
     const { topic, startTime, duration, agenda, timezone, password, settings } = req.body || {};
-
+    console.log("🕒 ZOOM MEETINGS BODY:", req.body);
+console.log("🕒 ZOOM MEETINGS startTime received:", startTime);
+console.log("🕒 ZOOM MEETINGS timezone received:", timezone);
     if (!topic || !startTime || !duration) {
       return res.status(400).json({
         error: "Missing required fields: topic, startTime, duration",
@@ -223,7 +225,8 @@ app.post("/zoom/meetings", async (req, res) => {
         ...((settings && typeof settings === "object") ? settings : {}),
       },
     };
-
+    start_time: "2026-05-06T09:00:00"
+timezone: "America/Los_Angeles"
     const zoomRes = await fetch("https://api.zoom.us/v2/users/me/meetings", {
       method: "POST",
       headers: {
