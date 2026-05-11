@@ -1,21 +1,12 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
-import fs from "fs";
-import path from "path";
-const DATA_FILE = "./data.json";
+import { prisma } from "./prisma/client.js";
+
 const app = express();
 app.use(express.json());
-let interviewRequests = [];
-
-if (fs.existsSync(DATA_FILE)) {
-  const raw = fs.readFileSync(DATA_FILE);
-  interviewRequests = JSON.parse(raw);
-}
-function saveData() {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(interviewRequests, null, 2));
-}
 app.use(cors());
 app.use((req, res, next) => {
   console.log("➡️", req.method, req.originalUrl);
@@ -34,47 +25,97 @@ app.use((req, res, next) => {
 app.get("/", (req, res) => {
   res.send("Zoom backend is running");
 });
-// TEMP STORAGE (in-memory)
+// SAVE interview request to PostgreSQL
+app.post("/request", async (req, res) => {
+  try {
+    const data = req.body || {};
 
-// SAVE interview request
-app.post("/request", (req, res) => {
-  const data = req.body;
+    const name = data.name || data.applicantName;
+    const email = data.email || data.applicantEmail;
+    const topic = data.topic || data.proposedTopic;
+    const applicantBio = data.applicantBio || null;
+    const selectedJournalistId = data.selectedJournalistId || null;
 
-  const newRequest = {
-    id: Date.now(),
-    name: data.name,
-    email: data.email,
-    topic: data.topic,
-    createdAt: new Date()
-  };
+    if (!name || !email || !topic) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields: name/email/topic",
+      });
+    }
 
-interviewRequests.push(newRequest);
-saveData(); // ✅ THIS is Step 5
-  console.log("📥 New request saved:", newRequest);
+    const newRequest = await prisma.interviewRequest.create({
+      data: {
+        name: String(name),
+        email: String(email),
+        topic: String(topic),
+        applicantBio: applicantBio ? String(applicantBio) : null,
+        selectedJournalistId: selectedJournalistId ? String(selectedJournalistId) : null,
+      },
+    });
 
-  res.json({ success: true });
-});
+    console.log("✅ New request saved to PostgreSQL:", newRequest.id);
 
-// GET all requests (ADMIN PANEL)
-app.get("/requests", (req, res) => {
-  res.json(interviewRequests);
-});
-
-app.post("/approve/:id", (req, res) => {
-  const id = parseInt(req.params.id);
-
-  const request = interviewRequests.find(r => r.id === id);
-
-  if (!request) {
-    return res.status(404).json({ error: "Request not found" });
+    return res.json({
+      success: true,
+      request: newRequest,
+    });
+  } catch (err) {
+    console.error("❌ Request save failed:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
   }
+});
 
- request.status = "approved";
-saveData(); // ✅ ADD THIS
+// GET all requests from PostgreSQL
+app.get("/requests", async (req, res) => {
+  try {
+    const requests = await prisma.interviewRequest.findMany({
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
 
-  console.log("✅ Approved:", request);
+    return res.json(requests);
+  } catch (err) {
+    console.error("❌ Requests fetch failed:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
 
-  res.json({ success: true });
+// APPROVE interview request in PostgreSQL
+app.post("/approve/:id", async (req, res) => {
+  try {
+    const id = String(req.params.id);
+
+    const request = await prisma.interviewRequest.update({
+      where: {
+        id,
+      },
+      data: {
+        status: "approved",
+      },
+    });
+
+    console.log("✅ Approved request:", request.id);
+
+    return res.json({
+      success: true,
+      request,
+    });
+  } catch (err) {
+    console.error("❌ Approve failed:", err);
+
+    return res.status(404).json({
+      success: false,
+      error: "Request not found or could not be approved",
+      details: String(err),
+    });
+  }
 });
 app.post("/send-test-email", async (req, res) => {
   try {
