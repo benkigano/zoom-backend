@@ -1,0 +1,20 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model InterviewRequest {
+  id                   String   @id @default(cuid())
+  name                 String
+  email                String
+  topic                String
+  applicantBio         String?
+  selectedJournalistId String?
+  status               String   @default("pending")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
