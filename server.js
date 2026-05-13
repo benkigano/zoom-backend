@@ -90,7 +90,7 @@ app.post("/request", async (req, res) => {
 });
 
 // GET all requests from PostgreSQL
-app.get("/requests", async (req, res) => {
+app.get("/requests", requireAdminToken, async (req, res) => {
   try {
     const requests = await prisma.interviewRequest.findMany({
       orderBy: {
