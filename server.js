@@ -109,7 +109,7 @@ app.get("/requests", requireAdminToken, async (req, res) => {
 });
 
 // APPROVE interview request in PostgreSQL
-app.post("/approve/:id", async (req, res) => {
+app.post("/approve/:id", requireAdminToken, async (req, res) => {
   try {
     const id = String(req.params.id);
 
