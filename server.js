@@ -4,9 +4,30 @@ import cors from "cors";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
 import { prisma } from "./prisma/client.js";
+function requireAdminToken(req, res, next) {
+  const providedToken = req.headers["x-admin-token"];
+  const expectedToken = process.env.ADMIN_API_TOKEN;
 
+  if (!expectedToken) {
+    console.error("❌ ADMIN_API_TOKEN is not configured");
+    return res.status(500).json({
+      success: false,
+      error: "Admin security token is not configured",
+    });
+  }
+
+  if (!providedToken || providedToken !== expectedToken) {
+    return res.status(401).json({
+      success: false,
+      error: "Unauthorized",
+    });
+  }
+
+  next();
+}
 const app = express();
 app.use(express.json());
+
 app.use(cors());
 app.use((req, res, next) => {
   console.log("➡️", req.method, req.originalUrl);
