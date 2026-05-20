@@ -147,6 +147,64 @@ app.get("/journalists", requireAdminToken, async (req, res) => {
     });
   }
 });
+// CREATE journalist availability slot in PostgreSQL
+app.post("/journalist-availability", requireAdminToken, async (req, res) => {
+  try {
+    const { journalistId, startTime, endTime, notes } = req.body || {};
+
+    if (!journalistId || !startTime || !endTime) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing journalistId/startTime/endTime",
+      });
+    }
+
+    const slot = await prisma.journalistAvailability.create({
+      data: {
+        journalistId,
+        startTime: new Date(startTime),
+        endTime: new Date(endTime),
+        notes: notes || null,
+        status: "AVAILABLE",
+      },
+    });
+
+    return res.json({
+      success: true,
+      slot,
+    });
+  } catch (err) {
+    console.error("❌ Journalist availability create failed:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
+
+// GET availability slots for one journalist from PostgreSQL
+app.get("/journalist-availability/:journalistId", requireAdminToken, async (req, res) => {
+  try {
+    const journalistId = String(req.params.journalistId);
+
+    const slots = await prisma.journalistAvailability.findMany({
+      where: {
+        journalistId,
+      },
+      orderBy: {
+        startTime: "asc",
+      },
+    });
+
+    return res.json(slots);
+  } catch (err) {
+    console.error("❌ Journalist availability fetch failed:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
 // APPROVE interview request in PostgreSQL
 app.post("/approve/:id", requireAdminToken, async (req, res) => {
   try {
