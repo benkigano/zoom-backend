@@ -7,14 +7,190 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/**
+ * PHASE 1 ENUMS
+ */
+
+enum InterviewRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum AvailabilityStatus {
+  AVAILABLE
+  HELD
+  BOOKED
+  CANCELLED
+}
+
+enum ZoomMeetingStatus {
+  CREATED
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum EmailLogStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum EmailType {
+  REQUEST_RECEIVED
+  REQUEST_APPROVED
+  REQUEST_REJECTED
+  ZOOM_DETAILS
+  JOURNALIST_NOTIFICATION
+  ADMIN_NOTIFICATION
+  GENERAL
+}
+
+/**
+ * PHASE 1 TABLES
+ */
+
+model Journalist {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  roleTitle String?
+  bio       String?
+  isActive  Boolean  @default(true)
+
+  interviewRequests InterviewRequest[]
+  availabilitySlots  JournalistAvailability[]
+  zoomMeetings       ZoomMeeting[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Church {
+  id           String  @id @default(cuid())
+  name         String
+  denomination String?
+  diocese      String?
+  country      String? @default("USA")
+  websiteUrl   String?
+  notes        String?
+
+  contacts ChurchContact[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ChurchContact {
+  id                   String  @id @default(cuid())
+  churchId             String
+  fullName             String
+  email                String?
+  phone                String?
+  roleTitle            String?
+  isPrimary            Boolean @default(false)
+  canReceiveRecordings Boolean @default(true)
+
+  church Church @relation(fields: [churchId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([churchId])
+  @@index([email])
+}
+
 model InterviewRequest {
-  id                   String   @id @default(cuid())
-  name                 String
-  email                String
-  topic                String
-  applicantBio         String?
+  id               String                 @id @default(cuid())
+  applicantName    String
+  applicantEmail   String
+  organizationName String?
+  proposedTopic    String
+  applicantBio     String?
+  status           InterviewRequestStatus @default(PENDING)
+
   selectedJournalistId String?
-  status               String   @default("pending")
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  selectedJournalist   Journalist? @relation(fields: [selectedJournalistId], references: [id])
+
+  approvedAt  DateTime?
+  scheduledAt DateTime?
+
+  zoomMeeting ZoomMeeting?
+  emailLogs   EmailLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([applicantEmail])
+  @@index([selectedJournalistId])
+}
+
+model JournalistAvailability {
+  id           String             @id @default(cuid())
+  journalistId String
+  startTime    DateTime
+  endTime      DateTime
+  status       AvailabilityStatus @default(AVAILABLE)
+  notes        String?
+
+  journalist Journalist @relation(fields: [journalistId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([journalistId])
+  @@index([startTime])
+  @@index([status])
+}
+
+model ZoomMeeting {
+  id                 String            @id @default(cuid())
+  interviewRequestId String            @unique
+  journalistId       String?
+
+  zoomMeetingId       String?
+  joinUrl             String?
+  startUrl            String?
+  topic               String
+  scheduledStartTime  DateTime?
+  durationMinutes     Int?
+  status              ZoomMeetingStatus @default(CREATED)
+
+  interviewRequest InterviewRequest @relation(fields: [interviewRequestId], references: [id], onDelete: Cascade)
+  journalist       Journalist?      @relation(fields: [journalistId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([journalistId])
+  @@index([zoomMeetingId])
+  @@index([status])
+}
+
+model EmailLog {
+  id                 String  @id @default(cuid())
+  interviewRequestId String?
+
+  toEmail      String
+  subject      String
+  bodyPreview  String?
+  emailType    EmailType      @default(GENERAL)
+  status       EmailLogStatus @default(PENDING)
+  errorMessage String?
+  sentAt       DateTime?
+
+  interviewRequest InterviewRequest? @relation(fields: [interviewRequestId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([interviewRequestId])
+  @@index([toEmail])
+  @@index([status])
+  @@index([emailType])
 }
