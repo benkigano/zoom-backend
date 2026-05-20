@@ -11,15 +11,6 @@ datasource db {
  * PHASE 1 ENUMS
  */
 
-enum InterviewRequestStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  SCHEDULED
-  COMPLETED
-  CANCELLED
-}
-
 enum AvailabilityStatus {
   AVAILABLE
   HELD
@@ -63,9 +54,8 @@ model Journalist {
   bio       String?
   isActive  Boolean  @default(true)
 
-  interviewRequests InterviewRequest[]
-  availabilitySlots  JournalistAvailability[]
-  zoomMeetings       ZoomMeeting[]
+  availabilitySlots JournalistAvailability[]
+  zoomMeetings      ZoomMeeting[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -106,19 +96,21 @@ model ChurchContact {
 }
 
 model InterviewRequest {
-  id               String                 @id @default(cuid())
-  applicantName    String
-  applicantEmail   String
-  organizationName String?
-  proposedTopic    String
-  applicantBio     String?
-  status           InterviewRequestStatus @default(PENDING)
+  id String @id @default(cuid())
 
+  // Existing live database fields — do not rename yet
+  name  String
+  email String
+  topic String
+
+  applicantBio         String?
   selectedJournalistId String?
-  selectedJournalist   Journalist? @relation(fields: [selectedJournalistId], references: [id])
+  status               String  @default("pending")
 
-  approvedAt  DateTime?
-  scheduledAt DateTime?
+  // New optional Phase 1 fields
+  organizationName String?
+  approvedAt       DateTime?
+  scheduledAt      DateTime?
 
   zoomMeeting ZoomMeeting?
   emailLogs   EmailLog[]
@@ -127,7 +119,7 @@ model InterviewRequest {
   updatedAt DateTime @updatedAt
 
   @@index([status])
-  @@index([applicantEmail])
+  @@index([email])
   @@index([selectedJournalistId])
 }
 
@@ -150,17 +142,17 @@ model JournalistAvailability {
 }
 
 model ZoomMeeting {
-  id                 String            @id @default(cuid())
-  interviewRequestId String            @unique
+  id                 String @id @default(cuid())
+  interviewRequestId String @unique
   journalistId       String?
 
-  zoomMeetingId       String?
-  joinUrl             String?
-  startUrl            String?
-  topic               String
-  scheduledStartTime  DateTime?
-  durationMinutes     Int?
-  status              ZoomMeetingStatus @default(CREATED)
+  zoomMeetingId      String?
+  joinUrl            String?
+  startUrl           String?
+  topic              String
+  scheduledStartTime DateTime?
+  durationMinutes    Int?
+  status             ZoomMeetingStatus @default(CREATED)
 
   interviewRequest InterviewRequest @relation(fields: [interviewRequestId], references: [id], onDelete: Cascade)
   journalist       Journalist?      @relation(fields: [journalistId], references: [id])
