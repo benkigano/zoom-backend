@@ -126,6 +126,27 @@ app.get("/email-logs", requireAdminToken, async (req, res) => {
     });
   }
 });
+// GET all active journalists from PostgreSQL
+app.get("/journalists", requireAdminToken, async (req, res) => {
+  try {
+    const journalists = await prisma.journalist.findMany({
+      where: {
+        isActive: true,
+      },
+      orderBy: {
+        name: "asc",
+      },
+    });
+
+    return res.json(journalists);
+  } catch (err) {
+    console.error("❌ Journalists fetch failed:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
 // APPROVE interview request in PostgreSQL
 app.post("/approve/:id", requireAdminToken, async (req, res) => {
   try {
