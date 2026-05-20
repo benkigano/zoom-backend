@@ -107,7 +107,25 @@ app.get("/requests", requireAdminToken, async (req, res) => {
     });
   }
 });
+// GET recent email logs from PostgreSQL
+app.get("/email-logs", requireAdminToken, async (req, res) => {
+  try {
+    const logs = await prisma.emailLog.findMany({
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 50,
+    });
 
+    return res.json(logs);
+  } catch (err) {
+    console.error("❌ Email logs fetch failed:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
 // APPROVE interview request in PostgreSQL
 app.post("/approve/:id", requireAdminToken, async (req, res) => {
   try {
