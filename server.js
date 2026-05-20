@@ -385,27 +385,44 @@ app.get("/send-test-email", async (req, res) => {
 });
 
 // 🔽 EXISTING CODE (DO NOT MOVE)
+// ✅ EXISTING CODE (DO NOT MOVE)
 app.post("/send-email", async (req, res) => {
-  try {
-    const { to, subject, text, replyTo } = req.body || {};
-// 🧹 CLEAN incoming text to remove any existing Meeting Details
-let cleanText = text || "";
-if (cleanText) {
-  // Remove frontend section
-  if (cleanText.includes("Your Meeting Details")) {
-    cleanText = cleanText.split("Your Meeting Details")[0].trim();
-  }
+  let to = "";
+  let subject = "";
+  let cleanText = "";
+  let interviewRequestId = null;
+  let emailType = "GENERAL";
 
-  // Remove backend section (safety)
-  if (cleanText.includes("MEETING DETAILS")) {
-    cleanText = cleanText.split("MEETING DETAILS")[0].trim();
-  }
-}
-   if (!to || !subject || !cleanText) {
-      return res.status(400).json({ error: "Missing to/subject/text" });
+  try {
+    const body = req.body || {};
+
+    to = body.to || "";
+    subject = body.subject || "";
+    const text = body.text || "";
+    const replyTo = body.replyTo || undefined;
+
+    // Optional fields for database logging
+    interviewRequestId = body.interviewRequestId || null;
+    emailType = body.emailType || "GENERAL";
+
+    // 🧹 CLEAN incoming text to remove any existing Meeting Details
+    cleanText = text || "";
+
+    if (cleanText) {
+      // Remove frontend section
+      if (cleanText.includes("Your Meeting Details")) {
+        cleanText = cleanText.split("Your Meeting Details")[0].trim();
+      }
+
+      // Remove backend section (safety)
+      if (cleanText.includes("MEETING DETAILS")) {
+        cleanText = cleanText.split("MEETING DETAILS")[0].trim();
+      }
     }
 
-    
+    if (!to || !subject || !cleanText) {
+      return res.status(400).json({ error: "Missing to/subject/text" });
+    }
 
     // 🔵 STEP 1 — Email transporter
     const transporter = nodemailer.createTransport({
@@ -418,26 +435,67 @@ if (cleanText) {
       },
     });
 
-   // 🔵 STEP 2 — Send email
+    // 🔵 STEP 2 — Send email
     console.log("📧 Sending email TO:", to);
-   
+
     await transporter.sendMail({
       from: `"Court of Compassion" <${process.env.GMAIL_USER}>`,
-     
       to,
       subject,
-    text: cleanText,
+      text: cleanText,
       replyTo: replyTo || undefined,
     });
 
     console.log("✅ SEND-EMAIL SUCCESS");
-    // 🔵 STEP 3 — Return to Wix
-   res.json({
-  success: true,
-});
 
+    // 🔵 STEP 3 — Log successful email to PostgreSQL
+    try {
+      await prisma.emailLog.create({
+        data: {
+          interviewRequestId,
+          toEmail: to,
+          subject,
+          bodyPreview: cleanText.slice(0, 500),
+          emailType,
+          status: "SENT",
+          sentAt: new Date(),
+        },
+      });
+
+      console.log("✅ EMAIL LOG SAVED");
+    } catch (logErr) {
+      // Do not fail the email request just because logging failed
+      console.error("⚠️ EMAIL SENT BUT LOGGING FAILED:", logErr);
+    }
+
+    // 🔵 STEP 4 — Return to Wix
+    res.json({
+      success: true,
+    });
   } catch (err) {
     console.log("❌ SEND-EMAIL ERROR:", err);
+
+    // 🔴 Try to log failed email attempt to PostgreSQL
+    try {
+      if (to && subject) {
+        await prisma.emailLog.create({
+          data: {
+            interviewRequestId,
+            toEmail: to,
+            subject,
+            bodyPreview: cleanText ? cleanText.slice(0, 500) : null,
+            emailType,
+            status: "FAILED",
+            errorMessage: String(err),
+          },
+        });
+
+        console.log("⚠️ FAILED EMAIL LOG SAVED");
+      }
+    } catch (logErr) {
+      console.error("⚠️ FAILED EMAIL LOGGING ALSO FAILED:", logErr);
+    }
+
     res.status(500).json({ success: false, error: String(err) });
   }
 });
