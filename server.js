@@ -205,6 +205,92 @@ app.get("/journalist-availability/:journalistId", requireAdminToken, async (req,
     });
   }
 });
+// CREATE or UPDATE Zoom meeting details for an interview request
+app.post("/zoom-meetings", requireAdminToken, async (req, res) => {
+  try {
+    const {
+      interviewRequestId,
+      journalistId,
+      zoomMeetingId,
+      joinUrl,
+      startUrl,
+      topic,
+      scheduledStartTime,
+      durationMinutes,
+      status,
+    } = req.body || {};
+
+    if (!interviewRequestId || !topic) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing interviewRequestId/topic",
+      });
+    }
+
+    const zoomMeeting = await prisma.zoomMeeting.upsert({
+      where: {
+        interviewRequestId,
+      },
+      update: {
+        journalistId: journalistId || null,
+        zoomMeetingId: zoomMeetingId || null,
+        joinUrl: joinUrl || null,
+        startUrl: startUrl || null,
+        topic,
+        scheduledStartTime: scheduledStartTime
+          ? new Date(scheduledStartTime)
+          : null,
+        durationMinutes: durationMinutes ? Number(durationMinutes) : null,
+        status: status || "CREATED",
+      },
+      create: {
+        interviewRequestId,
+        journalistId: journalistId || null,
+        zoomMeetingId: zoomMeetingId || null,
+        joinUrl: joinUrl || null,
+        startUrl: startUrl || null,
+        topic,
+        scheduledStartTime: scheduledStartTime
+          ? new Date(scheduledStartTime)
+          : null,
+        durationMinutes: durationMinutes ? Number(durationMinutes) : null,
+        status: status || "CREATED",
+      },
+    });
+
+    return res.json({
+      success: true,
+      zoomMeeting,
+    });
+  } catch (err) {
+    console.error("❌ Zoom meeting save failed:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
+
+// GET Zoom meeting details for one interview request
+app.get("/zoom-meetings/:interviewRequestId", requireAdminToken, async (req, res) => {
+  try {
+    const interviewRequestId = String(req.params.interviewRequestId);
+
+    const zoomMeeting = await prisma.zoomMeeting.findUnique({
+      where: {
+        interviewRequestId,
+      },
+    });
+
+    return res.json(zoomMeeting);
+  } catch (err) {
+    console.error("❌ Zoom meeting fetch failed:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
 // APPROVE interview request in PostgreSQL
 app.post("/approve/:id", requireAdminToken, async (req, res) => {
   try {
