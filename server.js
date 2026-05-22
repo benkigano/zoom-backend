@@ -372,7 +372,17 @@ app.post("/api/zoom/meetings", async (req, res) => {
   try {
 const accessToken = await getS2SAccessToken();
 
-    const { topic, startTime, duration, agenda, timezone, password, settings } = req.body || {};
+ const {
+  topic,
+  startTime,
+  duration,
+  agenda,
+  timezone,
+  password,
+  settings,
+  interviewRequestId,
+  journalistId,
+} = req.body || {};   
 
     if (!topic || !startTime || !duration) {
       return res.status(400).json({
@@ -426,6 +436,46 @@ const accessToken = await getS2SAccessToken();
       hostEmail: zoomData.host_email,
       timezone: zoomData.timezone,
     };
+
+    // Save Zoom meeting details to PostgreSQL when linked to an interview request
+if (interviewRequestId) {
+  try {
+    await prisma.zoomMeeting.upsert({
+      where: {
+        interviewRequestId: String(interviewRequestId),
+      },
+      update: {
+        journalistId: journalistId ? String(journalistId) : null,
+        zoomMeetingId: zoomData.id ? String(zoomData.id) : null,
+        joinUrl: zoomData.join_url || null,
+        startUrl: zoomData.start_url || null,
+        topic: zoomData.topic || String(topic),
+        scheduledStartTime: zoomData.start_time
+          ? new Date(zoomData.start_time)
+          : new Date(startTime),
+        durationMinutes: zoomData.duration ? Number(zoomData.duration) : Number(duration),
+        status: "CREATED",
+      },
+      create: {
+        interviewRequestId: String(interviewRequestId),
+        journalistId: journalistId ? String(journalistId) : null,
+        zoomMeetingId: zoomData.id ? String(zoomData.id) : null,
+        joinUrl: zoomData.join_url || null,
+        startUrl: zoomData.start_url || null,
+        topic: zoomData.topic || String(topic),
+        scheduledStartTime: zoomData.start_time
+          ? new Date(zoomData.start_time)
+          : new Date(startTime),
+        durationMinutes: zoomData.duration ? Number(zoomData.duration) : Number(duration),
+        status: "CREATED",
+      },
+    });
+
+    console.log("✅ API ZOOM MEETING SAVED TO POSTGRESQL");
+  } catch (dbErr) {
+    console.error("⚠️ API Zoom meeting created but DB save failed:", dbErr);
+  }
+}
 
     return res.json({ success: true, meeting, raw: zoomData });
   } catch (err) {
