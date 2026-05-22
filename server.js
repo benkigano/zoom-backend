@@ -291,6 +291,138 @@ app.get("/zoom-meetings/:interviewRequestId", requireAdminToken, async (req, res
     });
   }
 });
+
+// SCHEDULE interview by creating Zoom meeting and saving it to PostgreSQL
+app.post("/schedule-interview", requireAdminToken, async (req, res) => {
+  try {
+    const {
+      interviewRequestId,
+      journalistId,
+      startTime,
+      duration,
+      timezone,
+      agenda,
+      password,
+      settings,
+    } = req.body || {};
+
+    if (!interviewRequestId || !startTime || !duration) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing interviewRequestId/startTime/duration",
+      });
+    }
+
+    const request = await prisma.interviewRequest.findUnique({
+      where: {
+        id: String(interviewRequestId),
+      },
+    });
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        error: "Interview request not found",
+      });
+    }
+
+    const accessToken = await getS2SAccessToken();
+
+    const topic = `Court of Compassion Interview - ${request.name || "Guest"}`;
+
+    const zoomPayload = {
+      topic,
+      type: 2,
+      start_time: String(startTime),
+      duration: Number(duration),
+      timezone: timezone ? String(timezone) : "America/Los_Angeles",
+      agenda: agenda ? String(agenda) : undefined,
+      password: password ? String(password) : undefined,
+      settings: {
+        join_before_host: false,
+        waiting_room: true,
+        approval_type: 2,
+        meeting_authentication: false,
+        ...((settings && typeof settings === "object") ? settings : {}),
+      },
+    };
+
+    const zoomRes = await fetch("https://api.zoom.us/v2/users/me/meetings", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(zoomPayload),
+    });
+
+    const zoomData = await zoomRes.json().catch(() => ({}));
+
+    if (!zoomRes.ok) {
+      return res.status(zoomRes.status).json({
+        success: false,
+        error: zoomData?.message || "Zoom API error creating meeting",
+        details: zoomData,
+      });
+    }
+
+    const zoomMeeting = await prisma.zoomMeeting.upsert({
+      where: {
+        interviewRequestId: String(interviewRequestId),
+      },
+      update: {
+        journalistId: journalistId ? String(journalistId) : request.selectedJournalistId || null,
+        zoomMeetingId: zoomData.id ? String(zoomData.id) : null,
+        joinUrl: zoomData.join_url || null,
+        startUrl: zoomData.start_url || null,
+        topic: zoomData.topic || topic,
+        scheduledStartTime: zoomData.start_time
+          ? new Date(zoomData.start_time)
+          : new Date(startTime),
+        durationMinutes: zoomData.duration ? Number(zoomData.duration) : Number(duration),
+        status: "SCHEDULED",
+      },
+      create: {
+        interviewRequestId: String(interviewRequestId),
+        journalistId: journalistId ? String(journalistId) : request.selectedJournalistId || null,
+        zoomMeetingId: zoomData.id ? String(zoomData.id) : null,
+        joinUrl: zoomData.join_url || null,
+        startUrl: zoomData.start_url || null,
+        topic: zoomData.topic || topic,
+        scheduledStartTime: zoomData.start_time
+          ? new Date(zoomData.start_time)
+          : new Date(startTime),
+        durationMinutes: zoomData.duration ? Number(zoomData.duration) : Number(duration),
+        status: "SCHEDULED",
+      },
+    });
+
+    const updatedRequest = await prisma.interviewRequest.update({
+      where: {
+        id: String(interviewRequestId),
+      },
+      data: {
+        status: "scheduled",
+        scheduledAt: zoomMeeting.scheduledStartTime,
+      },
+    });
+
+    console.log("✅ INTERVIEW SCHEDULED AND ZOOM MEETING SAVED:", zoomMeeting.id);
+
+    return res.json({
+      success: true,
+      request: updatedRequest,
+      zoomMeeting,
+      raw: zoomData,
+    });
+  } catch (err) {
+    console.error("❌ Schedule interview failed:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
 // APPROVE interview request in PostgreSQL
 app.post("/approve/:id", requireAdminToken, async (req, res) => {
   try {
