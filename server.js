@@ -407,6 +407,78 @@ app.post("/schedule-interview", requireAdminToken, async (req, res) => {
       },
     });
 
+    // Send scheduled interview email to applicant and log it
+try {
+  const scheduledEmailSubject = "Court of Compassion Interview Scheduled";
+
+  const scheduledEmailBody = [
+    `Dear ${request.name || "Guest"},`,
+    "",
+    "Your Court of Compassion interview has been scheduled.",
+    "",
+    "Interview Details:",
+    `Topic: ${request.topic || zoomMeeting.topic}`,
+    `Date/Time: ${zoomMeeting.scheduledStartTime.toISOString()}`,
+    `Duration: ${zoomMeeting.durationMinutes || duration} minutes`,
+    "",
+    "Zoom Meeting Details:",
+    `Join Link: ${zoomMeeting.joinUrl}`,
+    zoomMeeting.zoomMeetingId ? `Meeting ID: ${zoomMeeting.zoomMeetingId}` : "",
+    "",
+    "Please use the join link above at the scheduled time.",
+    "",
+    "Thank you,",
+    "Court of Compassion",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const transporter = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    auth: {
+      user: process.env.GMAIL_USER,
+      pass: process.env.GMAIL_APP_PASSWORD,
+    },
+  });
+
+  await transporter.sendMail({
+    from: `"Court of Compassion" <${process.env.GMAIL_USER}>`,
+    to: request.email,
+    subject: scheduledEmailSubject,
+    text: scheduledEmailBody,
+  });
+
+  await prisma.emailLog.create({
+    data: {
+      interviewRequestId: String(interviewRequestId),
+      toEmail: request.email,
+      subject: scheduledEmailSubject,
+      bodyPreview: scheduledEmailBody.slice(0, 1000),
+      emailType: "ZOOM_DETAILS",
+      status: "SENT",
+      sentAt: new Date(),
+    },
+  });
+
+  console.log("✅ SCHEDULED INTERVIEW EMAIL SENT AND LOGGED:", request.email);
+} catch (emailErr) {
+  console.error("⚠️ Interview scheduled but email failed:", emailErr);
+
+  await prisma.emailLog.create({
+    data: {
+      interviewRequestId: String(interviewRequestId),
+      toEmail: request.email || "unknown",
+      subject: "Court of Compassion Interview Scheduled",
+      bodyPreview: "Scheduled interview email failed before body could be sent.",
+      emailType: "ZOOM_DETAILS",
+      status: "FAILED",
+      errorMessage: String(emailErr),
+    },
+  });
+}
+
     console.log("✅ INTERVIEW SCHEDULED AND ZOOM MEETING SAVED:", zoomMeeting.id);
 
     return res.json({
