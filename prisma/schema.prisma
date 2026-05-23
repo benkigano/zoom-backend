@@ -71,7 +71,7 @@ model Church {
   notes        String?
 
   contacts ChurchContact[]
-
+  distributionLogs DistributionLog[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -87,7 +87,7 @@ model ChurchContact {
   canReceiveRecordings Boolean @default(true)
 
   church Church @relation(fields: [churchId], references: [id], onDelete: Cascade)
-
+  distributionLogs DistributionLog[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -186,4 +186,71 @@ model EmailLog {
   @@index([toEmail])
   @@index([status])
   @@index([emailType])
+}
+enum RecordingStatus {
+  DRAFT
+  READY
+  SENT
+  ARCHIVED
+}
+
+enum DistributionStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model Recording {
+  id                 String   @id @default(cuid())
+
+  interviewRequestId String?
+  zoomMeetingId      String?
+
+  title              String
+  description        String?
+  speakerName        String?
+  speakerTitle       String?
+  organizationName   String?
+
+  recordingUrl       String
+  transcriptUrl      String?
+  thumbnailUrl       String?
+
+  status             RecordingStatus @default(DRAFT)
+
+  distributionLogs   DistributionLog[]
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([interviewRequestId])
+  @@index([zoomMeetingId])
+  @@index([status])
+}
+
+model DistributionLog {
+  id                 String   @id @default(cuid())
+
+  recordingId        String
+  churchId           String?
+  churchContactId    String?
+
+  toEmail            String
+  subject            String
+  status             DistributionStatus @default(PENDING)
+  sentAt             DateTime?
+  errorMessage       String?
+
+  recording          Recording      @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+  church             Church?        @relation(fields: [churchId], references: [id], onDelete: SetNull)
+  churchContact      ChurchContact? @relation(fields: [churchContactId], references: [id], onDelete: SetNull)
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([recordingId])
+  @@index([churchId])
+  @@index([churchContactId])
+  @@index([status])
+  @@index([toEmail])
 }
