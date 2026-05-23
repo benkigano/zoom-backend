@@ -111,6 +111,7 @@ model InterviewRequest {
   organizationName String?
   approvedAt       DateTime?
   scheduledAt      DateTime?
+  requestedDateTime  DateTime?
 
   zoomMeeting ZoomMeeting?
   emailLogs   EmailLog[]
