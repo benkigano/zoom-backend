@@ -421,6 +421,27 @@ app.post("/schedule-interview", requireAdminToken, async (req, res) => {
       },
     });
 
+    function formatDateTimeForEmail(dateValue) {
+  if (!dateValue) return "Not provided";
+
+  const date = new Date(dateValue);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(dateValue);
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "long",
+  }).format(date);
+}
+
     // Send scheduled interview email to applicant and log it
 try {
   const scheduledEmailSubject = "Court of Compassion Interview Scheduled";
