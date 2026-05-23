@@ -432,7 +432,7 @@ try {
     "",
     "Interview Details:",
     `Topic: ${request.topic || zoomMeeting.topic}`,
-    `Date/Time: ${zoomMeeting.scheduledStartTime.toISOString()}`,
+    `Date/Time: ${formatDateTimeForEmail(zoomMeeting.scheduledStartTime)}`,
     `Duration: ${zoomMeeting.durationMinutes || duration} minutes`,
     "",
     "Zoom Meeting Details:",
