@@ -339,17 +339,43 @@ app.post("/schedule-interview", requireAdminToken, async (req, res) => {
         error: "Interview request not found",
       });
     }
+    function toZoomLocalStartTime(dateValue, timeZone = "America/Los_Angeles") {
+  if (!dateValue) return dateValue;
 
+  const date = new Date(dateValue);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(dateValue).replace(/\.\d{3}Z$/, "").replace(/Z$/, "");
+  }
+
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+
+  const get = (type) => parts.find((part) => part.type === type)?.value;
+
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}`;
+}
+    
     const accessToken = await getS2SAccessToken();
 
     const topic = `Court of Compassion Interview - ${request.name || "Guest"}`;
+    const zoomTimezone = timezone ? String(timezone) : "America/Los_Angeles";
+    const zoomStartTime = toZoomLocalStartTime(startTime, zoomTimezone);
 
     const zoomPayload = {
       topic,
       type: 2,
-      start_time: String(startTime),
+      start_time: zoomStartTime,
       duration: Number(duration),
-      timezone: timezone ? String(timezone) : "America/Los_Angeles",
+     timezone: zoomTimezone,
       agenda: agenda ? String(agenda) : undefined,
       password: password ? String(password) : undefined,
       settings: {
