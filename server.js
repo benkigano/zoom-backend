@@ -56,6 +56,16 @@ app.post("/request", async (req, res) => {
     const topic = data.topic || data.proposedTopic;
     const applicantBio = data.applicantBio || null;
     const selectedJournalistId = data.selectedJournalistId || null;
+    const requestedDateTimeRaw =
+  data.requestedDateTime ||
+  data.preferredDateTime ||
+  data.selectedAvailabilitySlot ||
+  data.requestedDate ||
+  null;
+
+const requestedDateTime = requestedDateTimeRaw
+  ? new Date(requestedDateTimeRaw)
+  : null; 
 
     if (!name || !email || !topic) {
       return res.status(400).json({
@@ -71,6 +81,10 @@ app.post("/request", async (req, res) => {
         topic: String(topic),
         applicantBio: applicantBio ? String(applicantBio) : null,
         selectedJournalistId: selectedJournalistId ? String(selectedJournalistId) : null,
+        requestedDateTime:
+  requestedDateTime && !isNaN(requestedDateTime.getTime())
+    ? requestedDateTime
+    : null, 
       },
     });
 
