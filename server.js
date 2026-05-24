@@ -26,6 +26,28 @@ function requireAdminToken(req, res, next) {
   next();
 }
 const app = express();
+
+async function sendEmail(to, subject, body) {
+  const transporter = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    auth: {
+      user: process.env.GMAIL_USER,
+      pass: process.env.GMAIL_APP_PASSWORD,
+    },
+  });
+
+  await transporter.sendMail({
+    from: `"Court of Compassion" <${process.env.GMAIL_USER}>`,
+    to,
+    subject,
+    text: body,
+    html: String(body).replace(/\n/g, "<br>"),
+  });
+
+  console.log("✅ DISTRIBUTION EMAIL SENT TO:", to);
+}
 app.use(express.json());
 
 app.use(cors());
