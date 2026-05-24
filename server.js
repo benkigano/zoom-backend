@@ -196,6 +196,115 @@ app.post("/journalist-availability", requireAdminToken, async (req, res) => {
   }
 });
 
+// CREATE recording record after an interview has been completed
+app.post("/recordings", requireAdminToken, async (req, res) => {
+  try {
+    const data = req.body || {};
+
+    const {
+      interviewRequestId,
+      zoomMeetingId,
+      title,
+      description,
+      speakerName,
+      speakerTitle,
+      organizationName,
+      recordingUrl,
+      transcriptUrl,
+      thumbnailUrl,
+      status,
+    } = data;
+
+    if (!title || !recordingUrl) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields: title and recordingUrl",
+      });
+    }
+
+    const recording = await prisma.recording.create({
+      data: {
+        interviewRequestId: interviewRequestId ? String(interviewRequestId) : null,
+        zoomMeetingId: zoomMeetingId ? String(zoomMeetingId) : null,
+        title: String(title),
+        description: description ? String(description) : null,
+        speakerName: speakerName ? String(speakerName) : null,
+        speakerTitle: speakerTitle ? String(speakerTitle) : null,
+        organizationName: organizationName ? String(organizationName) : null,
+        recordingUrl: String(recordingUrl),
+        transcriptUrl: transcriptUrl ? String(transcriptUrl) : null,
+        thumbnailUrl: thumbnailUrl ? String(thumbnailUrl) : null,
+        status: status ? String(status) : "DRAFT",
+      },
+    });
+
+    console.log("✅ Recording saved to PostgreSQL:", recording.id);
+
+    return res.json({
+      success: true,
+      recording,
+    });
+  } catch (err) {
+    console.error("❌ Recording save failed:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
+
+// LIST recordings
+app.get("/recordings", requireAdminToken, async (req, res) => {
+  try {
+    const recordings = await prisma.recording.findMany({
+      orderBy: {
+        createdAt: "desc",
+      },
+      include: {
+        distributionLogs: true,
+      },
+    });
+
+    return res.json(recordings);
+  } catch (err) {
+    console.error("❌ Recordings fetch failed:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
+
+// GET one recording by id
+app.get("/recordings/:id", requireAdminToken, async (req, res) => {
+  try {
+    const id = String(req.params.id);
+
+    const recording = await prisma.recording.findUnique({
+      where: {
+        id,
+      },
+      include: {
+        distributionLogs: true,
+      },
+    });
+
+    if (!recording) {
+      return res.status(404).json({
+        success: false,
+        error: "Recording not found",
+      });
+    }
+
+    return res.json(recording);
+  } catch (err) {
+    console.error("❌ Recording fetch failed:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
 // GET availability slots for one journalist from PostgreSQL
 app.get("/journalist-availability/:journalistId", requireAdminToken, async (req, res) => {
   try {
