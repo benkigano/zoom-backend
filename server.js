@@ -305,6 +305,141 @@ app.get("/recordings/:id", requireAdminToken, async (req, res) => {
     });
   }
 });
+
+   // DISTRIBUTE one recording to selected church contacts
+app.post("/recordings/:id/distribute", requireAdminToken, async (req, res) => {
+  try {
+    const recordingId = String(req.params.id);
+    const data = req.body || {};
+    const recipients = Array.isArray(data.recipients) ? data.recipients : [];
+
+    if (!recipients.length) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing recipients array",
+      });
+    }
+
+    const recording = await prisma.recording.findUnique({
+      where: {
+        id: recordingId,
+      },
+    });
+
+    if (!recording) {
+      return res.status(404).json({
+        success: false,
+        error: "Recording not found",
+      });
+    }
+
+    const results = [];
+
+    for (const recipient of recipients) {
+      const toEmail = recipient.email ? String(recipient.email) : "";
+      const churchId = recipient.churchId ? String(recipient.churchId) : null;
+      const churchContactId = recipient.churchContactId ? String(recipient.churchContactId) : null;
+      const recipientName = recipient.name ? String(recipient.name) : "Friend";
+
+      if (!toEmail) {
+        results.push({
+          success: false,
+          email: null,
+          error: "Missing recipient email",
+        });
+        continue;
+      }
+
+      const subject =
+        data.subject ||
+        `Court of Compassion Recording: ${recording.title}`;
+
+      const body = [
+        `Dear ${recipientName},`,
+        "",
+        "A Court of Compassion interview recording is now available.",
+        "",
+        `Title: ${recording.title}`,
+        recording.description ? `Description: ${recording.description}` : "",
+        recording.speakerName ? `Speaker: ${recording.speakerName}` : "",
+        recording.organizationName ? `Organization: ${recording.organizationName}` : "",
+        "",
+        `Recording Link: ${recording.recordingUrl}`,
+        recording.transcriptUrl ? `Transcript Link: ${recording.transcriptUrl}` : "",
+        "",
+        "Thank you,",
+        "Court of Compassion",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      let distributionLog;
+
+      try {
+        distributionLog = await prisma.distributionLog.create({
+          data: {
+            recordingId,
+            churchId,
+            churchContactId,
+            toEmail,
+            subject: String(subject),
+            status: "PENDING",
+          },
+        });
+
+        await sendEmail(toEmail, String(subject), body);
+
+        const updatedLog = await prisma.distributionLog.update({
+          where: {
+            id: distributionLog.id,
+          },
+          data: {
+            status: "SENT",
+            sentAt: new Date(),
+          },
+        });
+
+        results.push({
+          success: true,
+          email: toEmail,
+          distributionLog: updatedLog,
+        });
+      } catch (sendErr) {
+        console.error("❌ Recording distribution failed:", sendErr);
+
+        if (distributionLog) {
+          await prisma.distributionLog.update({
+            where: {
+              id: distributionLog.id,
+            },
+            data: {
+              status: "FAILED",
+              errorMessage: String(sendErr),
+            },
+          });
+        }
+
+        results.push({
+          success: false,
+          email: toEmail,
+          error: String(sendErr),
+        });
+      }
+    }
+
+    return res.json({
+      success: true,
+      recordingId,
+      results,
+    });
+  } catch (err) {
+    console.error("❌ Recording distribution route failed:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
 // GET availability slots for one journalist from PostgreSQL
 app.get("/journalist-availability/:journalistId", requireAdminToken, async (req, res) => {
   try {
