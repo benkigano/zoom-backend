@@ -358,19 +358,41 @@ app.post("/recordings/:id/distribute", requireAdminToken, async (req, res) => {
     const results = [];
 
     for (const recipient of recipients) {
-      const toEmail = recipient.email ? String(recipient.email) : "";
-      const churchId = recipient.churchId ? String(recipient.churchId) : null;
-      const churchContactId = recipient.churchContactId ? String(recipient.churchContactId) : null;
-      const recipientName = recipient.name ? String(recipient.name) : "Friend";
+  let toEmail = "";
+  let churchId = null;
+  let churchContactId = null;
+  let recipientName = "Friend";
 
-      if (!toEmail) {
-        results.push({
-          success: false,
-          email: null,
-          error: "Missing recipient email",
-        });
-        continue;
-      }
+  if (typeof recipient === "string") {
+    churchContactId = recipient;
+  } else if (recipient && typeof recipient === "object") {
+    toEmail = recipient.email ? String(recipient.email) : "";
+    churchContactId = recipient.churchContactId ? String(recipient.churchContactId) : null;
+    recipientName = recipient.name ? String(recipient.name) : "Friend";
+  }
+
+  if (churchContactId) {
+    const contact = await prisma.churchContact.findUnique({
+      where: { id: churchContactId },
+      include: { church: true },
+    });
+
+    if (contact) {
+      toEmail = contact.email || toEmail;
+      recipientName = contact.fullName || recipientName;
+      churchContactId = contact.id;
+      churchId = contact.churchId;
+    }
+  }
+
+  if (!toEmail) {
+    results.push({
+      success: false,
+      email: null,
+      error: "Missing recipient email",
+    });
+    continue;
+  }
 
       const subject =
         data.subject ||
