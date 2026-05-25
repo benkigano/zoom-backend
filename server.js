@@ -1558,6 +1558,102 @@ app.get("/zoom/disconnect", (req, res) => {
 
 // Create request
 
+// ===============================
+// Church + Contact Admin Routes
+// Needed by /admin/recordings distribution modal
+// ===============================
+
+app.get("/churches", requireAdminToken, async (req, res) => {
+  try {
+    const churches = await prisma.church.findMany({
+      orderBy: {
+        name: "asc",
+      },
+      include: {
+        contacts: {
+          orderBy: {
+            fullName: "asc",
+          },
+        },
+      },
+    });
+
+    return res.status(200).json(churches);
+  } catch (err) {
+    console.error("❌ GET /churches error:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fetch churches",
+    });
+  }
+});
+
+app.get("/church-contacts", requireAdminToken, async (req, res) => {
+  try {
+    const contacts = await prisma.churchContact.findMany({
+      where: {
+        canReceiveRecordings: true,
+      },
+      orderBy: {
+        fullName: "asc",
+      },
+      include: {
+        church: {
+          select: {
+            id: true,
+            name: true,
+            denomination: true,
+            diocese: true,
+            country: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json(contacts);
+  } catch (err) {
+    console.error("❌ GET /church-contacts error:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fetch church contacts",
+    });
+  }
+});
+
+app.get("/churches/:id/contacts", requireAdminToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const contacts = await prisma.churchContact.findMany({
+      where: {
+        churchId: id,
+        canReceiveRecordings: true,
+      },
+      orderBy: {
+        fullName: "asc",
+      },
+      include: {
+        church: {
+          select: {
+            id: true,
+            name: true,
+            denomination: true,
+            diocese: true,
+            country: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json(contacts);
+  } catch (err) {
+    console.error("❌ GET /churches/:id/contacts error:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fetch church contacts for this church",
+    });
+  }
+});
 
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
