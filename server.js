@@ -1677,7 +1677,7 @@ app.get("/churches/:id/contacts", requireAdminToken, async (req, res) => {
   }
 });
 
-Add church and church contact write routes to server.js.
+// Add church and church contact write routes to server.js.
 
 Context:
 The frontend /admin/churches page already exists and successfully reads:
