@@ -1677,6 +1677,113 @@ app.get("/churches/:id/contacts", requireAdminToken, async (req, res) => {
   }
 });
 
+Add church and church contact write routes to server.js.
+
+Context:
+The frontend /admin/churches page already exists and successfully reads:
+GET /churches
+GET /church-contacts
+GET /churches/:id/contacts
+
+But saving a new contact fails because the backend returns:
+Cannot POST /church-contacts
+
+Add these protected admin routes using requireAdminToken:
+POST /churches
+PUT /churches/:id
+POST /church-contacts
+PUT /church-contacts/:id
+
+Use the existing Prisma models:
+Church
+ChurchContact
+
+Route requirements:
+
+1. POST /churches
+Accept body:
+{
+  name,
+  denomination,
+  diocese,
+  country,
+  websiteUrl,
+  notes
+}
+
+Validation:
+- name is required
+
+Create prisma.church with:
+name: String(name)
+denomination: denomination || null
+diocese: diocese || null
+country: country || "USA"
+websiteUrl: websiteUrl || null
+notes: notes || null
+
+Return the created church as JSON.
+
+2. PUT /churches/:id
+Accept same fields.
+Update the church by id.
+Return 404 JSON if church not found.
+Return updated church as JSON.
+
+3. POST /church-contacts
+Accept body:
+{
+  churchId,
+  fullName,
+  email,
+  phone,
+  roleTitle,
+  isPrimary,
+  canReceiveRecordings
+}
+
+Validation:
+- churchId is required
+- fullName is required
+- verify the church exists before creating the contact
+
+Create prisma.churchContact with:
+churchId: String(churchId)
+fullName: String(fullName)
+email: email || null
+phone: phone || null
+roleTitle: roleTitle || null
+isPrimary: Boolean(isPrimary)
+canReceiveRecordings: canReceiveRecordings !== false
+
+Return the created contact including church:
+include: { church: true }
+
+4. PUT /church-contacts/:id
+Accept same fields.
+Update the contact by id.
+If churchId is provided, verify the church exists.
+Return 404 JSON if contact not found.
+Return updated contact including church.
+
+5. Error handling
+Use JSON responses, not HTML.
+For validation errors return status 400:
+{ success: false, error: "message here" }
+
+For not found return 404:
+{ success: false, error: "Church not found" }
+or
+{ success: false, error: "Contact not found" }
+
+For unexpected errors return 500:
+{ success: false, error: String(err) }
+
+6. Important
+Do not modify existing GET /churches or GET /church-contacts routes.
+Do not modify recording distribution routes.
+Keep x-admin-token protection using requireAdminToken.
+
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
