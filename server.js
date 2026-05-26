@@ -1677,112 +1677,243 @@ app.get("/churches/:id/contacts", requireAdminToken, async (req, res) => {
   }
 });
 
-// Add church and church contact write routes to server.js.
+// Admin route: create a church
+app.post("/churches", requireAdminToken, async (req, res) => {
+  try {
+    const {
+      name,
+      denomination,
+      diocese,
+      country,
+      websiteUrl,
+      notes,
+    } = req.body || {};
 
-Context:
-The frontend /admin/churches page already exists and successfully reads:
-GET /churches
-GET /church-contacts
-GET /churches/:id/contacts
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Church name is required",
+      });
+    }
 
-But saving a new contact fails because the backend returns:
-Cannot POST /church-contacts
+    const church = await prisma.church.create({
+      data: {
+        name: String(name).trim(),
+        denomination: denomination ? String(denomination).trim() : null,
+        diocese: diocese ? String(diocese).trim() : null,
+        country: country ? String(country).trim() : "USA",
+        websiteUrl: websiteUrl ? String(websiteUrl).trim() : null,
+        notes: notes ? String(notes).trim() : null,
+      },
+    });
 
-Add these protected admin routes using requireAdminToken:
-POST /churches
-PUT /churches/:id
-POST /church-contacts
-PUT /church-contacts/:id
+    return res.status(201).json(church);
+  } catch (err) {
+    console.error("❌ POST /churches error:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
 
-Use the existing Prisma models:
-Church
-ChurchContact
+// Admin route: update a church
+app.put("/churches/:id", requireAdminToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      name,
+      denomination,
+      diocese,
+      country,
+      websiteUrl,
+      notes,
+    } = req.body || {};
 
-Route requirements:
+    const existingChurch = await prisma.church.findUnique({
+      where: { id: String(id) },
+    });
 
-1. POST /churches
-Accept body:
-{
-  name,
-  denomination,
-  diocese,
-  country,
-  websiteUrl,
-  notes
-}
+    if (!existingChurch) {
+      return res.status(404).json({
+        success: false,
+        error: "Church not found",
+      });
+    }
 
-Validation:
-- name is required
+    if (name !== undefined && !String(name).trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Church name is required",
+      });
+    }
 
-Create prisma.church with:
-name: String(name)
-denomination: denomination || null
-diocese: diocese || null
-country: country || "USA"
-websiteUrl: websiteUrl || null
-notes: notes || null
+    const updateData = {};
 
-Return the created church as JSON.
+    if (name !== undefined) updateData.name = String(name).trim();
+    if (denomination !== undefined) updateData.denomination = denomination ? String(denomination).trim() : null;
+    if (diocese !== undefined) updateData.diocese = diocese ? String(diocese).trim() : null;
+    if (country !== undefined) updateData.country = country ? String(country).trim() : "USA";
+    if (websiteUrl !== undefined) updateData.websiteUrl = websiteUrl ? String(websiteUrl).trim() : null;
+    if (notes !== undefined) updateData.notes = notes ? String(notes).trim() : null;
 
-2. PUT /churches/:id
-Accept same fields.
-Update the church by id.
-Return 404 JSON if church not found.
-Return updated church as JSON.
+    const updatedChurch = await prisma.church.update({
+      where: { id: String(id) },
+      data: updateData,
+    });
 
-3. POST /church-contacts
-Accept body:
-{
-  churchId,
-  fullName,
-  email,
-  phone,
-  roleTitle,
-  isPrimary,
-  canReceiveRecordings
-}
+    return res.status(200).json(updatedChurch);
+  } catch (err) {
+    console.error("❌ PUT /churches/:id error:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
 
-Validation:
-- churchId is required
-- fullName is required
-- verify the church exists before creating the contact
+// Admin route: create a church contact
+app.post("/church-contacts", requireAdminToken, async (req, res) => {
+  try {
+    const {
+      churchId,
+      fullName,
+      email,
+      phone,
+      roleTitle,
+      isPrimary,
+      canReceiveRecordings,
+    } = req.body || {};
 
-Create prisma.churchContact with:
-churchId: String(churchId)
-fullName: String(fullName)
-email: email || null
-phone: phone || null
-roleTitle: roleTitle || null
-isPrimary: Boolean(isPrimary)
-canReceiveRecordings: canReceiveRecordings !== false
+    if (!churchId || !String(churchId).trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Church ID is required",
+      });
+    }
 
-Return the created contact including church:
-include: { church: true }
+    if (!fullName || !String(fullName).trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Full name is required",
+      });
+    }
 
-4. PUT /church-contacts/:id
-Accept same fields.
-Update the contact by id.
-If churchId is provided, verify the church exists.
-Return 404 JSON if contact not found.
-Return updated contact including church.
+    const church = await prisma.church.findUnique({
+      where: { id: String(churchId).trim() },
+    });
 
-5. Error handling
-Use JSON responses, not HTML.
-For validation errors return status 400:
-{ success: false, error: "message here" }
+    if (!church) {
+      return res.status(404).json({
+        success: false,
+        error: "Church not found",
+      });
+    }
 
-For not found return 404:
-{ success: false, error: "Church not found" }
-or
-{ success: false, error: "Contact not found" }
+    const contact = await prisma.churchContact.create({
+      data: {
+        churchId: String(churchId).trim(),
+        fullName: String(fullName).trim(),
+        email: email ? String(email).trim() : null,
+        phone: phone ? String(phone).trim() : null,
+        roleTitle: roleTitle ? String(roleTitle).trim() : null,
+        isPrimary: Boolean(isPrimary),
+        canReceiveRecordings: canReceiveRecordings !== false,
+      },
+      include: {
+        church: true,
+      },
+    });
 
-For unexpected errors return 500:
-{ success: false, error: String(err) }
+    return res.status(201).json(contact);
+  } catch (err) {
+    console.error("❌ POST /church-contacts error:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
 
-6. Important
-Do not modify existing GET /churches or GET /church-contacts routes.
-Do not modify recording distribution routes.
-Keep x-admin-token protection using requireAdminToken.
+// Admin route: update a church contact
+app.put("/church-contacts/:id", requireAdminToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      churchId,
+      fullName,
+      email,
+      phone,
+      roleTitle,
+      isPrimary,
+      canReceiveRecordings,
+    } = req.body || {};
+
+    const existingContact = await prisma.churchContact.findUnique({
+      where: { id: String(id) },
+    });
+
+    if (!existingContact) {
+      return res.status(404).json({
+        success: false,
+        error: "Contact not found",
+      });
+    }
+
+    if (fullName !== undefined && !String(fullName).trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Full name is required",
+      });
+    }
+
+    if (churchId !== undefined) {
+      if (!String(churchId).trim()) {
+        return res.status(400).json({
+          success: false,
+          error: "Church ID is required",
+        });
+      }
+
+      const church = await prisma.church.findUnique({
+        where: { id: String(churchId).trim() },
+      });
+
+      if (!church) {
+        return res.status(404).json({
+          success: false,
+          error: "Church not found",
+        });
+      }
+    }
+
+    const updateData = {};
+
+    if (churchId !== undefined) updateData.churchId = String(churchId).trim();
+    if (fullName !== undefined) updateData.fullName = String(fullName).trim();
+    if (email !== undefined) updateData.email = email ? String(email).trim() : null;
+    if (phone !== undefined) updateData.phone = phone ? String(phone).trim() : null;
+    if (roleTitle !== undefined) updateData.roleTitle = roleTitle ? String(roleTitle).trim() : null;
+    if (isPrimary !== undefined) updateData.isPrimary = Boolean(isPrimary);
+    if (canReceiveRecordings !== undefined) updateData.canReceiveRecordings = canReceiveRecordings !== false;
+
+    const updatedContact = await prisma.churchContact.update({
+      where: { id: String(id) },
+      data: updateData,
+      include: {
+        church: true,
+      },
+    });
+
+    return res.status(200).json(updatedContact);
+  } catch (err) {
+    console.error("❌ PUT /church-contacts/:id error:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
 
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
