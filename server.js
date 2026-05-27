@@ -398,24 +398,34 @@ app.post("/recordings/:id/distribute", requireAdminToken, async (req, res) => {
         data.subject ||
         `Court of Compassion Recording: ${recording.title}`;
 
-      const body = [
-        `Dear ${recipientName},`,
-        "",
-        "A Court of Compassion interview recording is now available.",
-        "",
-        `Title: ${recording.title}`,
-        recording.description ? `Description: ${recording.description}` : "",
-        recording.speakerName ? `Speaker: ${recording.speakerName}` : "",
-        recording.organizationName ? `Organization: ${recording.organizationName}` : "",
-        "",
-        `Recording Link: ${recording.recordingUrl}`,
-        recording.transcriptUrl ? `Transcript Link: ${recording.transcriptUrl}` : "",
-        "",
-        "Thank you,",
-        "Court of Compassion",
-      ]
-        .filter(Boolean)
-        .join("\n");
+    const body = [
+  `Dear ${recipientName || "Friend"},`,
+  "",
+  "A new Court of Compassion interview recording is now available for your review and sharing.",
+  "",
+  "Recording:",
+  recording.title || "Untitled Recording",
+  "",
+  "Speaker:",
+  recording.speakerName || "Court of Compassion",
+  "",
+  recording.description ? "Description:" : "",
+  recording.description ? recording.description : "",
+  recording.description ? "" : "",
+  recording.recordingUrl ? "Recording Link:" : "",
+  recording.recordingUrl ? recording.recordingUrl : "",
+  recording.recordingUrl ? "" : "",
+  recording.transcriptUrl ? "Transcript Link:" : "",
+  recording.transcriptUrl ? recording.transcriptUrl : "",
+  recording.transcriptUrl ? "" : "",
+  "Suggested Use:",
+  "You may share this recording with your church community, ministry team, or study group as appropriate. It may also be used as a discussion resource for Bible study, parish reflection, or preparation for future Court of Compassion conversations.",
+  "",
+  "Thank you,",
+  "Court of Compassion",
+]
+  .filter(Boolean)
+  .join("\n"); 
 
       let distributionLog;
 
