@@ -329,6 +329,92 @@ app.get("/recordings/:id", requireAdminToken, async (req, res) => {
 });
 
    // DISTRIBUTE one recording to selected church contacts
+
+app.put("/recordings/:id", requireAdminToken, async (req, res) => {
+  try {
+    const id = String(req.params.id);
+
+    const {
+      title,
+      speakerName,
+      organizationName,
+      description,
+      recordingUrl,
+      transcriptUrl,
+      status,
+    } = req.body || {};
+
+    const data = {};
+
+    if (title !== undefined) {
+      const trimmedTitle = String(title).trim();
+      if (!trimmedTitle) {
+        return res.status(400).json({
+          success: false,
+          error: "Title is required",
+        });
+      }
+      data.title = trimmedTitle;
+    }
+
+    if (speakerName !== undefined) {
+      data.speakerName = String(speakerName).trim();
+    }
+
+    if (organizationName !== undefined) {
+      data.organizationName = String(organizationName).trim();
+    }
+
+    if (description !== undefined) {
+      data.description = String(description).trim();
+    }
+
+    if (recordingUrl !== undefined) {
+      data.recordingUrl = String(recordingUrl).trim();
+    }
+
+    if (transcriptUrl !== undefined) {
+      data.transcriptUrl = String(transcriptUrl).trim();
+    }
+
+    if (status !== undefined) {
+      const normalizedStatus = String(status).trim().toUpperCase();
+
+      if (!["DRAFT", "PUBLISHED"].includes(normalizedStatus)) {
+        return res.status(400).json({
+          success: false,
+          error: "Status must be DRAFT or PUBLISHED",
+        });
+      }
+
+      data.status = normalizedStatus;
+    }
+
+    const updatedRecording = await prisma.recording.update({
+      where: { id },
+      data,
+    });
+
+    return res.status(200).json({
+      success: true,
+      recording: updatedRecording,
+    });
+  } catch (err) {
+    console.error("❌ PUT /recordings/:id error:", err);
+
+    if (err && err.code === "P2025") {
+      return res.status(404).json({
+        success: false,
+        error: "Recording not found",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
 app.post("/recordings/:id/distribute", requireAdminToken, async (req, res) => {
   try {
     const recordingId = String(req.params.id);
