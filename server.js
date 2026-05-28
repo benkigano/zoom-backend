@@ -532,10 +532,26 @@ app.post("/recordings/:id/distribute", requireAdminToken, async (req, res) => {
         data.subject ||
         `Court of Compassion Recording: ${recording.title}`;
 
-    const body = [
+   function isValidTranscriptUrl(url) {
+  if (!url) return false;
+
+  const value = String(url).trim();
+
+  if (!value) return false;
+  if (value.includes("example.com")) return false;
+  if (value.includes("about:blank")) return false;
+
+  return value.startsWith("http://") || value.startsWith("https://");
+}
+
+const transcriptSection = isValidTranscriptUrl(recording.transcriptUrl)
+  ? `Transcript:\n${String(recording.transcriptUrl).trim()}`
+  : `Transcript:\nThe transcript may be available inside the Zoom recording page.`;
+
+const body = [
   `Dear ${recipientName || "Friend"},`,
   "",
-  "A new Court of Compassion interview recording is now available for your review and sharing.",
+  "A Court of Compassion recording is now available for your review and sharing.",
   "",
   "Recording:",
   recording.title || "Untitled Recording",
@@ -547,11 +563,10 @@ app.post("/recordings/:id/distribute", requireAdminToken, async (req, res) => {
   recording.description ? recording.description : "",
   recording.description ? "" : "",
   recording.recordingUrl ? "Recording Link:" : "",
-  recording.recordingUrl ? recording.recordingUrl : "",
+  recording.recordingUrl ? String(recording.recordingUrl).trim() : "",
   recording.recordingUrl ? "" : "",
-  recording.transcriptUrl ? "Transcript Link:" : "",
-  recording.transcriptUrl ? recording.transcriptUrl : "",
-  recording.transcriptUrl ? "" : "",
+  transcriptSection,
+  "",
   "Suggested Use:",
   "You may share this recording with your church community, ministry team, or study group as appropriate. It may also be used as a discussion resource for Bible study, parish reflection, or preparation for future Court of Compassion conversations.",
   "",
@@ -559,7 +574,7 @@ app.post("/recordings/:id/distribute", requireAdminToken, async (req, res) => {
   "Court of Compassion",
 ]
   .filter(Boolean)
-  .join("\n"); 
+  .join("\n");
 
       let distributionLog;
 
