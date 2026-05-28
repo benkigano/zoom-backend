@@ -544,6 +544,32 @@ app.post("/recordings/:id/distribute", requireAdminToken, async (req, res) => {
   return value.startsWith("http://") || value.startsWith("https://");
 }
 
+  function parseRecordingUrlAndPasscode(value) {
+  const raw = String(value || "").trim();
+
+  if (!raw) {
+    return {
+      recordingUrl: "",
+      passcode: "",
+    };
+  }
+
+  const passcodeMatch = raw.match(/passcode:\s*([^\s]+)/i);
+
+  const passcode = passcodeMatch ? passcodeMatch[1].trim() : "";
+
+  const recordingUrl = raw
+    .replace(/passcode:\s*[^\s]+/i, "")
+    .trim();
+
+  return {
+    recordingUrl,
+    passcode,
+  };
+}
+
+const parsedRecording = parseRecordingUrlAndPasscode(recording.recordingUrl);
+
 const transcriptSection = isValidTranscriptUrl(recording.transcriptUrl)
   ? `Transcript:\n${String(recording.transcriptUrl).trim()}`
   : `Transcript:\nThe transcript may be available inside the Zoom recording page.`;
@@ -562,9 +588,12 @@ const body = [
   recording.description ? "Description:" : "",
   recording.description ? recording.description : "",
   recording.description ? "" : "",
-  recording.recordingUrl ? "Recording Link:" : "",
-  recording.recordingUrl ? String(recording.recordingUrl).trim() : "",
-  recording.recordingUrl ? "" : "",
+  parsedRecording.recordingUrl ? "Recording Link:" : "",
+  parsedRecording.recordingUrl ? parsedRecording.recordingUrl : "",
+  parsedRecording.recordingUrl ? "" : "",
+  parsedRecording.passcode ? "Recording Passcode:" : "",
+  parsedRecording.passcode ? parsedRecording.passcode : "",
+  parsedRecording.passcode ? "" : "",
   transcriptSection,
   "",
   "Suggested Use:",
