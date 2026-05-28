@@ -380,12 +380,12 @@ app.put("/recordings/:id", requireAdminToken, async (req, res) => {
     if (status !== undefined) {
       const normalizedStatus = String(status).trim().toUpperCase();
 
-      if (!["DRAFT", "PUBLISHED"].includes(normalizedStatus)) {
-        return res.status(400).json({
-          success: false,
-          error: "Status must be DRAFT or PUBLISHED",
-        });
-      }
+     if (!["DRAFT", "READY", "SENT", "ARCHIVED"].includes(normalizedStatus)) {
+  return res.status(400).json({
+    success: false,
+    error: "Status must be DRAFT, READY, SENT, or ARCHIVED",
+  });
+} 
 
       data.status = normalizedStatus;
     }
