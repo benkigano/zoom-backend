@@ -213,6 +213,7 @@ model Recording {
   organizationName   String?
 
   recordingUrl       String
+  recordingPasscode  String?
   transcriptUrl      String?
   thumbnailUrl       String?
 
