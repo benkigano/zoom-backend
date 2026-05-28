@@ -283,11 +283,35 @@ app.get("/recordings", requireAdminToken, async (req, res) => {
         createdAt: "desc",
       },
       include: {
-        distributionLogs: true,
+        distributionLogs: {
+          orderBy: {
+            createdAt: "desc",
+          },
+          include: {
+            church: true,
+            churchContact: {
+              include: {
+                church: true,
+              },
+            },
+          },
+        },
       },
     });
 
-    return res.json(recordings);
+    const enrichedRecordings = recordings.map((recording) => ({
+      ...recording,
+      distributionLogs: (recording.distributionLogs || []).map((log) => ({
+        ...log,
+        contactName: log.churchContact?.fullName || "Unknown contact",
+        contactEmail: log.churchContact?.email || log.toEmail || "Unknown email",
+        churchName: log.church?.name || log.churchContact?.church?.name || "Unknown church",
+        sentDate: log.sentAt || log.createdAt || null,
+        errorMessage: log.errorMessage || null,
+      })),
+    }));
+
+    return res.json(enrichedRecordings);
   } catch (err) {
     console.error("❌ Recordings fetch failed:", err);
     return res.status(500).json({
@@ -307,7 +331,19 @@ app.get("/recordings/:id", requireAdminToken, async (req, res) => {
         id,
       },
       include: {
-        distributionLogs: true,
+        distributionLogs: {
+          orderBy: {
+            createdAt: "desc",
+          },
+          include: {
+            church: true,
+            churchContact: {
+              include: {
+                church: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -318,7 +354,19 @@ app.get("/recordings/:id", requireAdminToken, async (req, res) => {
       });
     }
 
-    return res.json(recording);
+    const enrichedRecording = {
+      ...recording,
+      distributionLogs: (recording.distributionLogs || []).map((log) => ({
+        ...log,
+        contactName: log.churchContact?.fullName || "Unknown contact",
+        contactEmail: log.churchContact?.email || log.toEmail || "Unknown email",
+        churchName: log.church?.name || log.churchContact?.church?.name || "Unknown church",
+        sentDate: log.sentAt || log.createdAt || null,
+        errorMessage: log.errorMessage || null,
+      })),
+    };
+
+    return res.json(enrichedRecording);
   } catch (err) {
     console.error("❌ Recording fetch failed:", err);
     return res.status(500).json({
