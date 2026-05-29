@@ -223,19 +223,20 @@ app.post("/recordings", requireAdminToken, async (req, res) => {
   try {
     const data = req.body || {};
 
-    const {
-      interviewRequestId,
-      zoomMeetingId,
-      title,
-      description,
-      speakerName,
-      speakerTitle,
-      organizationName,
-      recordingUrl,
-      transcriptUrl,
-      thumbnailUrl,
-      status,
-    } = data;
+   const {
+  interviewRequestId,
+  zoomMeetingId,
+  title,
+  description,
+  speakerName,
+  speakerTitle,
+  organizationName,
+  recordingUrl,
+  recordingPasscode,
+  transcriptUrl,
+  thumbnailUrl,
+  status,
+} = data;
 
     if (!title || !recordingUrl) {
       return res.status(400).json({
@@ -254,6 +255,7 @@ app.post("/recordings", requireAdminToken, async (req, res) => {
         speakerTitle: speakerTitle ? String(speakerTitle) : null,
         organizationName: organizationName ? String(organizationName) : null,
         recordingUrl: String(recordingUrl),
+        recordingPasscode: recordingPasscode ? String(recordingPasscode).trim() : null,
         transcriptUrl: transcriptUrl ? String(transcriptUrl) : null,
         thumbnailUrl: thumbnailUrl ? String(thumbnailUrl) : null,
         status: status ? String(status) : "DRAFT",
@@ -388,6 +390,7 @@ app.put("/recordings/:id", requireAdminToken, async (req, res) => {
       organizationName,
       description,
       recordingUrl,
+      recordingPasscode,
       transcriptUrl,
       status,
     } = req.body || {};
@@ -421,6 +424,12 @@ app.put("/recordings/:id", requireAdminToken, async (req, res) => {
       data.recordingUrl = String(recordingUrl).trim();
     }
 
+    if (recordingPasscode !== undefined) {
+  data.recordingPasscode = recordingPasscode
+    ? String(recordingPasscode).trim()
+    : null;
+    }
+    
     if (transcriptUrl !== undefined) {
       data.transcriptUrl = String(transcriptUrl).trim();
     }
