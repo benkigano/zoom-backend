@@ -629,6 +629,68 @@ churchName ? "" : "",
 
       let distributionLog;
 
+     const escapeHtml = (value) =>
+  String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
+const recordingButtonHtml = parsedRecording.recordingUrl
+  ? `<p style="margin: 24px 0;"><a href="${escapeHtml(parsedRecording.recordingUrl)}" style="background:#0b2a6f;color:#ffffff;padding:12px 18px;text-decoration:none;border-radius:6px;display:inline-block;font-weight:bold;">Watch Recording</a></p>`
+  : "";
+
+const transcriptHtml = isValidTranscriptUrl(recording.transcriptUrl)
+  ? `<p><strong>Transcript:</strong><br><a href="${escapeHtml(String(recording.transcriptUrl).trim())}">${escapeHtml(String(recording.transcriptUrl).trim())}</a></p>`
+  : `<p><strong>Transcript:</strong><br>The transcript may be available inside the Zoom recording page.</p>`;
+
+const htmlBody = `
+  <div style="font-family: Arial, sans-serif; font-size: 15px; line-height: 1.5; color: #111827;">
+    <p>Dear ${escapeHtml(recipientName || "Friend")},</p>
+
+    <p>A Court of Compassion recording is now available for your review and sharing.</p>
+
+    <p>
+      <strong>Recipient:</strong><br>
+      ${escapeHtml(recipientName || "Friend")}<br><br>
+      <strong>Email:</strong><br>
+      ${escapeHtml(toEmail)}<br><br>
+      ${churchName ? `<strong>Church / Parish / Organization:</strong><br>${escapeHtml(churchName)}<br><br>` : ""}
+    </p>
+
+    <p>
+      <strong>Recording:</strong><br>
+      ${escapeHtml(recording.title || "Untitled Recording")}
+    </p>
+
+    <p>
+      <strong>Speaker:</strong><br>
+      ${escapeHtml(recording.speakerName || "Court of Compassion")}
+    </p>
+
+    ${recording.description ? `<p><strong>Description:</strong><br>${escapeHtml(recording.description)}</p>` : ""}
+
+    ${recordingButtonHtml}
+
+    ${parsedRecording.recordingUrl ? `<p><strong>Recording Link:</strong><br><a href="${escapeHtml(parsedRecording.recordingUrl)}">${escapeHtml(parsedRecording.recordingUrl)}</a></p>` : ""}
+
+    ${recordingPasscode ? `<p><strong>Recording Passcode:</strong><br>${escapeHtml(recordingPasscode)}</p>` : ""}
+
+    ${transcriptHtml}
+
+    <p>
+      <strong>Suggested Use:</strong><br>
+      You may share this recording with your church community, ministry team, or study group as appropriate. It may also be used as a discussion resource for Bible study, parish reflection, or preparation for future Court of Compassion conversations.
+    </p>
+
+    <p>
+      Thank you,<br>
+      Court of Compassion
+    </p>
+  </div>
+`; 
+
       try {
         distributionLog = await prisma.distributionLog.create({
           data: {
@@ -641,7 +703,7 @@ churchName ? "" : "",
           },
         });
 
-        await sendEmail(toEmail, String(subject), body);
+        await sendEmail(toEmail, String(subject), body, htmlBody);
 
         const updatedLog = await prisma.distributionLog.update({
           where: {
