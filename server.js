@@ -501,10 +501,11 @@ app.post("/recordings/:id/distribute", requireAdminToken, async (req, res) => {
     const results = [];
 
     for (const recipient of recipients) {
-  let toEmail = "";
-  let churchId = null;
-  let churchContactId = null;
-  let recipientName = "Friend";
+    let toEmail = "";
+    let churchId = null;
+    let churchContactId = null;
+    let recipientName = "Friend";
+    let churchName = "";
 
   if (typeof recipient === "string") {
     churchContactId = recipient;
@@ -521,10 +522,11 @@ app.post("/recordings/:id/distribute", requireAdminToken, async (req, res) => {
     });
 
     if (contact) {
-      toEmail = contact.email || toEmail;
-      recipientName = contact.fullName || recipientName;
-      churchContactId = contact.id;
-      churchId = contact.churchId;
+    toEmail = contact.email || toEmail;
+    recipientName = contact.fullName || recipientName;
+    churchContactId = contact.id;
+    churchId = contact.churchId;
+    churchName = contact.church?.name || "";  
     }
   }
 
@@ -586,11 +588,20 @@ const transcriptSection = isValidTranscriptUrl(recording.transcriptUrl)
   : `Transcript:\nThe transcript may be available inside the Zoom recording page.`;
 
 const body = [
-  `Dear ${recipientName || "Friend"},`,
-  "",
-  "A Court of Compassion recording is now available for your review and sharing.",
-  "",
-  "Recording:",
+ `Dear ${recipientName || "Friend"},`,
+"",
+"A Court of Compassion recording is now available for your review and sharing.",
+"",
+"Recipient:",
+recipientName || "Friend",
+"",
+"Email:",
+toEmail,
+"",
+churchName ? "Church / Parish / Organization:" : "",
+churchName ? churchName : "",
+churchName ? "" : "",
+"Recording:",
   recording.title || "Untitled Recording",
   "",
   "Speaker:",
