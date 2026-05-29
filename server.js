@@ -578,7 +578,9 @@ app.post("/recordings/:id/distribute", requireAdminToken, async (req, res) => {
 }
 
 const parsedRecording = parseRecordingUrlAndPasscode(recording.recordingUrl);
-
+const recordingPasscode =
+  recording.recordingPasscode || parsedRecording.passcode;
+      
 const transcriptSection = isValidTranscriptUrl(recording.transcriptUrl)
   ? `Transcript:\n${String(recording.transcriptUrl).trim()}`
   : `Transcript:\nThe transcript may be available inside the Zoom recording page.`;
@@ -600,9 +602,9 @@ const body = [
   parsedRecording.recordingUrl ? "Recording Link:" : "",
   parsedRecording.recordingUrl ? parsedRecording.recordingUrl : "",
   parsedRecording.recordingUrl ? "" : "",
-  parsedRecording.passcode ? "Recording Passcode:" : "",
-  parsedRecording.passcode ? parsedRecording.passcode : "",
-  parsedRecording.passcode ? "" : "",
+  recordingPasscode ? "Recording Passcode:" : "",
+  recordingPasscode ? recordingPasscode : "",
+  recordingPasscode ? "" : "",
   transcriptSection,
   "",
   "Suggested Use:",
