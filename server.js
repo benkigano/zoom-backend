@@ -27,7 +27,7 @@ function requireAdminToken(req, res, next) {
 }
 const app = express();
 
-async function sendEmail(to, subject, body) {
+async function sendEmail(to, subject, body, htmlBody = null) {
   const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
     port: 465,
@@ -43,7 +43,7 @@ async function sendEmail(to, subject, body) {
     to,
     subject,
     text: body,
-    html: String(body).replace(/\n/g, "<br>"),
+    html: htmlBody || String(body).replace(/\n/g, "<br>"),
   });
 
   console.log("✅ DISTRIBUTION EMAIL SENT TO:", to);
