@@ -472,6 +472,57 @@ app.put("/recordings/:id", requireAdminToken, async (req, res) => {
     });
   }
 });
+
+// ARCHIVE one recording
+app.post("/recordings/:id/archive", requireAdminToken, async (req, res) => {
+  try {
+    const id = String(req.params.id);
+
+    const recording = await prisma.recording.update({
+      where: { id },
+      data: {
+        status: "ARCHIVED",
+      },
+    });
+
+    return res.json({
+      success: true,
+      recording,
+    });
+  } catch (err) {
+    console.error("❌ Recording archive failed:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
+
+// API compatibility archive route
+app.post("/api/recordings/:id/archive", requireAdminToken, async (req, res) => {
+  try {
+    const id = String(req.params.id);
+
+    const recording = await prisma.recording.update({
+      where: { id },
+      data: {
+        status: "ARCHIVED",
+      },
+    });
+
+    return res.json({
+      success: true,
+      recording,
+    });
+  } catch (err) {
+    console.error("❌ Recording archive failed:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
+
 app.post("/recordings/:id/distribute", requireAdminToken, async (req, res) => {
   try {
     const recordingId = String(req.params.id);
