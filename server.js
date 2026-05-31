@@ -2238,6 +2238,118 @@ app.put("/church-contacts/:id", requireAdminToken, async (req, res) => {
   }
 });
 
+   // Admin route: archive a church contact without deleting it
+app.post("/church-contacts/:id/archive", requireAdminToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const contact = await prisma.churchContact.update({
+      where: { id: String(id) },
+      data: {
+        canReceiveRecordings: false,
+      },
+      include: {
+        church: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      contact,
+    });
+  } catch (err) {
+    console.error("❌ POST /church-contacts/:id/archive error:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
+
+// API compatibility route: archive a church contact without deleting it
+app.post("/api/church-contacts/:id/archive", requireAdminToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const contact = await prisma.churchContact.update({
+      where: { id: String(id) },
+      data: {
+        canReceiveRecordings: false,
+      },
+      include: {
+        church: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      contact,
+    });
+  } catch (err) {
+    console.error("❌ POST /api/church-contacts/:id/archive error:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
+
+// Admin route: restore an archived church contact
+app.post("/church-contacts/:id/restore", requireAdminToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const contact = await prisma.churchContact.update({
+      where: { id: String(id) },
+      data: {
+        canReceiveRecordings: true,
+      },
+      include: {
+        church: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      contact,
+    });
+  } catch (err) {
+    console.error("❌ POST /church-contacts/:id/restore error:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
+
+// API compatibility route: restore an archived church contact
+app.post("/api/church-contacts/:id/restore", requireAdminToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const contact = await prisma.churchContact.update({
+      where: { id: String(id) },
+      data: {
+        canReceiveRecordings: true,
+      },
+      include: {
+        church: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      contact,
+    });
+  } catch (err) {
+    console.error("❌ POST /api/church-contacts/:id/restore error:", err);
+    return res.status(500).json({
+      success: false,
+      error: String(err),
+    });
+  }
+});
+
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
