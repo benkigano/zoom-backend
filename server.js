@@ -1965,6 +1965,66 @@ app.get("/church-contacts", requireAdminToken, async (req, res) => {
   }
 });
 
+// Admin route: list all church contacts, including archived/inactive contacts
+app.get("/church-contacts/all", requireAdminToken, async (req, res) => {
+  try {
+    const contacts = await prisma.churchContact.findMany({
+      orderBy: {
+        fullName: "asc",
+      },
+      include: {
+        church: {
+          select: {
+            id: true,
+            name: true,
+            denomination: true,
+            diocese: true,
+            country: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json(contacts);
+  } catch (err) {
+    console.error("❌ GET /church-contacts/all error:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fetch all church contacts",
+    });
+  }
+});
+
+// API compatibility route: list all church contacts, including archived/inactive contacts
+app.get("/api/church-contacts/all", requireAdminToken, async (req, res) => {
+  try {
+    const contacts = await prisma.churchContact.findMany({
+      orderBy: {
+        fullName: "asc",
+      },
+      include: {
+        church: {
+          select: {
+            id: true,
+            name: true,
+            denomination: true,
+            diocese: true,
+            country: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json(contacts);
+  } catch (err) {
+    console.error("❌ GET /api/church-contacts/all error:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fetch all church contacts",
+    });
+  }
+});
+
 app.get("/churches/:id/contacts", requireAdminToken, async (req, res) => {
   try {
     const { id } = req.params;
