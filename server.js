@@ -2711,6 +2711,106 @@ app.post("/api/church-contacts/:id/restore", requireAdminToken, async (req, res)
   }
 });
 
+// ============================================================
+// Pastor / Church Contact Zoom connection invitation
+// This does not alter the existing interview-scheduling routes.
+// ============================================================
+
+app.post(
+  "/api/church-contacts/:id/zoom-invitation",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const churchContactId = String(req.params.id || "").trim();
+
+      if (!churchContactId) {
+        return res.status(400).json({
+          success: false,
+          error: "A church contact ID is required",
+        });
+      }
+
+      const churchContact = await prisma.churchContact.findUnique({
+        where: {
+          id: churchContactId,
+        },
+        include: {
+          church: true,
+        },
+      });
+
+      if (!churchContact) {
+        return res.status(404).json({
+          success: false,
+          error: "Church contact not found",
+        });
+      }
+
+      /*
+       * Remove unused invitations previously created for this contact.
+       * A new invitation will replace them.
+       */
+      await prisma.zoomOAuthInvitation.deleteMany({
+        where: {
+          churchContactId,
+          usedAt: null,
+        },
+      });
+
+      const invitationToken = crypto.randomBytes(32).toString("hex");
+      const tokenHash = hashZoomOAuthToken(invitationToken);
+
+      // Invitation remains valid for seven days.
+      const expiresAt = new Date(
+        Date.now() + 7 * 24 * 60 * 60 * 1000
+      );
+
+      await prisma.zoomOAuthInvitation.create({
+        data: {
+          churchContactId,
+          tokenHash,
+          expiresAt,
+        },
+      });
+
+      const publicBaseUrl = String(
+        process.env.PUBLIC_BASE_URL || ""
+      ).replace(/\/+$/, "");
+
+      if (!publicBaseUrl) {
+        throw new Error("PUBLIC_BASE_URL is not configured");
+      }
+
+      const connectionUrl =
+        `${publicBaseUrl}/zoom/church-contact/connect` +
+        `?token=${encodeURIComponent(invitationToken)}`;
+
+      return res.status(201).json({
+        success: true,
+        message: "Zoom connection invitation created",
+        churchContact: {
+          id: churchContact.id,
+          fullName: churchContact.fullName,
+          email: churchContact.email,
+          churchName: churchContact.church?.name || null,
+        },
+        connectionUrl,
+        expiresAt,
+      });
+    } catch (err) {
+      console.error(
+        "❌ POST /api/church-contacts/:id/zoom-invitation error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err?.message || err),
+      });
+    }
+  }
+);
+
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
