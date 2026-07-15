@@ -26,7 +26,80 @@ function requireAdminToken(req, res, next) {
   next();
 }
 const app = express();
+function getZoomEncryptionKey() {
+  const secret = process.env.ZOOM_TOKEN_ENCRYPTION_KEY;
 
+  if (!secret) {
+    throw new Error("ZOOM_TOKEN_ENCRYPTION_KEY is not configured");
+  }
+
+  return crypto
+    .createHash("sha256")
+    .update(secret, "utf8")
+    .digest();
+}
+
+function encryptZoomToken(token) {
+  if (!token) {
+    throw new Error("Cannot encrypt an empty Zoom token");
+  }
+
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv(
+    "aes-256-gcm",
+    getZoomEncryptionKey(),
+    iv
+  );
+
+  const encrypted = Buffer.concat([
+    cipher.update(String(token), "utf8"),
+    cipher.final(),
+  ]);
+
+  const authTag = cipher.getAuthTag();
+
+  return [
+    iv.toString("base64url"),
+    authTag.toString("base64url"),
+    encrypted.toString("base64url"),
+  ].join(".");
+}
+
+function decryptZoomToken(encryptedToken) {
+  if (!encryptedToken) {
+    throw new Error("Cannot decrypt an empty Zoom token");
+  }
+
+  const parts = String(encryptedToken).split(".");
+
+  if (parts.length !== 3) {
+    throw new Error("Invalid encrypted Zoom token format");
+  }
+
+  const [ivValue, authTagValue, encryptedValue] = parts;
+
+  const decipher = crypto.createDecipheriv(
+    "aes-256-gcm",
+    getZoomEncryptionKey(),
+    Buffer.from(ivValue, "base64url")
+  );
+
+  decipher.setAuthTag(Buffer.from(authTagValue, "base64url"));
+
+  const decrypted = Buffer.concat([
+    decipher.update(Buffer.from(encryptedValue, "base64url")),
+    decipher.final(),
+  ]);
+
+  return decrypted.toString("utf8");
+}
+
+function hashZoomOAuthToken(token) {
+  return crypto
+    .createHash("sha256")
+    .update(String(token), "utf8")
+    .digest("hex");
+}
 async function sendEmail(to, subject, body, htmlBody = null) {
   const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
