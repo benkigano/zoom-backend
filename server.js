@@ -243,6 +243,90 @@ async function getChurchContactZoomAccessToken(churchContactId) {
 
   return refreshedTokens.access_token;
 }
+// ============================================================
+// COURT STUDY MEETINGS — PASTOR ZOOM OAUTH
+// ============================================================
+
+app.get("/court-study/zoom/connect/:churchContactId", async (req, res) => {
+  try {
+    const churchContactId = String(req.params.churchContactId || "").trim();
+
+    if (!churchContactId) {
+      return res.status(400).json({
+        success: false,
+        error: "A church contact ID is required.",
+      });
+    }
+
+    const churchContact = await prisma.churchContact.findUnique({
+      where: {
+        id: churchContactId,
+      },
+      include: {
+        church: true,
+      },
+    });
+
+    if (!churchContact) {
+      return res.status(404).json({
+        success: false,
+        error: "Church contact not found.",
+      });
+    }
+
+    if (!churchContact.canCreateCourtStudyMeetings) {
+      return res.status(403).json({
+        success: false,
+        error:
+          "This church contact is not authorized to create Court Study Meetings.",
+      });
+    }
+
+    const clientId = process.env.ZOOM_CLIENT_ID;
+    const redirectUri = process.env.ZOOM_REDIRECT_URL;
+
+    if (!clientId || !redirectUri) {
+      return res.status(500).json({
+        success: false,
+        error: "Zoom OAuth is not fully configured.",
+      });
+    }
+
+    const invitationToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = hashZoomOAuthToken(invitationToken);
+
+    await prisma.zoomOAuthInvitation.create({
+      data: {
+        churchContactId,
+        tokenHash,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+      },
+    });
+
+    const state = Buffer.from(
+      JSON.stringify({
+        churchContactId,
+        invitationToken,
+      }),
+      "utf8"
+    ).toString("base64url");
+
+    const authorizationUrl = new URL("https://zoom.us/oauth/authorize");
+    authorizationUrl.searchParams.set("response_type", "code");
+    authorizationUrl.searchParams.set("client_id", clientId);
+    authorizationUrl.searchParams.set("redirect_uri", redirectUri);
+    authorizationUrl.searchParams.set("state", state);
+
+    return res.redirect(authorizationUrl.toString());
+  } catch (error) {
+    console.error("COURT STUDY ZOOM CONNECT ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      error: "Unable to begin Zoom authorization.",
+    });
+  }
+});
 
 async function sendEmail(to, subject, body, htmlBody = null) {
   const transporter = nodemailer.createTransport({
