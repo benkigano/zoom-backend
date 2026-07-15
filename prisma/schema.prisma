@@ -41,7 +41,27 @@ enum EmailType {
   ADMIN_NOTIFICATION
   GENERAL
 }
+enum ZoomConnectionStatus {
+  CONNECTED
+  REAUTHORIZATION_REQUIRED
+  REVOKED
+  DISCONNECTED
+}
 
+enum CourtStudyMeetingStatus {
+  DRAFT
+  PENDING
+  CREATING
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum CourtStudyDiscussionType {
+  RULES_OF_PROCEDURE
+  INTERVIEW_RECORDING
+}
 /**
  * PHASE 1 TABLES
  */
@@ -85,9 +105,13 @@ model ChurchContact {
   roleTitle            String?
   isPrimary            Boolean @default(false)
   canReceiveRecordings Boolean @default(true)
-
+  canCreateCourtStudyMeetings Boolean @default(false)
+  courtStudyApproved          Boolean @default(false)
   church Church @relation(fields: [churchId], references: [id], onDelete: Cascade)
   distributionLogs DistributionLog[]
+  zoomConnection     ChurchContactZoomConnection?
+  courtStudyMeetings CourtStudyMeeting[]
+  oauthInvitations   ZoomOAuthInvitation[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -254,4 +278,87 @@ model DistributionLog {
   @@index([churchContactId])
   @@index([status])
   @@index([toEmail])
+}
+model ChurchContactZoomConnection {
+  id                    String               @id @default(cuid())
+  churchContactId       String               @unique
+
+  zoomUserId            String
+  zoomAccountId         String?
+  zoomEmail             String?
+
+  accessTokenEncrypted  String
+  refreshTokenEncrypted String
+  tokenExpiresAt        DateTime
+  authorizedScopes      String?
+  status                ZoomConnectionStatus @default(CONNECTED)
+
+  connectedAt           DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  disconnectedAt        DateTime?
+
+ churchContact ChurchContact @relation(fields: [churchContactId], references: [id], onDelete: Cascade)  
+}
+model ZoomOAuthInvitation {
+  id              String   @id @default(cuid())
+  churchContactId String
+  tokenHash       String   @unique
+  expiresAt       DateTime
+  usedAt          DateTime?
+  createdAt       DateTime @default(now())
+
+  churchContact ChurchContact @relation(fields: [churchContactId], references: [id], onDelete: Cascade)
+
+  @@index([churchContactId])
+  @@index([expiresAt])
+}
+
+model CourtStudyTimeSlot {
+  id              String   @id @default(cuid())
+  startTime       DateTime
+  endTime         DateTime
+  timezone        String
+  capacity        Int?
+  isActive        Boolean  @default(true)
+  bookingDeadline DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  meetings CourtStudyMeeting[]
+
+  @@index([startTime])
+  @@index([isActive])
+}
+
+model CourtStudyMeeting {
+  id                  String                   @id @default(cuid())
+  churchContactId     String
+  timeSlotId          String?
+
+  title               String
+  description         String?
+  discussionType      CourtStudyDiscussionType
+  selectedChapter     String?
+  selectedSection     String?
+  selectedRecordingId String?
+
+  scheduledStart      DateTime
+  scheduledEnd        DateTime
+  timezone            String
+
+  zoomMeetingId       String?
+  zoomRegistrationUrl String?
+  zoomJoinUrl         String?
+  status              CourtStudyMeetingStatus  @default(DRAFT)
+
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+
+  churchContact ChurchContact      @relation(fields: [churchContactId], references: [id], onDelete: Cascade)
+  timeSlot      CourtStudyTimeSlot? @relation(fields: [timeSlotId], references: [id], onDelete: SetNull)
+
+  @@index([churchContactId])
+  @@index([timeSlotId])
+  @@index([scheduledStart])
+  @@index([status])
 }
