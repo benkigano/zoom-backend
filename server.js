@@ -100,6 +100,150 @@ function hashZoomOAuthToken(token) {
     .update(String(token), "utf8")
     .digest("hex");
 }
+async function getChurchContactZoomAccessToken(churchContactId) {
+  if (!churchContactId) {
+    throw new Error("A church contact ID is required");
+  }
+
+  const connection =
+    await prisma.churchContactZoomConnection.findUnique({
+      where: {
+        churchContactId: String(churchContactId),
+      },
+    });
+
+  if (!connection) {
+    throw new Error(
+      "This church contact has not connected a Zoom account"
+    );
+  }
+
+  if (connection.status === "REVOKED") {
+    throw new Error(
+      "This church contact's Zoom authorization has been revoked"
+    );
+  }
+
+  if (connection.status === "DISCONNECTED") {
+    throw new Error(
+      "This church contact's Zoom account is disconnected"
+    );
+  }
+
+  const refreshThresholdMs = 60 * 1000;
+  const tokenExpiresAtMs = new Date(
+    connection.tokenExpiresAt
+  ).getTime();
+
+  /*
+   * Reuse the saved access token when it remains valid for
+   * more than 60 seconds.
+   */
+  if (
+    Number.isFinite(tokenExpiresAtMs) &&
+    Date.now() < tokenExpiresAtMs - refreshThresholdMs
+  ) {
+    return decryptZoomToken(
+      connection.accessTokenEncrypted
+    );
+  }
+
+  const refreshToken = decryptZoomToken(
+    connection.refreshTokenEncrypted
+  );
+
+  const clientId = process.env.ZOOM_CLIENT_ID;
+  const clientSecret = process.env.ZOOM_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      "ZOOM_CLIENT_ID or ZOOM_CLIENT_SECRET is not configured"
+    );
+  }
+
+  const basicAuthorization = Buffer.from(
+    `${clientId}:${clientSecret}`
+  ).toString("base64");
+
+  const refreshResponse = await fetch(
+    "https://zoom.us/oauth/token",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${basicAuthorization}`,
+        "Content-Type":
+          "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+      }),
+    }
+  );
+
+  const refreshedTokens = await refreshResponse
+    .json()
+    .catch(() => ({}));
+
+  if (!refreshResponse.ok) {
+    await prisma.churchContactZoomConnection.update({
+      where: {
+        churchContactId: String(churchContactId),
+      },
+      data: {
+        status: "REAUTHORIZATION_REQUIRED",
+      },
+    });
+
+    throw new Error(
+      `Pastor Zoom token refresh failed: ${
+        refreshedTokens.reason ||
+        refreshedTokens.message ||
+        JSON.stringify(refreshedTokens)
+      }`
+    );
+  }
+
+  if (
+    !refreshedTokens.access_token ||
+    !refreshedTokens.refresh_token
+  ) {
+    throw new Error(
+      "Zoom did not return the required refreshed tokens"
+    );
+  }
+
+  const expiresInSeconds = Number(
+    refreshedTokens.expires_in || 3600
+  );
+
+  const newExpiration = new Date(
+    Date.now() + expiresInSeconds * 1000
+  );
+
+  await prisma.churchContactZoomConnection.update({
+    where: {
+      churchContactId: String(churchContactId),
+    },
+    data: {
+      accessTokenEncrypted: encryptZoomToken(
+        refreshedTokens.access_token
+      ),
+      refreshTokenEncrypted: encryptZoomToken(
+        refreshedTokens.refresh_token
+      ),
+      tokenExpiresAt: newExpiration,
+      authorizedScopes:
+        refreshedTokens.scope ||
+        connection.authorizedScopes,
+      status: "CONNECTED",
+      disconnectedAt: null,
+    },
+  });
+
+  return refreshedTokens.access_token;
+}
+
 async function sendEmail(to, subject, body, htmlBody = null) {
   const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
