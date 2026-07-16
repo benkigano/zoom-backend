@@ -3500,6 +3500,287 @@ app.get("/guest-distribution/:token", async (req, res) => {
   }
 });
 
+// =====================================================
+// Submit a Court Study request from the public invitation
+// =====================================================
+app.post(
+  "/guest-distribution/:token/court-study-requests",
+  express.urlencoded({ extended: false }),
+  async (req, res) => {
+    try {
+      const distributionToken = String(req.params.token || "").trim();
+
+      if (!distributionToken) {
+        return res.status(400).send("Missing distribution token");
+      }
+
+      const campaign =
+        await prisma.guestDistributionCampaign.findUnique({
+          where: {
+            distributionToken,
+          },
+          include: {
+            recording: true,
+          },
+        });
+
+      if (!campaign) {
+        return res.status(404).send(
+          "This Court of Compassion invitation could not be found."
+        );
+      }
+
+      if (campaign.status === "CLOSED") {
+        return res.status(410).send(
+          "This Court of Compassion invitation is closed."
+        );
+      }
+
+      if (
+        campaign.expiresAt &&
+        campaign.expiresAt.getTime() <= Date.now()
+      ) {
+        return res.status(410).send(
+          "This Court of Compassion invitation has expired."
+        );
+      }
+
+      if (!campaign.recording) {
+        return res.status(404).send(
+          "The recording connected to this invitation could not be found."
+        );
+      }
+
+      const {
+        pastorName,
+        pastorEmail,
+        roleTitle,
+        churchName,
+        dioceseOrGroup,
+        phone,
+        preferredStart,
+        timezone,
+        meetingFormat,
+        estimatedAttendance,
+        notes,
+      } = req.body || {};
+
+      if (!pastorName || !pastorEmail || !churchName) {
+        return res.status(400).send(
+          "Pastor name, email address, and church name are required."
+        );
+      }
+
+      const normalizedEmail = String(pastorEmail)
+        .trim()
+        .toLowerCase();
+
+      const basicEmailPattern =
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      if (!basicEmailPattern.test(normalizedEmail)) {
+        return res.status(400).send(
+          "Please enter a valid email address."
+        );
+      }
+
+      const allowedMeetingFormats = new Set([
+        "COURT_HOSTED",
+        "PASTOR_HOSTED",
+        "IN_PERSON",
+        "HYBRID",
+      ]);
+
+      const normalizedMeetingFormat =
+        meetingFormat &&
+        allowedMeetingFormats.has(String(meetingFormat))
+          ? String(meetingFormat)
+          : null;
+
+      let parsedPreferredStart = null;
+
+      if (preferredStart) {
+        const dateValue = new Date(String(preferredStart));
+
+        if (Number.isNaN(dateValue.getTime())) {
+          return res.status(400).send(
+            "The preferred date and time are invalid."
+          );
+        }
+
+        parsedPreferredStart = dateValue;
+      }
+
+      let parsedEstimatedAttendance = null;
+
+      if (
+        estimatedAttendance !== undefined &&
+        estimatedAttendance !== null &&
+        String(estimatedAttendance).trim() !== ""
+      ) {
+        const attendanceValue = Number(estimatedAttendance);
+
+        if (
+          !Number.isInteger(attendanceValue) ||
+          attendanceValue < 1
+        ) {
+          return res.status(400).send(
+            "Estimated attendance must be a whole number greater than zero."
+          );
+        }
+
+        parsedEstimatedAttendance = attendanceValue;
+      }
+
+      const request =
+        await prisma.courtStudyRequest.create({
+          data: {
+            campaignId: campaign.id,
+            recordingId: campaign.recordingId,
+            pastorName: String(pastorName).trim(),
+            pastorEmail: normalizedEmail,
+            roleTitle: roleTitle
+              ? String(roleTitle).trim()
+              : null,
+            churchName: String(churchName).trim(),
+            dioceseOrGroup: dioceseOrGroup
+              ? String(dioceseOrGroup).trim()
+              : null,
+            phone: phone
+              ? String(phone).trim()
+              : null,
+            preferredStart: parsedPreferredStart,
+            timezone: timezone
+              ? String(timezone).trim()
+              : null,
+            meetingFormat: normalizedMeetingFormat,
+            estimatedAttendance:
+              parsedEstimatedAttendance,
+            notes: notes
+              ? String(notes).trim()
+              : null,
+            status: "PENDING",
+          },
+        });
+
+      const escapeHtml = (value) =>
+        String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+
+      const safePastorName = escapeHtml(request.pastorName);
+      const safeChurchName = escapeHtml(request.churchName);
+      const safeRecordingTitle = escapeHtml(
+        campaign.recording.title ||
+          "Court of Compassion Interview Recording"
+      );
+
+      return res.status(201).type("html").send(`
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+  <title>Court Study Request Received</title>
+
+  <style>
+    body {
+      margin: 0;
+      background: #071b33;
+      color: #f7f2e8;
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.6;
+    }
+
+    main {
+      width: min(720px, calc(100% - 32px));
+      margin: 48px auto;
+    }
+
+    .card {
+      background: #102b4c;
+      border: 1px solid #c8a85a;
+      border-radius: 14px;
+      padding: 28px;
+    }
+
+    h1 {
+      color: #e4c778;
+      margin-top: 0;
+    }
+
+    .reference {
+      background: #071b33;
+      border-radius: 8px;
+      padding: 12px;
+      word-break: break-word;
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <section class="card">
+      <h1>Court Study Request Received</h1>
+
+      <p>Dear ${safePastorName},</p>
+
+      <p>
+        The Court of Compassion has received the Court Study
+        request submitted on behalf of
+        <strong>${safeChurchName}</strong>.
+      </p>
+
+      <p>
+        The request concerns the following interview recording:
+      </p>
+
+      <p>
+        <strong>${safeRecordingTitle}</strong>
+      </p>
+
+      <p>
+        The request is currently marked
+        <strong>PENDING</strong>. The Court will review it before
+        approving, declining, or scheduling the session.
+      </p>
+
+      <p class="reference">
+        Request reference: ${escapeHtml(request.id)}
+      </p>
+
+      <p>
+        Please retain this reference for future communication.
+      </p>
+
+      <p>
+        Respectfully,<br>
+        <strong>Court of Compassion</strong>
+      </p>
+    </section>
+  </main>
+</body>
+</html>
+      `);
+    } catch (err) {
+      console.error(
+        "❌ POST /guest-distribution/:token/court-study-requests error:",
+        err
+      );
+
+      return res.status(500).send(
+        "The Court Study request could not be submitted."
+      );
+    }
+  }
+);
+
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
