@@ -3781,6 +3781,94 @@ app.post(
   }
 );
 
+// =====================================================
+// Admin: list Court Study requests
+// =====================================================
+app.get(
+  "/api/court-study-requests",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const requestedStatus = req.query.status
+        ? String(req.query.status).trim().toUpperCase()
+        : null;
+
+      const allowedStatuses = new Set([
+        "PENDING",
+        "APPROVED",
+        "DECLINED",
+        "SCHEDULED",
+        "COMPLETED",
+        "CANCELLED",
+      ]);
+
+      if (
+        requestedStatus &&
+        !allowedStatuses.has(requestedStatus)
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid Court Study request status",
+        });
+      }
+
+      const requests =
+        await prisma.courtStudyRequest.findMany({
+          where: requestedStatus
+            ? {
+                status: requestedStatus,
+              }
+            : undefined,
+
+          include: {
+            recording: {
+              select: {
+                id: true,
+                title: true,
+                speakerName: true,
+                organizationName: true,
+                recordingUrl: true,
+                status: true,
+              },
+            },
+
+            campaign: {
+              select: {
+                id: true,
+                guestName: true,
+                guestEmail: true,
+                organizationName: true,
+                status: true,
+                sentAt: true,
+                expiresAt: true,
+              },
+            },
+          },
+
+          orderBy: {
+            createdAt: "desc",
+          },
+        });
+
+      return res.status(200).json({
+        success: true,
+        count: requests.length,
+        requests,
+      });
+    } catch (err) {
+      console.error(
+        "❌ GET /api/court-study-requests error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
