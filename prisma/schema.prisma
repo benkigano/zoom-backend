@@ -407,11 +407,7 @@ model GuestDistributionCampaign {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  recording Recording @relation(
-    fields: [recordingId],
-    references: [id],
-    onDelete: Cascade
-  )
+ recording Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
 
   courtStudyRequests CourtStudyRequest[]
 
@@ -440,17 +436,9 @@ model CourtStudyRequest {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  campaign GuestDistributionCampaign @relation(
-    fields: [campaignId],
-    references: [id],
-    onDelete: Cascade
-  )
+  campaign GuestDistributionCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
-  recording Recording @relation(
-    fields: [recordingId],
-    references: [id],
-    onDelete: Cascade
-  )
+  recording Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
 
   @@index([campaignId])
   @@index([recordingId])
