@@ -3869,6 +3869,115 @@ app.get(
   }
 );
 
+// =====================================================
+// Admin: update Court Study request status
+// =====================================================
+app.patch(
+  "/api/court-study-requests/:id/status",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const requestId = String(req.params.id || "").trim();
+
+      const requestedStatus = req.body?.status
+        ? String(req.body.status).trim().toUpperCase()
+        : "";
+
+      if (!requestId) {
+        return res.status(400).json({
+          success: false,
+          error: "Court Study request ID is required",
+        });
+      }
+
+      const allowedStatuses = new Set([
+        "PENDING",
+        "APPROVED",
+        "DECLINED",
+        "SCHEDULED",
+        "COMPLETED",
+        "CANCELLED",
+      ]);
+
+      if (!allowedStatuses.has(requestedStatus)) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Status must be PENDING, APPROVED, DECLINED, SCHEDULED, COMPLETED, or CANCELLED",
+        });
+      }
+
+      const existingRequest =
+        await prisma.courtStudyRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+          include: {
+            recording: true,
+            campaign: true,
+          },
+        });
+
+      if (!existingRequest) {
+        return res.status(404).json({
+          success: false,
+          error: "Court Study request not found",
+        });
+      }
+
+      const updatedRequest =
+        await prisma.courtStudyRequest.update({
+          where: {
+            id: requestId,
+          },
+          data: {
+            status: requestedStatus,
+          },
+          include: {
+            recording: {
+              select: {
+                id: true,
+                title: true,
+                speakerName: true,
+                organizationName: true,
+                recordingUrl: true,
+                status: true,
+              },
+            },
+
+            campaign: {
+              select: {
+                id: true,
+                guestName: true,
+                guestEmail: true,
+                organizationName: true,
+                status: true,
+                sentAt: true,
+                expiresAt: true,
+              },
+            },
+          },
+        });
+
+      return res.status(200).json({
+        success: true,
+        message: `Court Study request status changed to ${requestedStatus}`,
+        request: updatedRequest,
+      });
+    } catch (err) {
+      console.error(
+        "❌ PATCH /api/court-study-requests/:id/status error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
