@@ -2811,6 +2811,110 @@ app.post(
   }
 );
 
+// =====================================================
+// Guest Distribution Campaigns
+// Court assigns a finalized recording to the guest leader
+// =====================================================
+app.post(
+  "/api/guest-distribution-campaigns",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const {
+        recordingId,
+        guestName,
+        guestEmail,
+        organizationName,
+        expiresInDays = 30,
+      } = req.body || {};
+
+      if (!recordingId || !guestName || !guestEmail) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "recordingId, guestName, and guestEmail are required",
+        });
+      }
+
+      const recording = await prisma.recording.findUnique({
+        where: {
+          id: String(recordingId),
+        },
+      });
+
+      if (!recording) {
+        return res.status(404).json({
+          success: false,
+          error: "Recording not found",
+        });
+      }
+
+      if (recording.status !== "READY") {
+        return res.status(400).json({
+          success: false,
+          error:
+            "The recording must have READY status before it can be assigned to a guest",
+        });
+      }
+
+      if (!recording.recordingUrl) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "The recording does not yet have a playback URL",
+        });
+      }
+
+      const requestedDays = Number(expiresInDays);
+      const validDays =
+        Number.isFinite(requestedDays) && requestedDays > 0
+          ? Math.min(Math.floor(requestedDays), 365)
+          : 30;
+
+      const expiresAt = new Date(
+        Date.now() + validDays * 24 * 60 * 60 * 1000
+      );
+
+      const distributionToken = crypto
+        .randomBytes(32)
+        .toString("hex");
+
+      const campaign =
+        await prisma.guestDistributionCampaign.create({
+          data: {
+            recordingId: String(recordingId),
+            guestName: String(guestName).trim(),
+            guestEmail: String(guestEmail).trim().toLowerCase(),
+            organizationName: organizationName
+              ? String(organizationName).trim()
+              : null,
+            distributionToken,
+            status: "DRAFT",
+            expiresAt,
+          },
+          include: {
+            recording: true,
+          },
+        });
+
+      return res.status(201).json({
+        success: true,
+        campaign,
+      });
+    } catch (err) {
+      console.error(
+        "❌ POST /api/guest-distribution-campaigns error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
