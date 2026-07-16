@@ -63,11 +63,6 @@ enum CourtStudyDiscussionType {
   INTERVIEW_RECORDING
 }
 
-enum CourtStudyDiscussionType {
-  RULES_OF_PROCEDURE
-  INTERVIEW_RECORDING
-}
-
 enum GuestDistributionCampaignStatus {
   DRAFT
   READY
