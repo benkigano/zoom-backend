@@ -62,6 +62,40 @@ enum CourtStudyDiscussionType {
   RULES_OF_PROCEDURE
   INTERVIEW_RECORDING
 }
+
+enum CourtStudyDiscussionType {
+  RULES_OF_PROCEDURE
+  INTERVIEW_RECORDING
+}
+
+enum GuestDistributionCampaignStatus {
+  DRAFT
+  READY
+  SENT_TO_GUEST
+  ACTIVE
+  CLOSED
+}
+
+enum CourtStudyRequestStatus {
+  PENDING
+  APPROVED
+  DECLINED
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum CourtStudyHostMode {
+  COURT_HOSTED
+  PASTOR_HOSTED
+  IN_PERSON
+  HYBRID
+}
+
+/**
+ * PHASE 1 TABLES
+ */
+
 /**
  * PHASE 1 TABLES
  */
