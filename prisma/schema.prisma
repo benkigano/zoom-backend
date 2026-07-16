@@ -362,8 +362,9 @@ model CourtStudyTimeSlot {
 }
 
 model CourtStudyMeeting {
-  id                  String                   @id @default(cuid())
-  churchContactId     String
+  id                  String @id @default(cuid())
+  churchContactId     String?
+  courtStudyRequestId String? @unique
   timeSlotId          String?
 
   title               String
@@ -385,13 +386,15 @@ model CourtStudyMeeting {
   createdAt           DateTime                  @default(now())
   updatedAt           DateTime                  @updatedAt
 
-  churchContact ChurchContact      @relation(fields: [churchContactId], references: [id], onDelete: Cascade)
-  timeSlot      CourtStudyTimeSlot? @relation(fields: [timeSlotId], references: [id], onDelete: SetNull)
+ churchContact     ChurchContact?    @relation(fields: [churchContactId], references: [id], onDelete: SetNull)
+courtStudyRequest CourtStudyRequest? @relation(fields: [courtStudyRequestId], references: [id], onDelete: SetNull)
+timeSlot          CourtStudyTimeSlot? @relation(fields: [timeSlotId], references: [id], onDelete: SetNull)
 
   @@index([churchContactId])
   @@index([timeSlotId])
   @@index([scheduledStart])
   @@index([status])
+  @@index([courtStudyRequestId])
 }
 
 model GuestDistributionCampaign {
@@ -439,6 +442,8 @@ model CourtStudyRequest {
   campaign GuestDistributionCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   recording Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+
+  courtStudyMeeting CourtStudyMeeting?
 
   @@index([campaignId])
   @@index([recordingId])
