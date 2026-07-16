@@ -273,6 +273,8 @@ model Recording {
   status             RecordingStatus @default(DRAFT)
 
   distributionLogs   DistributionLog[]
+  guestDistributionCampaigns GuestDistributionCampaign[]
+  courtStudyRequests          CourtStudyRequest[]
 
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -390,4 +392,69 @@ model CourtStudyMeeting {
   @@index([timeSlotId])
   @@index([scheduledStart])
   @@index([status])
+}
+
+model GuestDistributionCampaign {
+  id               String   @id @default(cuid())
+  recordingId      String
+  guestName        String
+  guestEmail       String
+  organizationName String?
+  distributionToken String   @unique
+  status           GuestDistributionCampaignStatus @default(DRAFT)
+  sentAt           DateTime?
+  expiresAt        DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  recording Recording @relation(
+    fields: [recordingId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  courtStudyRequests CourtStudyRequest[]
+
+  @@index([recordingId])
+  @@index([guestEmail])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model CourtStudyRequest {
+  id                  String   @id @default(cuid())
+  campaignId          String
+  recordingId         String
+  pastorName          String
+  pastorEmail         String
+  roleTitle           String?
+  churchName          String
+  dioceseOrGroup      String?
+  phone               String?
+  preferredStart      DateTime?
+  timezone            String?
+  meetingFormat       CourtStudyHostMode?
+  estimatedAttendance Int?
+  notes               String?
+  status              CourtStudyRequestStatus @default(PENDING)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  campaign GuestDistributionCampaign @relation(
+    fields: [campaignId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  recording Recording @relation(
+    fields: [recordingId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  @@index([campaignId])
+  @@index([recordingId])
+  @@index([pastorEmail])
+  @@index([status])
+  @@index([preferredStart])
 }
