@@ -2915,6 +2915,208 @@ app.post(
   }
 );
 
+// =====================================================
+// Send finalized recording invitation to the guest leader
+// =====================================================
+app.post(
+  "/api/guest-distribution-campaigns/:id/send-to-guest",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const campaignId = String(req.params.id);
+
+      const campaign =
+        await prisma.guestDistributionCampaign.findUnique({
+          where: {
+            id: campaignId,
+          },
+          include: {
+            recording: true,
+          },
+        });
+
+      if (!campaign) {
+        return res.status(404).json({
+          success: false,
+          error: "Guest distribution campaign not found",
+        });
+      }
+
+      if (campaign.status === "CLOSED") {
+        return res.status(400).json({
+          success: false,
+          error: "This guest distribution campaign is closed",
+        });
+      }
+
+      if (
+        campaign.expiresAt &&
+        campaign.expiresAt.getTime() <= Date.now()
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "This guest distribution campaign has expired",
+        });
+      }
+
+      if (!campaign.recording) {
+        return res.status(404).json({
+          success: false,
+          error: "The recording connected to this campaign was not found",
+        });
+      }
+
+      if (campaign.recording.status !== "READY") {
+        return res.status(400).json({
+          success: false,
+          error:
+            "The recording must have READY status before it can be sent",
+        });
+      }
+
+      if (!campaign.recording.recordingUrl) {
+        return res.status(400).json({
+          success: false,
+          error: "The recording does not have a playback URL",
+        });
+      }
+
+      const backendBaseUrl =
+        process.env.BACKEND_PUBLIC_URL ||
+        `${req.protocol}://${req.get("host")}`;
+
+      const pastorInvitationUrl =
+        `${backendBaseUrl}/guest-distribution/` +
+        encodeURIComponent(campaign.distributionToken);
+
+      const recordingTitle =
+        campaign.recording.title ||
+        "Court of Compassion Interview Recording";
+
+      const organizationLine = campaign.organizationName
+        ? `\nOrganization: ${campaign.organizationName}`
+        : "";
+
+      const subject =
+        `Court of Compassion — Finalized Interview Recording: ` +
+        recordingTitle;
+
+      const plainTextBody = `Dear ${campaign.guestName},
+
+The Court of Compassion has finalized your interview recording.
+
+Recording:
+${recordingTitle}
+
+Watch the recording:
+${campaign.recording.recordingUrl}
+${organizationLine}
+
+You may invite pastors, priests, or other church leaders within your diocese or church group to view the recording and request a Court Study session based on the interview.
+
+Pastor invitation and Court Study request link:
+${pastorInvitationUrl}
+
+You may forward that invitation link to the appropriate church leaders. The Court does not require your private pastor email list.
+
+The invitation link is unique to this recording and guest distribution campaign.
+
+Respectfully,
+
+Court of Compassion`;
+
+      const htmlBody = `
+        <p>Dear ${campaign.guestName},</p>
+
+        <p>
+          The Court of Compassion has finalized your interview recording.
+        </p>
+
+        <p>
+          <strong>Recording:</strong><br>
+          ${recordingTitle}
+        </p>
+
+        <p>
+          <a href="${campaign.recording.recordingUrl}">
+            Watch the finalized interview recording
+          </a>
+        </p>
+
+        ${
+          campaign.organizationName
+            ? `<p><strong>Organization:</strong> ${campaign.organizationName}</p>`
+            : ""
+        }
+
+        <p>
+          You may invite pastors, priests, or other church leaders within
+          your diocese or church group to view the recording and request a
+          Court Study session based on the interview.
+        </p>
+
+        <p>
+          <a href="${pastorInvitationUrl}">
+            Open the pastor invitation and Court Study request page
+          </a>
+        </p>
+
+        <p>
+          You may forward that invitation link to the appropriate church
+          leaders. The Court does not require your private pastor email list.
+        </p>
+
+        <p>
+          The invitation link is unique to this recording and guest
+          distribution campaign.
+        </p>
+
+        <p>
+          Respectfully,<br>
+          <strong>Court of Compassion</strong>
+        </p>
+      `;
+
+      await sendEmail(
+        campaign.guestEmail,
+        subject,
+        plainTextBody,
+        htmlBody
+      );
+
+      const updatedCampaign =
+        await prisma.guestDistributionCampaign.update({
+          where: {
+            id: campaignId,
+          },
+          data: {
+            status: "SENT_TO_GUEST",
+            sentAt: new Date(),
+          },
+          include: {
+            recording: true,
+          },
+        });
+
+      return res.status(200).json({
+        success: true,
+        message: "Guest recording invitation sent successfully",
+        campaign: updatedCampaign,
+      });
+    } catch (err) {
+      console.error(
+        "❌ POST /api/guest-distribution-campaigns/:id/send-to-guest error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
