@@ -3978,6 +3978,179 @@ app.patch(
   }
 );
 
+// =====================================================
+// Admin: schedule an approved Court Study request
+// =====================================================
+app.post(
+  "/api/court-study-requests/:id/schedule",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const requestId = String(req.params.id || "").trim();
+
+      if (!requestId) {
+        return res.status(400).json({
+          success: false,
+          error: "Court Study request ID is required",
+        });
+      }
+
+      const {
+        scheduledStart,
+        scheduledEnd,
+        timezone,
+        title,
+        description,
+      } = req.body || {};
+
+      if (!scheduledStart || !scheduledEnd || !timezone) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "scheduledStart, scheduledEnd, and timezone are required",
+        });
+      }
+
+      const parsedStart = new Date(String(scheduledStart));
+      const parsedEnd = new Date(String(scheduledEnd));
+
+      if (Number.isNaN(parsedStart.getTime())) {
+        return res.status(400).json({
+          success: false,
+          error: "scheduledStart is not a valid date and time",
+        });
+      }
+
+      if (Number.isNaN(parsedEnd.getTime())) {
+        return res.status(400).json({
+          success: false,
+          error: "scheduledEnd is not a valid date and time",
+        });
+      }
+
+      if (parsedEnd.getTime() <= parsedStart.getTime()) {
+        return res.status(400).json({
+          success: false,
+          error: "scheduledEnd must be later than scheduledStart",
+        });
+      }
+
+      const courtStudyRequest =
+        await prisma.courtStudyRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+          include: {
+            recording: true,
+            campaign: true,
+            courtStudyMeeting: true,
+          },
+        });
+
+      if (!courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error: "Court Study request not found",
+        });
+      }
+
+      if (courtStudyRequest.status !== "APPROVED") {
+        return res.status(400).json({
+          success: false,
+          error:
+            "The Court Study request must be APPROVED before it can be scheduled",
+        });
+      }
+
+      if (courtStudyRequest.courtStudyMeeting) {
+        return res.status(409).json({
+          success: false,
+          error:
+            "A Court Study meeting has already been created for this request",
+          meeting: courtStudyRequest.courtStudyMeeting,
+        });
+      }
+
+      const meetingTitle =
+        title && String(title).trim()
+          ? String(title).trim()
+          : `Court Study — ${
+              courtStudyRequest.recording.title ||
+              courtStudyRequest.pastorName
+            }`;
+
+      const meetingDescription =
+        description && String(description).trim()
+          ? String(description).trim()
+          : `Court Study session requested by ${
+              courtStudyRequest.pastorName
+            } of ${courtStudyRequest.churchName}, based on the recorded interview "${
+              courtStudyRequest.recording.title ||
+              "Court of Compassion Interview"
+            }".`;
+
+      const result = await prisma.$transaction(async (tx) => {
+        const meeting = await tx.courtStudyMeeting.create({
+          data: {
+            courtStudyRequestId: courtStudyRequest.id,
+            churchContactId: null,
+            timeSlotId: null,
+
+            title: meetingTitle,
+            description: meetingDescription,
+            discussionType: "INTERVIEW_RECORDING",
+            selectedChapter: null,
+            selectedSection: null,
+            selectedRecordingId: courtStudyRequest.recordingId,
+
+            scheduledStart: parsedStart,
+            scheduledEnd: parsedEnd,
+            timezone: String(timezone).trim(),
+
+            zoomMeetingId: null,
+            zoomRegistrationUrl: null,
+            zoomJoinUrl: null,
+
+            status: "SCHEDULED",
+          },
+        });
+
+        const updatedRequest =
+          await tx.courtStudyRequest.update({
+            where: {
+              id: courtStudyRequest.id,
+            },
+            data: {
+              status: "SCHEDULED",
+            },
+          });
+
+        return {
+          meeting,
+          request: updatedRequest,
+        };
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: "Court Study session scheduled successfully",
+        meeting: result.meeting,
+        request: result.request,
+      });
+    } catch (err) {
+      console.error(
+        "❌ POST /api/court-study-requests/:id/schedule error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
