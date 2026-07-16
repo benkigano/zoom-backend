@@ -4151,6 +4151,211 @@ app.post(
   }
 );
 
+// =====================================================
+// Admin: create a Court-hosted Zoom meeting
+// for a scheduled Court Study request
+// =====================================================
+app.post(
+  "/api/court-study-requests/:id/create-zoom",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const requestId = String(req.params.id || "").trim();
+
+      if (!requestId) {
+        return res.status(400).json({
+          success: false,
+          error: "Court Study request ID is required",
+        });
+      }
+
+      const courtStudyRequest =
+        await prisma.courtStudyRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+          include: {
+            recording: true,
+            campaign: true,
+            courtStudyMeeting: true,
+          },
+        });
+
+      if (!courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error: "Court Study request not found",
+        });
+      }
+
+      if (courtStudyRequest.status !== "SCHEDULED") {
+        return res.status(400).json({
+          success: false,
+          error:
+            "The Court Study request must be SCHEDULED before creating its Zoom meeting",
+        });
+      }
+
+      const meeting = courtStudyRequest.courtStudyMeeting;
+
+      if (!meeting) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "No scheduled Court Study meeting was found for this request",
+        });
+      }
+
+      if (meeting.zoomMeetingId) {
+        return res.status(409).json({
+          success: false,
+          error:
+            "A Zoom meeting has already been created for this Court Study session",
+          meeting,
+        });
+      }
+
+      const meetingFormat = courtStudyRequest.meetingFormat;
+
+      if (
+        meetingFormat !== "COURT_HOSTED" &&
+        meetingFormat !== "HYBRID"
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            meetingFormat === "IN_PERSON"
+              ? "This is an in-person Court Study request and does not require a Zoom meeting"
+              : "Pastor-hosted Zoom sessions require the pastor to connect a Zoom account first",
+        });
+      }
+
+      const scheduledStart = new Date(meeting.scheduledStart);
+      const scheduledEnd = new Date(meeting.scheduledEnd);
+
+      const durationMinutes = Math.max(
+        1,
+        Math.ceil(
+          (scheduledEnd.getTime() -
+            scheduledStart.getTime()) /
+            60000
+        )
+      );
+
+      const accessToken = await getS2SAccessToken();
+
+      const zoomPayload = {
+        topic: meeting.title,
+        type: 2,
+        start_time: scheduledStart.toISOString(),
+        duration: durationMinutes,
+        timezone: meeting.timezone,
+        agenda:
+          meeting.description ||
+          `Court Study session based on the recorded interview "${
+            courtStudyRequest.recording.title ||
+            "Court of Compassion Interview"
+          }".`,
+
+        settings: {
+          join_before_host: false,
+          waiting_room: true,
+          approval_type: 0,
+          meeting_authentication: false,
+          mute_upon_entry: true,
+          participant_video: true,
+          host_video: true,
+          auto_recording: "cloud",
+        },
+      };
+
+      const zoomResponse = await fetch(
+        "https://api.zoom.us/v2/users/me/meetings",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(zoomPayload),
+        }
+      );
+
+      const zoomData = await zoomResponse
+        .json()
+        .catch(() => ({}));
+
+      if (!zoomResponse.ok) {
+        console.error(
+          "❌ Zoom Court Study meeting creation failed:",
+          zoomData
+        );
+
+        return res.status(zoomResponse.status).json({
+          success: false,
+          error:
+            zoomData.message ||
+            zoomData.reason ||
+            "Zoom could not create the Court Study meeting",
+          zoom: zoomData,
+        });
+      }
+
+      if (!zoomData.id || !zoomData.join_url) {
+        return res.status(502).json({
+          success: false,
+          error:
+            "Zoom created an incomplete meeting response",
+          zoom: zoomData,
+        });
+      }
+
+      const updatedMeeting =
+        await prisma.courtStudyMeeting.update({
+          where: {
+            id: meeting.id,
+          },
+          data: {
+            zoomMeetingId: String(zoomData.id),
+            zoomRegistrationUrl:
+              zoomData.registration_url || null,
+            zoomJoinUrl: zoomData.join_url,
+            status: "SCHEDULED",
+          },
+        });
+
+      return res.status(201).json({
+        success: true,
+        message:
+          "Court Study Zoom meeting created successfully",
+        meeting: updatedMeeting,
+        zoom: {
+          id: String(zoomData.id),
+          joinUrl: zoomData.join_url,
+          registrationUrl:
+            zoomData.registration_url || null,
+          startTime:
+            zoomData.start_time ||
+            scheduledStart.toISOString(),
+          duration: zoomData.duration || durationMinutes,
+          timezone:
+            zoomData.timezone || meeting.timezone,
+        },
+      });
+    } catch (err) {
+      console.error(
+        "❌ POST /api/court-study-requests/:id/create-zoom error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
