@@ -3117,6 +3117,389 @@ Court of Compassion`;
   }
 );
 
+// =====================================================
+// Public guest distribution page
+// Guest leader forwards this page to pastors or priests
+// =====================================================
+app.get("/guest-distribution/:token", async (req, res) => {
+  try {
+    const distributionToken = String(req.params.token || "").trim();
+
+    if (!distributionToken) {
+      return res.status(400).send("Missing distribution token");
+    }
+
+    const campaign =
+      await prisma.guestDistributionCampaign.findUnique({
+        where: {
+          distributionToken,
+        },
+        include: {
+          recording: true,
+        },
+      });
+
+    if (!campaign) {
+      return res.status(404).send(
+        "This Court of Compassion invitation could not be found."
+      );
+    }
+
+    if (campaign.status === "CLOSED") {
+      return res.status(410).send(
+        "This Court of Compassion invitation is closed."
+      );
+    }
+
+    if (
+      campaign.expiresAt &&
+      campaign.expiresAt.getTime() <= Date.now()
+    ) {
+      return res.status(410).send(
+        "This Court of Compassion invitation has expired."
+      );
+    }
+
+    if (!campaign.recording) {
+      return res.status(404).send(
+        "The interview recording connected to this invitation could not be found."
+      );
+    }
+
+    if (!campaign.recording.recordingUrl) {
+      return res.status(404).send(
+        "The interview recording is not yet available."
+      );
+    }
+
+    if (campaign.status === "SENT_TO_GUEST") {
+      await prisma.guestDistributionCampaign.update({
+        where: {
+          id: campaign.id,
+        },
+        data: {
+          status: "ACTIVE",
+        },
+      });
+    }
+
+    const escapeHtml = (value) =>
+      String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+
+    const safeWebUrl = (value) => {
+      try {
+        const parsedUrl = new URL(String(value));
+
+        if (
+          parsedUrl.protocol !== "https:" &&
+          parsedUrl.protocol !== "http:"
+        ) {
+          return "#";
+        }
+
+        return escapeHtml(parsedUrl.toString());
+      } catch {
+        return "#";
+      }
+    };
+
+    const recordingTitle = escapeHtml(
+      campaign.recording.title ||
+        "Court of Compassion Interview Recording"
+    );
+
+    const guestName = escapeHtml(campaign.guestName);
+
+    const organizationName = campaign.organizationName
+      ? escapeHtml(campaign.organizationName)
+      : "";
+
+    const speakerName = campaign.recording.speakerName
+      ? escapeHtml(campaign.recording.speakerName)
+      : guestName;
+
+    const recordingUrl = safeWebUrl(
+      campaign.recording.recordingUrl
+    );
+
+    const recordingPasscode =
+      campaign.recording.recordingPasscode
+        ? escapeHtml(campaign.recording.recordingPasscode)
+        : "";
+
+    const formAction =
+      `/guest-distribution/` +
+      encodeURIComponent(distributionToken) +
+      `/court-study-requests`;
+
+    return res.status(200).type("html").send(`
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+  <title>${recordingTitle} — Court of Compassion</title>
+
+  <style>
+    body {
+      margin: 0;
+      background: #071b33;
+      color: #f7f2e8;
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.6;
+    }
+
+    main {
+      width: min(900px, calc(100% - 32px));
+      margin: 32px auto;
+    }
+
+    .card {
+      background: #102b4c;
+      border: 1px solid #c8a85a;
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    h1, h2 {
+      color: #e4c778;
+      margin-top: 0;
+    }
+
+    a.button,
+    button {
+      display: inline-block;
+      background: #d6b65f;
+      color: #071b33;
+      border: 0;
+      border-radius: 8px;
+      padding: 12px 18px;
+      font-weight: bold;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    label {
+      display: block;
+      margin-top: 14px;
+      font-weight: bold;
+    }
+
+    input,
+    select,
+    textarea {
+      box-sizing: border-box;
+      width: 100%;
+      margin-top: 5px;
+      padding: 11px;
+      border: 1px solid #b7c3d0;
+      border-radius: 7px;
+      font: inherit;
+    }
+
+    textarea {
+      min-height: 110px;
+      resize: vertical;
+    }
+
+    .note {
+      color: #d9e2eb;
+      font-size: 0.95rem;
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <section class="card">
+      <h1>Court of Compassion Interview</h1>
+
+      <p>
+        You have been invited by
+        <strong>${guestName}</strong>
+        ${
+          organizationName
+            ? `of <strong>${organizationName}</strong>`
+            : ""
+        }
+        to view this finalized interview recording.
+      </p>
+
+      <h2>${recordingTitle}</h2>
+
+      <p>
+        <strong>Guest:</strong> ${speakerName}
+      </p>
+
+      <p>
+        <a
+          class="button"
+          href="${recordingUrl}"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Watch the Interview Recording
+        </a>
+      </p>
+
+      ${
+        recordingPasscode
+          ? `
+            <p>
+              <strong>Recording passcode:</strong>
+              ${recordingPasscode}
+            </p>
+          `
+          : ""
+      }
+    </section>
+
+    <section class="card">
+      <h2>Request a Court Study Session</h2>
+
+      <p>
+        A pastor, priest, or church leader may request a
+        Court Study session centered on this recorded interview.
+      </p>
+
+      <p>
+        The session may be hosted by the Court, hosted by the
+        church leader, conducted in person, or arranged as a
+        hybrid meeting.
+      </p>
+
+      <form method="post" action="${formAction}">
+        <label for="pastorName">Pastor or church leader name</label>
+        <input
+          id="pastorName"
+          name="pastorName"
+          type="text"
+          required
+        >
+
+        <label for="pastorEmail">Email address</label>
+        <input
+          id="pastorEmail"
+          name="pastorEmail"
+          type="email"
+          required
+        >
+
+        <label for="roleTitle">Role or title</label>
+        <input
+          id="roleTitle"
+          name="roleTitle"
+          type="text"
+          placeholder="Pastor, priest, bishop, ministry leader"
+        >
+
+        <label for="churchName">Church name</label>
+        <input
+          id="churchName"
+          name="churchName"
+          type="text"
+          required
+        >
+
+        <label for="dioceseOrGroup">Diocese or church group</label>
+        <input
+          id="dioceseOrGroup"
+          name="dioceseOrGroup"
+          type="text"
+        >
+
+        <label for="phone">Telephone number</label>
+        <input
+          id="phone"
+          name="phone"
+          type="tel"
+        >
+
+        <label for="preferredStart">
+          Preferred date and time
+        </label>
+        <input
+          id="preferredStart"
+          name="preferredStart"
+          type="datetime-local"
+        >
+
+        <label for="timezone">Time zone</label>
+        <input
+          id="timezone"
+          name="timezone"
+          type="text"
+          placeholder="America/Los_Angeles"
+        >
+
+        <label for="meetingFormat">Preferred meeting format</label>
+        <select id="meetingFormat" name="meetingFormat">
+          <option value="">Select one</option>
+          <option value="COURT_HOSTED">
+            Court-hosted online session
+          </option>
+          <option value="PASTOR_HOSTED">
+            Pastor-hosted online session
+          </option>
+          <option value="IN_PERSON">
+            In-person church session
+          </option>
+          <option value="HYBRID">
+            Hybrid session
+          </option>
+        </select>
+
+        <label for="estimatedAttendance">
+          Estimated attendance
+        </label>
+        <input
+          id="estimatedAttendance"
+          name="estimatedAttendance"
+          type="number"
+          min="1"
+        >
+
+        <label for="notes">
+          Additional information or requested discussion focus
+        </label>
+        <textarea id="notes" name="notes"></textarea>
+
+        <p class="note">
+          Submitting this form is a request. The Court of Compassion
+          will review the request before confirming or scheduling a
+          Court Study session.
+        </p>
+
+        <button type="submit">
+          Submit Court Study Request
+        </button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>
+    `);
+  } catch (err) {
+    console.error(
+      "❌ GET /guest-distribution/:token error:",
+      err
+    );
+
+    return res.status(500).send(
+      "The Court of Compassion invitation page could not be loaded."
+    );
+  }
+});
+
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
