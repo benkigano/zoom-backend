@@ -4356,6 +4356,193 @@ app.post(
   }
 );
 
+// =====================================================
+// Admin: save an externally created Zoom meeting
+// for a scheduled Court Study request
+// =====================================================
+app.post(
+  "/api/court-study-requests/:id/manual-zoom",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const requestId = String(req.params.id || "").trim();
+
+      if (!requestId) {
+        return res.status(400).json({
+          success: false,
+          error: "Court Study request ID is required",
+        });
+      }
+
+      const {
+        zoomMeetingId,
+        zoomJoinUrl,
+        zoomRegistrationUrl,
+      } = req.body || {};
+
+      if (!zoomMeetingId || !zoomJoinUrl) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "zoomMeetingId and zoomJoinUrl are required",
+        });
+      }
+
+      const normalizedMeetingId = String(zoomMeetingId)
+        .trim()
+        .replace(/\s+/g, "");
+
+      if (!normalizedMeetingId) {
+        return res.status(400).json({
+          success: false,
+          error: "Zoom meeting ID cannot be empty",
+        });
+      }
+
+      const validateHttpUrl = (value, fieldName) => {
+        try {
+          const parsedUrl = new URL(String(value).trim());
+
+          if (
+            parsedUrl.protocol !== "https:" &&
+            parsedUrl.protocol !== "http:"
+          ) {
+            throw new Error();
+          }
+
+          return parsedUrl.toString();
+        } catch {
+          throw new Error(
+            `${fieldName} must be a valid web address`
+          );
+        }
+      };
+
+      let normalizedJoinUrl;
+
+      try {
+        normalizedJoinUrl = validateHttpUrl(
+          zoomJoinUrl,
+          "Zoom join URL"
+        );
+      } catch (validationError) {
+        return res.status(400).json({
+          success: false,
+          error: validationError.message,
+        });
+      }
+
+      let normalizedRegistrationUrl = null;
+
+      if (
+        zoomRegistrationUrl &&
+        String(zoomRegistrationUrl).trim()
+      ) {
+        try {
+          normalizedRegistrationUrl = validateHttpUrl(
+            zoomRegistrationUrl,
+            "Zoom registration URL"
+          );
+        } catch (validationError) {
+          return res.status(400).json({
+            success: false,
+            error: validationError.message,
+          });
+        }
+      }
+
+      const courtStudyRequest =
+        await prisma.courtStudyRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+          include: {
+            recording: true,
+            campaign: true,
+            courtStudyMeeting: true,
+          },
+        });
+
+      if (!courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error: "Court Study request not found",
+        });
+      }
+
+      if (courtStudyRequest.status !== "SCHEDULED") {
+        return res.status(400).json({
+          success: false,
+          error:
+            "The Court Study request must be SCHEDULED before Zoom details can be saved",
+        });
+      }
+
+      if (
+        courtStudyRequest.meetingFormat === "IN_PERSON"
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "This is an in-person Court Study request and does not require Zoom details",
+        });
+      }
+
+      const meeting = courtStudyRequest.courtStudyMeeting;
+
+      if (!meeting) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "No scheduled Court Study meeting was found for this request",
+        });
+      }
+
+      if (meeting.zoomMeetingId || meeting.zoomJoinUrl) {
+        return res.status(409).json({
+          success: false,
+          error:
+            "Zoom details have already been saved for this Court Study session",
+          meeting,
+        });
+      }
+
+      const updatedMeeting =
+        await prisma.courtStudyMeeting.update({
+          where: {
+            id: meeting.id,
+          },
+          data: {
+            zoomMeetingId: normalizedMeetingId,
+            zoomJoinUrl: normalizedJoinUrl,
+            zoomRegistrationUrl:
+              normalizedRegistrationUrl,
+            status: "SCHEDULED",
+          },
+        });
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "Externally created Zoom meeting details saved successfully",
+        meeting: updatedMeeting,
+        hostingMethod:
+          courtStudyRequest.meetingFormat,
+      });
+    } catch (err) {
+      console.error(
+        "❌ POST /api/court-study-requests/:id/manual-zoom error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
