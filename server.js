@@ -3056,7 +3056,7 @@ You may invite pastors, priests, or other church leaders within your diocese or 
 Pastor invitation and Court Study request link:
 ${pastorInvitationUrl}
 
-You may forward that invitation link to the appropriate church leaders. The Court does not require your private pastor email list.
+Please forward this invitation link to the appropriate pastor, priest, or church leader. The church leader should complete and submit the Court Study request directly.
 
 The invitation link is unique to this recording and guest distribution campaign.
 
@@ -3416,6 +3416,12 @@ app.get("/guest-distribution/:token", async (req, res) => {
         hybrid meeting.
       </p>
 
+      <p>
+  <strong>
+    This form should be completed by the pastor, priest, or church leader requesting the Court Study session.
+  </strong>
+</p>
+
       <form method="post" action="${formAction}">
         <label for="pastorName">Pastor or church leader name</label>
         <input
@@ -3771,10 +3777,10 @@ app.post(
       <p>Dear ${safePastorName},</p>
 
       <p>
-        The Court of Compassion has received the Court Study
-        request submitted on behalf of
-        <strong>${safeChurchName}</strong>.
-      </p>
+  The Court of Compassion has received the Court Study
+  request you submitted on behalf of
+  <strong>${safeChurchName}</strong>.
+</p>
 
       <p>
         The request concerns the following interview recording:
