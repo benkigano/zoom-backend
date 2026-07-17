@@ -2915,6 +2915,45 @@ app.post(
   }
 );
 
+// List guest distribution campaigns
+app.get(
+  "/api/guest-distribution-campaigns",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const recordingId = req.query.recordingId
+        ? String(req.query.recordingId)
+        : null;
+
+      const campaigns = await prisma.guestDistributionCampaign.findMany({
+        where: recordingId ? { recordingId } : undefined,
+        include: {
+          recording: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+
+      return res.json({
+        success: true,
+        count: campaigns.length,
+        campaigns,
+      });
+    } catch (err) {
+      console.error(
+        "❌ GET /api/guest-distribution-campaigns error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err?.message || err),
+      });
+    }
+  }
+);
+
 // =====================================================
 // Send finalized recording invitation to the guest leader
 // =====================================================
