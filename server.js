@@ -536,6 +536,7 @@ app.post("/recordings", requireAdminToken, async (req, res) => {
   recordingPasscode,
   transcriptUrl,
   thumbnailUrl,
+  podcastUrl,
   status,
 } = data;
 
@@ -559,6 +560,7 @@ app.post("/recordings", requireAdminToken, async (req, res) => {
         recordingPasscode: recordingPasscode ? String(recordingPasscode).trim() : null,
         transcriptUrl: transcriptUrl ? String(transcriptUrl) : null,
         thumbnailUrl: thumbnailUrl ? String(thumbnailUrl) : null,
+        podcastUrl: podcastUrl ? String(podcastUrl).trim() : null,
         status: status ? String(status) : "DRAFT",
       },
     });
@@ -690,11 +692,13 @@ app.put("/recordings/:id", requireAdminToken, async (req, res) => {
       speakerName,
       organizationName,
       description,
-      recordingUrl,
-      recordingPasscode,
+      rrecordingPasscode,
       transcriptUrl,
+      thumbnailUrl,
+      podcastUrl,
       status,
-    } = req.body || {};
+     
+     } = req.body || {};
 
     const data = {};
 
@@ -735,6 +739,18 @@ app.put("/recordings/:id", requireAdminToken, async (req, res) => {
       data.transcriptUrl = String(transcriptUrl).trim();
     }
 
+    if (thumbnailUrl !== undefined) {
+  data.thumbnailUrl = thumbnailUrl
+    ? String(thumbnailUrl).trim()
+    : null;
+}
+
+if (podcastUrl !== undefined) {
+  data.podcastUrl = podcastUrl
+    ? String(podcastUrl).trim()
+    : null;
+}
+    
     if (status !== undefined) {
       const normalizedStatus = String(status).trim().toUpperCase();
 
