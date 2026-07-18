@@ -3888,6 +3888,7 @@ app.get(
                 expiresAt: true,
               },
             },
+           courtStudyMeeting: true, 
           },
 
           orderBy: {
