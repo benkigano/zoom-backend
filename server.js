@@ -4499,7 +4499,192 @@ app.post(
     }
   }
 );
+// ==================================================
+// Admin: preview the pastor Court Study invitation
+// package before sending
+// ==================================================
+app.get(
+  "/api/court-study-requests/:id/invitation-preview",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const requestId = String(req.params.id || "").trim();
 
+      if (!requestId) {
+        return res.status(400).json({
+          success: false,
+          error: "Court Study request ID is required",
+        });
+      }
+
+      const courtStudyRequest =
+        await prisma.courtStudyRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+          include: {
+            recording: true,
+            courtStudyMeeting: true,
+          },
+        });
+
+      if (!courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error: "Court Study request not found",
+        });
+      }
+
+      const meeting = courtStudyRequest.courtStudyMeeting;
+      const recording = courtStudyRequest.recording;
+
+      if (!meeting) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "This Court Study request does not have a scheduled meeting",
+        });
+      }
+
+      const recordingUrl = String(
+        recording?.recordingUrl || ""
+      ).trim();
+
+      const podcastUrl = String(
+        recording?.podcastUrl || ""
+      ).trim();
+
+      const registrationUrl = String(
+        meeting.zoomRegistrationUrl || ""
+      ).trim();
+
+      const missingFields = [];
+
+      if (!recordingUrl) {
+        missingFields.push("recordingUrl");
+      }
+
+      if (!registrationUrl) {
+        missingFields.push("zoomRegistrationUrl");
+      }
+
+      if (missingFields.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "The invitation package is not ready because required links are missing",
+          missingFields,
+        });
+      }
+
+      const timezone =
+        meeting.timezone ||
+        courtStudyRequest.timezone ||
+        "America/Los_Angeles";
+
+      const scheduledStart = new Date(
+        meeting.scheduledStart
+      );
+
+      const formattedDateTime =
+        new Intl.DateTimeFormat("en-US", {
+          timeZone: timezone,
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        }).format(scheduledStart);
+
+      const timezoneLabel =
+        timezone === "America/Los_Angeles"
+          ? "Pacific Time"
+          : timezone;
+
+      const readableSessionTime =
+        `${formattedDateTime} ${timezoneLabel}`;
+
+      const pastorName = courtStudyRequest.pastorName;
+      const pastorEmail = courtStudyRequest.pastorEmail;
+      const churchName = courtStudyRequest.churchName;
+      const interviewTitle =
+        recording?.title ||
+        meeting.title ||
+        "Court of Compassion Interview";
+
+      const memberInvitationText = [
+        `You are invited to participate in a Court of Compassion Court Study session hosted for ${churchName}.`,
+        "",
+        `Interview: ${interviewTitle}`,
+        `Session: ${readableSessionTime}`,
+        "",
+        `Watch the Interview Recording:`,
+        recordingUrl,
+        "",
+        ...(podcastUrl
+          ? [
+              `Listen to the Podcast:`,
+              podcastUrl,
+              "",
+            ]
+          : []),
+        `Register for the Zoom Court Study Session:`,
+        registrationUrl,
+        "",
+        `Important: Each participant must register separately using the registration link above. Zoom will send each registered participant a personal confirmation email and unique join link.`,
+      ].join("\n");
+
+      return res.status(200).json({
+        success: true,
+        invitation: {
+          courtStudyRequestId: courtStudyRequest.id,
+          meetingId: meeting.id,
+          pastorName,
+          pastorEmail,
+          churchName,
+          interviewTitle,
+          recordingUrl,
+          podcastUrl: podcastUrl || null,
+          registrationUrl,
+          scheduledStart:
+            meeting.scheduledStart.toISOString(),
+          scheduledEnd:
+            meeting.scheduledEnd.toISOString(),
+          timezone,
+          timezoneLabel,
+          readableSessionTime,
+          memberInvitationText,
+          delivery: {
+            invitationSentAt:
+              meeting.invitationSentAt,
+            invitationSentTo:
+              meeting.invitationSentTo,
+            invitationSendCount:
+              meeting.invitationSendCount,
+            invitationLastError:
+              meeting.invitationLastError,
+            publicInvitationToken:
+              meeting.publicInvitationToken,
+          },
+          warnings: podcastUrl
+            ? []
+            : ["This recording does not have a podcast URL"],
+        },
+      });
+    } catch (err) {
+      console.error(
+        "❌ GET /api/court-study-requests/:id/invitation-preview error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
 // =====================================================
 // Admin: save an externally created Zoom meeting
 // for a scheduled Court Study request
