@@ -3680,19 +3680,80 @@ app.post(
           ? String(meetingFormat)
           : null;
 
-      let parsedPreferredStart = null;
+     let parsedPreferredStart = null;
 
-      if (preferredStart) {
-        const dateValue = new Date(String(preferredStart));
+if (preferredStart) {
+  const preferredStartText = String(preferredStart).trim();
+  const timezoneText = timezone
+    ? String(timezone).trim()
+    : "America/Los_Angeles";
 
-        if (Number.isNaN(dateValue.getTime())) {
-          return res.status(400).send(
-            "The preferred date and time are invalid."
-          );
-        }
+  const match = preferredStartText.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/
+  );
 
-        parsedPreferredStart = dateValue;
-      }
+  if (!match) {
+    return res.status(400).send(
+      "The preferred date and time are invalid."
+    );
+  }
+
+  const [, year, month, day, hour, minute] = match;
+
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezoneText,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    });
+
+    const desiredUtc = Date.UTC(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      0
+    );
+
+    let utcGuess = desiredUtc;
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const parts = formatter.formatToParts(new Date(utcGuess));
+      const values = Object.fromEntries(
+        parts
+          .filter((part) => part.type !== "literal")
+          .map((part) => [part.type, part.value])
+      );
+
+      const displayedAsUtc = Date.UTC(
+        Number(values.year),
+        Number(values.month) - 1,
+        Number(values.day),
+        Number(values.hour),
+        Number(values.minute),
+        Number(values.second)
+      );
+
+      utcGuess += desiredUtc - displayedAsUtc;
+    }
+
+    parsedPreferredStart = new Date(utcGuess);
+
+    if (Number.isNaN(parsedPreferredStart.getTime())) {
+      throw new Error("Invalid converted date");
+    }
+  } catch {
+    return res.status(400).send(
+      "The time zone or preferred date and time are invalid."
+    );
+  }
+}
 
       let parsedEstimatedAttendance = null;
 
