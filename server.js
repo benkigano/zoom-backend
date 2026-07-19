@@ -3682,12 +3682,13 @@ app.post(
 
      let parsedPreferredStart = null;
 
+   const timezoneText = timezone
+  ? String(timezone).trim()
+  : "America/Los_Angeles";
+      
 if (preferredStart) {
   const preferredStartText = String(preferredStart).trim();
-  const timezoneText = timezone
-    ? String(timezone).trim()
-    : "America/Los_Angeles";
-
+ 
   const match = preferredStartText.match(
     /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/
   );
