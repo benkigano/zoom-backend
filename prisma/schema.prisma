@@ -382,6 +382,11 @@ model CourtStudyMeeting {
   zoomMeetingId       String?
   zoomRegistrationUrl String?
   zoomJoinUrl         String?
+  invitationSentAt     DateTime?
+  invitationSentTo     String?
+  invitationSendCount  Int       @default(0)
+  invitationLastError  String?
+  publicInvitationToken String?   @unique
   status              CourtStudyMeetingStatus  @default(DRAFT)
 
   createdAt           DateTime                  @default(now())
