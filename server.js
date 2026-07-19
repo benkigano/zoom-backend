@@ -3794,9 +3794,7 @@ if (preferredStart) {
               ? String(phone).trim()
               : null,
             preferredStart: parsedPreferredStart,
-            timezone: timezone
-              ? String(timezone).trim()
-              : null,
+            timezone: timezoneText,
             meetingFormat: normalizedMeetingFormat,
             estimatedAttendance:
               parsedEstimatedAttendance,
