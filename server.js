@@ -3283,6 +3283,10 @@ app.get("/guest-distribution/:token", async (req, res) => {
       campaign.recording.recordingUrl
     );
 
+    const podcastUrl = safeWebUrl(
+      campaign.recording.podcastUrl
+    ); 
+    
     const recordingPasscode =
       campaign.recording.recordingPasscode
         ? escapeHtml(campaign.recording.recordingPasscode)
@@ -3406,6 +3410,23 @@ app.get("/guest-distribution/:token", async (req, res) => {
           Watch the Interview Recording
         </a>
       </p>
+
+    ${
+  podcastUrl
+    ? `
+      <p>
+        <a
+          class="button"
+          href="${podcastUrl}"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Listen to the Podcast
+        </a>
+      </p>
+    `
+    : ""
+}
 
       ${
         recordingPasscode
