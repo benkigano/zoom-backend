@@ -349,6 +349,13 @@ async function sendEmail(to, subject, body, htmlBody = null) {
 
   console.log("✅ DISTRIBUTION EMAIL SENT TO:", to);
 }
+const safeEmailHtml = (value) =>
+  String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 const safeEmailWebUrl = (value) => {
   try {
     const parsedUrl = new URL(String(value));
@@ -4944,7 +4951,7 @@ app.post(
               </h2>
 
               <p>
-                Dear ${escapeHtml(pastorName || "Pastor")},
+                Dear ${safeEmailHtml(pastorName || "Pastor")},
               </p>
 
               <p>
@@ -4954,13 +4961,13 @@ app.post(
 
               <p>
                 <strong>Church:</strong>
-                ${escapeHtml(churchName)}
+                ${safeEmailHtml(churchName)}
                 <br>
                 <strong>Interview:</strong>
-                ${escapeHtml(interviewTitle)}
+                ${safeEmailHtml(interviewTitle)}
                 <br>
                 <strong>Session:</strong>
-                ${escapeHtml(readableSessionTime)}
+                ${safeEmailHtm(readableSessionTime)}
               </p>
 
               <p>
