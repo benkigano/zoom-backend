@@ -4685,6 +4685,438 @@ app.get(
     }
   }
 );
+
+// ==================================================
+// Admin: send the Court Study invitation package
+// to the pastor
+// ==================================================
+app.post(
+  "/api/court-study-requests/:id/send-invitation",
+  requireAdminToken,
+  async (req, res) => {
+    const requestId = String(req.params.id || "").trim();
+
+    if (!requestId) {
+      return res.status(400).json({
+        success: false,
+        error: "Court Study request ID is required",
+      });
+    }
+
+    let meetingId = null;
+    let pastorEmailForAudit = null;
+
+    try {
+      const courtStudyRequest =
+        await prisma.courtStudyRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+          include: {
+            recording: true,
+            courtStudyMeeting: true,
+          },
+        });
+
+      if (!courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error: "Court Study request not found",
+        });
+      }
+
+      const meeting = courtStudyRequest.courtStudyMeeting;
+      const recording = courtStudyRequest.recording;
+
+      if (!meeting) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "This Court Study request does not have a scheduled meeting",
+        });
+      }
+
+      meetingId = meeting.id;
+
+      const pastorName = String(
+        courtStudyRequest.pastorName || ""
+      ).trim();
+
+      const pastorEmail = String(
+        courtStudyRequest.pastorEmail || ""
+      ).trim();
+
+      const churchName = String(
+        courtStudyRequest.churchName || ""
+      ).trim();
+
+      pastorEmailForAudit = pastorEmail;
+
+      const recordingUrl = String(
+        recording?.recordingUrl || ""
+      ).trim();
+
+      const podcastUrl = String(
+        recording?.podcastUrl || ""
+      ).trim();
+
+      const registrationUrl = String(
+        meeting.zoomRegistrationUrl || ""
+      ).trim();
+
+      const missingFields = [];
+
+      if (!pastorEmail) {
+        missingFields.push("pastorEmail");
+      }
+
+      if (!recordingUrl) {
+        missingFields.push("recordingUrl");
+      }
+
+      if (!registrationUrl) {
+        missingFields.push("zoomRegistrationUrl");
+      }
+
+      if (missingFields.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "The pastor invitation cannot be sent because required information is missing",
+          missingFields,
+        });
+      }
+
+      const timezone =
+        meeting.timezone ||
+        courtStudyRequest.timezone ||
+        "America/Los_Angeles";
+
+      const scheduledStart = new Date(
+        meeting.scheduledStart
+      );
+
+      const formattedDateTime =
+        new Intl.DateTimeFormat("en-US", {
+          timeZone: timezone,
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        }).format(scheduledStart);
+
+      const timezoneLabel =
+        timezone === "America/Los_Angeles"
+          ? "Pacific Time"
+          : timezone;
+
+      const readableSessionTime =
+        `${formattedDateTime} ${timezoneLabel}`;
+
+      const interviewTitle =
+        recording?.title ||
+        meeting.title ||
+        "Court of Compassion Interview";
+
+      const memberInvitationText = [
+        `You are invited to participate in a Court of Compassion Court Study session hosted for ${churchName}.`,
+        "",
+        `Interview: ${interviewTitle}`,
+        `Session: ${readableSessionTime}`,
+        "",
+        "Watch the Interview Recording:",
+        recordingUrl,
+        "",
+        ...(podcastUrl
+          ? [
+              "Listen to the Podcast:",
+              podcastUrl,
+              "",
+            ]
+          : []),
+        "Register for the Zoom Court Study Session:",
+        registrationUrl,
+        "",
+        "Important: Each participant must register separately using the registration link above. Zoom will send each registered participant a personal confirmation email and unique join link.",
+      ].join("\n");
+
+      const subject =
+        `Court Study Session Ready — ${interviewTitle}`;
+
+      const plainTextBody = [
+        `Dear ${pastorName || "Pastor"},`,
+        "",
+        "Your Court of Compassion Court Study session is ready.",
+        "",
+        `Church: ${churchName}`,
+        `Interview: ${interviewTitle}`,
+        `Session: ${readableSessionTime}`,
+        "",
+        "Watch Interview Recording:",
+        recordingUrl,
+        "",
+        ...(podcastUrl
+          ? [
+              "Listen to Podcast:",
+              podcastUrl,
+              "",
+            ]
+          : []),
+        "Public Zoom Registration URL:",
+        registrationUrl,
+        "",
+        "Please share the public Registration URL with church members. Do not forward a personal Zoom confirmation email or personal join link.",
+        "",
+        "Each member should register separately. Zoom will then send that member a unique join link.",
+        "",
+        "READY-MADE CHURCH-MEMBER INVITATION",
+        "-----------------------------------",
+        memberInvitationText,
+        "",
+        "Court of Compassion",
+      ].join("\n");
+
+      const safeRecordingUrl = safeWebUrl(recordingUrl);
+      const safePodcastUrl = safeWebUrl(podcastUrl);
+      const safeRegistrationUrl =
+        safeWebUrl(registrationUrl);
+
+      const htmlBody = `
+        <!doctype html>
+        <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta
+              name="viewport"
+              content="width=device-width, initial-scale=1"
+            >
+          </head>
+          <body
+            style="
+              margin:0;
+              padding:24px;
+              background:#f5f7fb;
+              font-family:Arial,sans-serif;
+              color:#222;
+            "
+          >
+            <div
+              style="
+                max-width:680px;
+                margin:0 auto;
+                background:#ffffff;
+                border:1px solid #d9e1ef;
+                border-radius:8px;
+                padding:28px;
+              "
+            >
+              <h2
+                style="
+                  margin-top:0;
+                  color:#0B1E5B;
+                "
+              >
+                Court Study Session Ready
+              </h2>
+
+              <p>
+                Dear ${escapeHtml(pastorName || "Pastor")},
+              </p>
+
+              <p>
+                Your Court of Compassion Court Study
+                session is ready.
+              </p>
+
+              <p>
+                <strong>Church:</strong>
+                ${escapeHtml(churchName)}
+                <br>
+                <strong>Interview:</strong>
+                ${escapeHtml(interviewTitle)}
+                <br>
+                <strong>Session:</strong>
+                ${escapeHtml(readableSessionTime)}
+              </p>
+
+              <p>
+                <a
+                  href="${safeRecordingUrl}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style="
+                    display:inline-block;
+                    padding:10px 16px;
+                    margin:4px 8px 4px 0;
+                    background:#0B1E5B;
+                    color:#ffffff;
+                    text-decoration:none;
+                    border-radius:4px;
+                  "
+                >
+                  Watch Interview Recording
+                </a>
+
+                ${
+                  podcastUrl
+                    ? `
+                      <a
+                        href="${safePodcastUrl}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style="
+                          display:inline-block;
+                          padding:10px 16px;
+                          margin:4px 8px 4px 0;
+                          background:#1976D2;
+                          color:#ffffff;
+                          text-decoration:none;
+                          border-radius:4px;
+                        "
+                      >
+                        Listen to Podcast
+                      </a>
+                    `
+                    : ""
+                }
+              </p>
+
+              <h3 style="color:#0B1E5B;">
+                Public Zoom Registration
+              </h3>
+
+              <p>
+                Share this registration link with church
+                members:
+              </p>
+
+              <p>
+                <a
+                  href="${safeRegistrationUrl}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style="
+                    display:inline-block;
+                    padding:12px 18px;
+                    background:#8a6500;
+                    color:#ffffff;
+                    text-decoration:none;
+                    border-radius:4px;
+                    font-weight:bold;
+                  "
+                >
+                  Register for the Court Study Session
+                </a>
+              </p>
+
+              <p
+                style="
+                  padding:12px;
+                  background:#fff7dd;
+                  border-left:4px solid #8a6500;
+                "
+              >
+                <strong>Important:</strong>
+                Share the public Registration URL, not a
+                personal Zoom confirmation email or personal
+                join link. Each member must register
+                separately and will receive a unique Zoom
+                join link.
+              </p>
+
+              <h3 style="color:#0B1E5B;">
+                Ready-Made Church-Member Invitation
+              </h3>
+
+              <pre
+                style="
+                  white-space:pre-wrap;
+                  overflow-wrap:anywhere;
+                  padding:16px;
+                  background:#f6f8fc;
+                  border:1px solid #d9e1ef;
+                  border-radius:4px;
+                  font-family:Arial,sans-serif;
+                  line-height:1.5;
+                "
+              >${escapeHtml(memberInvitationText)}</pre>
+
+              <p style="margin-bottom:0;">
+                Court of Compassion
+              </p>
+            </div>
+          </body>
+        </html>
+      `;
+
+      await sendEmail(
+        pastorEmail,
+        subject,
+        plainTextBody,
+        htmlBody
+      );
+
+      const updatedMeeting =
+        await prisma.courtStudyMeeting.update({
+          where: {
+            id: meeting.id,
+          },
+          data: {
+            invitationSentAt: new Date(),
+            invitationSentTo: pastorEmail,
+            invitationSendCount: {
+              increment: 1,
+            },
+            invitationLastError: null,
+          },
+        });
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "Court Study invitation package sent to the pastor",
+        sentTo: pastorEmail,
+        invitationSentAt:
+          updatedMeeting.invitationSentAt,
+        invitationSendCount:
+          updatedMeeting.invitationSendCount,
+      });
+    } catch (err) {
+      console.error(
+        "❌ POST /api/court-study-requests/:id/send-invitation error:",
+        err
+      );
+
+      if (meetingId) {
+        try {
+          await prisma.courtStudyMeeting.update({
+            where: {
+              id: meetingId,
+            },
+            data: {
+              invitationLastError: String(err),
+              invitationSentTo:
+                pastorEmailForAudit || null,
+            },
+          });
+        } catch (auditErr) {
+          console.error(
+            "❌ Could not save invitation failure audit:",
+            auditErr
+          );
+        }
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
 // =====================================================
 // Admin: save an externally created Zoom meeting
 // for a scheduled Court Study request
