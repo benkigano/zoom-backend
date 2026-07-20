@@ -4967,7 +4967,7 @@ app.post(
                 ${safeEmailHtml(interviewTitle)}
                 <br>
                 <strong>Session:</strong>
-                ${safeEmailHtm(readableSessionTime)}
+                ${safeEmailHtml(readableSessionTime)}
               </p>
 
               <p>
