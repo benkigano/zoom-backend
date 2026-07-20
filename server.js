@@ -4896,7 +4896,11 @@ app.post(
         "Public Zoom Registration URL:",
         registrationUrl,
         "",
-        "Please share the public Registration URL with church members. Do not forward a personal Zoom confirmation email or personal join link.",
+        "FOR CHURCH MEMBERS:",
+"Share only the public Zoom Registration URL below. Members must register separately and Zoom will email each member a unique personal join link.",
+"",
+"FOR THE PASTOR:",
+"Your personal Zoom join link is not included in this Court of Compassion email. Zoom will send your personal join link separately. Do not forward that personal link to church members.",
         "",
         "Each member should register separately. Zoom will then send that member a unique join link.",
         "",
@@ -5047,12 +5051,11 @@ app.post(
                   border-left:4px solid #8a6500;
                 "
               >
-                <strong>Important:</strong>
-                Share the public Registration URL, not a
-                personal Zoom confirmation email or personal
-                join link. Each member must register
-                separately and will receive a unique Zoom
-                join link.
+                <strong>For church members:</strong>
+Share only the gold “Register for the Court Study Session” button or the public registration URL below. Each member must register separately and Zoom will email that member a unique personal join link.
+<br><br>
+<strong>For the pastor:</strong>
+Your personal Zoom join link is not included in this Court of Compassion email. Zoom will send it separately to your email address. Do not forward your personal join link to church members.
               </p>
 
               <h3 style="color:#0B1E5B;">
