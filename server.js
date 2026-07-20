@@ -4493,6 +4493,9 @@ app.post(
             zoomRegistrationUrl:
               zoomData.registration_url || null,
             zoomJoinUrl: zoomData.join_url,
+            scheduledStart: zoomData.start_time
+              ? new Date(zoomData.start_time)
+              : meeting.scheduledStart,
             status: "SCHEDULED",
           },
         });
