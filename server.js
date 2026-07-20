@@ -820,6 +820,95 @@ if (podcastUrl !== undefined) {
   }
 });
 
+// DELETE one complete recording test package
+app.delete(
+  "/recordings/:id",
+  requireAdminToken,
+  async (req, res) => {
+    const recordingId = String(req.params.id || "").trim();
+
+    if (!recordingId) {
+      return res.status(400).json({
+        success: false,
+        error: "Recording ID is required",
+      });
+    }
+
+    try {
+      const recording = await prisma.recording.findUnique({
+        where: {
+          id: recordingId,
+        },
+        include: {
+          courtStudyRequests: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      });
+
+      if (!recording) {
+        return res.status(404).json({
+          success: false,
+          error: "Recording not found",
+        });
+      }
+
+      const courtStudyRequestIds =
+        recording.courtStudyRequests.map((request) => request.id);
+
+      const result = await prisma.$transaction(async (tx) => {
+        let deletedMeetingsCount = 0;
+
+        if (courtStudyRequestIds.length > 0) {
+          const deletedMeetings =
+            await tx.courtStudyMeeting.deleteMany({
+              where: {
+                courtStudyRequestId: {
+                  in: courtStudyRequestIds,
+                },
+              },
+            });
+
+          deletedMeetingsCount = deletedMeetings.count;
+        }
+
+        const deletedRecording = await tx.recording.delete({
+          where: {
+            id: recordingId,
+          },
+        });
+
+        return {
+          deletedRecording,
+          deletedMeetingsCount,
+        };
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Recording test package deleted successfully",
+        deleted: {
+          recordingId: result.deletedRecording.id,
+          title: result.deletedRecording.title,
+          courtStudyMeetings: result.deletedMeetingsCount,
+        },
+      });
+    } catch (err) {
+      console.error(
+        "❌ DELETE /recordings/:id error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
 // ARCHIVE one recording
 app.post("/recordings/:id/archive", requireAdminToken, async (req, res) => {
   try {
