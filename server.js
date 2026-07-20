@@ -5070,7 +5070,7 @@ app.post(
                   font-family:Arial,sans-serif;
                   line-height:1.5;
                 "
-              >${escapeHtml(memberInvitationText)}</pre>
+              >${safeEmailHtml(memberInvitationText)}</pre>
 
               <p style="margin-bottom:0;">
                 Court of Compassion
