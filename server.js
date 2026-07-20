@@ -349,6 +349,28 @@ async function sendEmail(to, subject, body, htmlBody = null) {
 
   console.log("✅ DISTRIBUTION EMAIL SENT TO:", to);
 }
+const safeEmailWebUrl = (value) => {
+  try {
+    const parsedUrl = new URL(String(value));
+
+    if (
+      parsedUrl.protocol !== "https:" &&
+      parsedUrl.protocol !== "http:"
+    ) {
+      return "#";
+    }
+
+    return parsedUrl
+  .toString()
+  .replaceAll("&", "&amp;")
+  .replaceAll('"', "&quot;")
+  .replaceAll("'", "&#039;")
+  .replaceAll("<", "&lt;")
+  .replaceAll(">", "&gt;");
+  } catch {
+    return "#";
+  }
+};
 app.use(express.json());
 
 app.use(cors());
@@ -4878,10 +4900,10 @@ app.post(
         "Court of Compassion",
       ].join("\n");
 
-      const safeRecordingUrl = safeWebUrl(recordingUrl);
-      const safePodcastUrl = safeWebUrl(podcastUrl);
-      const safeRegistrationUrl =
-        safeWebUrl(registrationUrl);
+       const safeRecordingUrl = safeEmailWebUrl(recordingUrl);
+       const safePodcastUrl = safeEmailWebUrl(podcastUrl);
+       const safeRegistrationUrl =
+       safeEmailWebUrl(registrationUrl); 
 
       const htmlBody = `
         <!doctype html>
