@@ -3128,6 +3128,22 @@ Court of Compassion`;
           </a>
         </p>
 
+          ${
+  campaign.recording.podcastUrl
+    ? `
+      <p>
+       <a
+  href="${campaign.recording.podcastUrl}"
+  target="_blank"
+  rel="noopener noreferrer"
+> 
+          Listen to the podcast
+        </a>
+      </p>
+    `
+    : ""
+}
+
         ${
           campaign.organizationName
             ? `<p><strong>Organization:</strong> ${campaign.organizationName}</p>`
