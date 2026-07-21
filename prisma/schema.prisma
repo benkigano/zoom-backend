@@ -419,11 +419,35 @@ model GuestDistributionCampaign {
  recording Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
 
   courtStudyRequests CourtStudyRequest[]
-
+  pastorInvitations PastorInvitation[]
+  
   @@index([recordingId])
   @@index([guestEmail])
   @@index([status])
   @@index([expiresAt])
+}
+
+model PastorInvitation {
+  id           String   @id @default(cuid())
+  campaignId   String
+  pastorName   String?
+  pastorEmail  String
+  status       String   @default("PENDING")
+  sentAt       DateTime?
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaign GuestDistributionCampaign @relation(
+    fields: [campaignId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  @@index([campaignId])
+  @@index([pastorEmail])
+  @@index([status])
 }
 
 model CourtStudyRequest {
