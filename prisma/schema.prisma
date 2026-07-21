@@ -439,11 +439,7 @@ model PastorInvitation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  campaign GuestDistributionCampaign @relation(
-    fields: [campaignId],
-    references: [id],
-    onDelete: Cascade
-  )
+  campaign GuestDistributionCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@index([campaignId])
   @@index([pastorEmail])
