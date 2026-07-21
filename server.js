@@ -4218,6 +4218,23 @@ app.get("/guest-distribution/:token", async (req, res) => {
       </form>
      </div>
     </section>
+ <p style="margin-top: 24px;">
+  <a
+    href="/guest-distribution/${encodeURIComponent(distributionToken)}/invite"
+    style="
+      display: inline-block;
+      padding: 12px 18px;
+      border: 1px solid #e5c35b;
+      border-radius: 7px;
+      color: #ffffff;
+      text-decoration: none;
+      font-weight: 700;
+    "
+  >
+    Invite Additional Pastors or Church Leaders
+  </a>
+</p>
+  
   </main>
 
 <script>
