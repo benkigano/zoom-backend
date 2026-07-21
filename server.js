@@ -3575,7 +3575,18 @@ app.get("/guest-distribution/:token", async (req, res) => {
     </section>
 
     <section class="card">
-      <h2>Request a Court Study Session</h2>
+     <h2>Request a Court Study Session</h2>
+
+<button
+  type="button"
+  id="courtStudyToggle"
+  aria-expanded="false"
+  aria-controls="courtStudyFormContainer"
+>
+  Request a Court Study Session
+</button>
+
+<div id="courtStudyFormContainer" style="display: none;"> 
 
       <p>
         A pastor, priest, or church leader may request a
@@ -3700,8 +3711,37 @@ app.get("/guest-distribution/:token", async (req, res) => {
           Submit Court Study Request
         </button>
       </form>
+     </div>
     </section>
   </main>
+
+<script>
+  const courtStudyToggle = document.getElementById("courtStudyToggle");
+  const courtStudyFormContainer = document.getElementById(
+    "courtStudyFormContainer"
+  );
+
+  if (courtStudyToggle && courtStudyFormContainer) {
+    courtStudyToggle.addEventListener("click", () => {
+      const isOpen =
+        courtStudyFormContainer.style.display !== "none";
+
+      courtStudyFormContainer.style.display = isOpen
+        ? "none"
+        : "block";
+
+      courtStudyToggle.setAttribute(
+        "aria-expanded",
+        String(!isOpen)
+      );
+
+      courtStudyToggle.textContent = isOpen
+        ? "Request a Court Study Session"
+        : "Hide Court Study Request Form";
+    });
+  }
+</script>
+
 </body>
 </html>
     `);
