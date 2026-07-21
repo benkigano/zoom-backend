@@ -3307,6 +3307,511 @@ Court of Compassion`;
   }
 );
 
+// ============================================================
+// Bishop-facing pastor invitation page
+// ============================================================
+app.get("/guest-distribution/:token/invite", async (req, res) => {
+  try {
+    const distributionToken = String(req.params.token || "").trim();
+
+    if (!distributionToken) {
+      return res.status(400).send("Missing distribution token");
+    }
+
+    const campaign = await prisma.guestDistributionCampaign.findUnique({
+      where: { distributionToken },
+      include: {
+        recording: true,
+      },
+    });
+
+    if (!campaign) {
+      return res
+        .status(404)
+        .send("This Court of Compassion invitation could not be found.");
+    }
+
+    if (campaign.status === "CLOSED") {
+      return res
+        .status(410)
+        .send("This Court of Compassion invitation is closed.");
+    }
+
+    if (campaign.expiresAt && campaign.expiresAt.getTime() <= Date.now()) {
+      return res
+        .status(410)
+        .send("This Court of Compassion invitation has expired.");
+    }
+
+    const escapeHtml = (value) =>
+      String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+
+    const guestName = escapeHtml(campaign.guestName);
+    const organizationName = escapeHtml(campaign.organizationName || "");
+    const recordingTitle = escapeHtml(
+      campaign.recording?.title || "Court of Compassion Interview"
+    );
+
+    const formAction = `/guest-distribution/${encodeURIComponent(
+      distributionToken
+    )}/invite`;
+
+    return res.status(200).send(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Invite Pastors and Church Leaders</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 32px 16px;
+      background: #061b33;
+      color: #ffffff;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    main {
+      width: 100%;
+      max-width: 780px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: #15345a;
+      border: 1px solid #d9b84f;
+      border-radius: 14px;
+      padding: 28px;
+    }
+
+    h1, h2 {
+      color: #e5c35b;
+      margin-top: 0;
+    }
+
+    p {
+      line-height: 1.55;
+    }
+
+    label {
+      display: block;
+      margin: 18px 0 8px;
+      font-weight: 700;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 150px;
+      padding: 12px;
+      border: 1px solid #c9d2df;
+      border-radius: 7px;
+      font: inherit;
+      resize: vertical;
+    }
+
+    .note {
+      font-size: 14px;
+      color: #e4e9ef;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    button, .button-link {
+      display: inline-block;
+      border: 0;
+      border-radius: 7px;
+      padding: 12px 18px;
+      background: #e5c35b;
+      color: #071a31;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .secondary {
+      background: transparent;
+      border: 1px solid #e5c35b;
+      color: #ffffff;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="card">
+      <h1>Invite Pastors and Church Leaders</h1>
+
+      <p>
+        <strong>${guestName}</strong>
+        ${
+          organizationName
+            ? ` of <strong>${organizationName}</strong>`
+            : ""
+        }
+        may invite pastors, priests, or other church leaders to review:
+      </p>
+
+      <h2>${recordingTitle}</h2>
+
+      <p>
+        Each recipient will receive a separate Court of Compassion email.
+        Recipient addresses will not be disclosed to one another.
+      </p>
+
+      <form method="post" action="${formAction}">
+        <label for="pastorEmails">
+          Pastor or church-leader email addresses
+        </label>
+
+        <textarea
+          id="pastorEmails"
+          name="pastorEmails"
+          required
+          placeholder="pastor1@example.org&#10;pastor2@example.org"
+        ></textarea>
+
+        <p class="note">
+          Enter one email address per line. Commas and semicolons are also accepted.
+        </p>
+
+        <label for="pastorNames">
+          Names, in the same order — optional
+        </label>
+
+        <textarea
+          id="pastorNames"
+          name="pastorNames"
+          placeholder="Rev. Jane Smith&#10;Father John Doe"
+        ></textarea>
+
+        <p class="note">
+          When names are supplied, place one name per line in the same order as the email addresses.
+        </p>
+
+        <div class="actions">
+          <a
+            class="button-link secondary"
+            href="/guest-distribution/${encodeURIComponent(distributionToken)}"
+          >
+            Review Interview Media Page
+          </a>
+
+          <button type="submit">
+            Send Invitations
+          </button>
+        </div>
+      </form>
+    </section>
+  </main>
+</body>
+</html>
+    `);
+  } catch (err) {
+    console.error("❌ GET pastor invitation page error:", err);
+
+    return res
+      .status(500)
+      .send("The pastor invitation page could not be loaded.");
+  }
+});
+
+
+// ============================================================
+// Send separate invitations to pastors and church leaders
+// ============================================================
+app.post(
+  "/guest-distribution/:token/invite",
+  express.urlencoded({ extended: false }),
+  async (req, res) => {
+    try {
+      const distributionToken = String(req.params.token || "").trim();
+
+      const campaign = await prisma.guestDistributionCampaign.findUnique({
+        where: { distributionToken },
+        include: {
+          recording: true,
+        },
+      });
+
+      if (!campaign) {
+        return res
+          .status(404)
+          .send("This Court of Compassion invitation could not be found.");
+      }
+
+      if (campaign.status === "CLOSED") {
+        return res
+          .status(410)
+          .send("This Court of Compassion invitation is closed.");
+      }
+
+      if (campaign.expiresAt && campaign.expiresAt.getTime() <= Date.now()) {
+        return res
+          .status(410)
+          .send("This Court of Compassion invitation has expired.");
+      }
+
+      const rawEmails = String(req.body.pastorEmails || "");
+      const rawNames = String(req.body.pastorNames || "");
+
+      const pastorEmails = [
+        ...new Set(
+          rawEmails
+            .split(/[\n,;]+/)
+            .map((email) => email.trim().toLowerCase())
+            .filter(Boolean)
+        ),
+      ];
+
+      const pastorNames = rawNames
+        .split(/\r?\n/)
+        .map((name) => name.trim());
+
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      const invalidEmails = pastorEmails.filter(
+        (email) => !emailPattern.test(email)
+      );
+
+      if (pastorEmails.length === 0) {
+        return res
+          .status(400)
+          .send("Please provide at least one pastor email address.");
+      }
+
+      if (invalidEmails.length > 0) {
+        return res.status(400).send(
+          `Please correct these invalid email addresses: ${invalidEmails.join(
+            ", "
+          )}`
+        );
+      }
+
+      if (pastorEmails.length > 100) {
+        return res
+          .status(400)
+          .send("A maximum of 100 recipients may be invited at one time.");
+      }
+
+      const baseUrl =
+        String(process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "") ||
+        `${req.protocol}://${req.get("host")}`;
+
+      const mediaPageUrl =
+        `${baseUrl}/guest-distribution/` +
+        encodeURIComponent(distributionToken);
+
+      const recordingTitle =
+        campaign.recording?.title || "Court of Compassion Interview";
+
+      const organizationText = campaign.organizationName
+        ? ` of ${campaign.organizationName}`
+        : "";
+
+      const results = [];
+
+      for (let index = 0; index < pastorEmails.length; index += 1) {
+        const pastorEmail = pastorEmails[index];
+        const pastorName = pastorNames[index] || null;
+
+        const invitation = await prisma.pastorInvitation.create({
+          data: {
+            campaignId: campaign.id,
+            pastorName,
+            pastorEmail,
+            status: "PENDING",
+          },
+        });
+
+        const greeting = pastorName
+          ? `Dear ${pastorName},`
+          : "Dear Pastor or Church Leader,";
+
+        const subject =
+          `Court of Compassion Invitation — ${recordingTitle}`;
+
+        const plainTextBody = `${greeting}
+
+${campaign.guestName}${organizationText} has invited you to review a finalized Court of Compassion interview.
+
+Interview:
+${recordingTitle}
+
+Open the Interview Media Page:
+${mediaPageUrl}
+
+The page includes:
+- The finalized interview recording
+- The accompanying podcast
+- The Court Study request form
+
+After reviewing the interview, you may request a Court Study session for your congregation or church group.
+
+Respectfully,
+Court of Compassion`;
+
+        const htmlBody = `
+          <p>${greeting}</p>
+
+          <p>
+            <strong>${campaign.guestName}</strong>${organizationText}
+            has invited you to review a finalized Court of Compassion interview.
+          </p>
+
+          <p>
+            <strong>Interview:</strong><br>
+            ${recordingTitle}
+          </p>
+
+          <p>
+            <a href="${mediaPageUrl}">
+              Open the Interview Media Page
+            </a>
+          </p>
+
+          <p>The page includes:</p>
+
+          <ul>
+            <li>The finalized interview recording</li>
+            <li>The accompanying podcast</li>
+            <li>The Court Study request form</li>
+          </ul>
+
+          <p>
+            After reviewing the interview, you may request a Court Study
+            session for your congregation or church group.
+          </p>
+
+          <p>
+            Respectfully,<br>
+            <strong>Court of Compassion</strong>
+          </p>
+        `;
+
+        try {
+          await sendEmail(
+            pastorEmail,
+            subject,
+            plainTextBody,
+            htmlBody
+          );
+
+          const sentInvitation =
+            await prisma.pastorInvitation.update({
+              where: { id: invitation.id },
+              data: {
+                status: "SENT",
+                sentAt: new Date(),
+                errorMessage: null,
+              },
+            });
+
+          results.push(sentInvitation);
+        } catch (emailErr) {
+          console.error(
+            `❌ Pastor invitation email failed for ${pastorEmail}:`,
+            emailErr
+          );
+
+          const failedInvitation =
+            await prisma.pastorInvitation.update({
+              where: { id: invitation.id },
+              data: {
+                status: "FAILED",
+                errorMessage: String(emailErr),
+              },
+            });
+
+          results.push(failedInvitation);
+        }
+      }
+
+      const sentCount = results.filter(
+        (item) => item.status === "SENT"
+      ).length;
+
+      const failedCount = results.filter(
+        (item) => item.status === "FAILED"
+      ).length;
+
+      return res.status(200).send(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Invitations Processed</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 32px 16px;
+      background: #061b33;
+      color: #ffffff;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 28px;
+      background: #15345a;
+      border: 1px solid #d9b84f;
+      border-radius: 14px;
+    }
+
+    h1 { color: #e5c35b; }
+
+    a {
+      display: inline-block;
+      margin-top: 18px;
+      padding: 12px 18px;
+      border-radius: 7px;
+      background: #e5c35b;
+      color: #071a31;
+      font-weight: 700;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <section class="card">
+    <h1>Pastor Invitations Processed</h1>
+
+    <p><strong>Successfully sent:</strong> ${sentCount}</p>
+    <p><strong>Failed:</strong> ${failedCount}</p>
+
+    <a href="/guest-distribution/${encodeURIComponent(
+      distributionToken
+    )}/invite">
+      Invite Additional Pastors
+    </a>
+  </section>
+</body>
+</html>
+      `);
+    } catch (err) {
+      console.error("❌ POST pastor invitations error:", err);
+
+      return res
+        .status(500)
+        .send("The pastor invitations could not be processed.");
+    }
+  }
+);
+
 // =====================================================
 // Public guest distribution page
 // Guest leader forwards this page to pastors or priests
