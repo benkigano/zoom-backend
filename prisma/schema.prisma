@@ -74,6 +74,8 @@ enum GuestDistributionCampaignStatus {
 enum CourtStudyRequestStatus {
   PENDING
   APPROVED
+  AWAITING_MEETING_DETAILS
+  MEETING_DETAILS_SUBMITTED 
   DECLINED
   SCHEDULED
   COMPLETED
@@ -382,6 +384,11 @@ model CourtStudyMeeting {
   zoomMeetingId       String?
   zoomRegistrationUrl String?
   zoomJoinUrl         String?
+  zoomPasscode              String?
+  pastorSetupToken          String?   @unique
+  pastorSetupTokenExpiresAt DateTime?
+  meetingSetupRequestedAt   DateTime?
+  meetingDetailsSubmittedAt DateTime?
   invitationSentAt     DateTime?
   invitationSentTo     String?
   invitationSendCount  Int       @default(0)
