@@ -6316,6 +6316,407 @@ app.post(
   }
 );
 
+// ======================================================
+// Public: load pastor-hosted Court Study setup information
+// ======================================================
+app.get(
+  "/api/pastor-court-study-setup/:token",
+  async (req, res) => {
+    try {
+      const pastorSetupToken = String(
+        req.params.token || ""
+      ).trim();
+
+      if (!pastorSetupToken) {
+        return res.status(400).json({
+          success: false,
+          error: "The pastor setup token is required",
+        });
+      }
+
+      const meeting =
+        await prisma.courtStudyMeeting.findFirst({
+          where: {
+            pastorSetupToken,
+          },
+          include: {
+            courtStudyRequest: {
+              include: {
+                recording: true,
+                campaign: true,
+              },
+            },
+          },
+        });
+
+      if (!meeting || !meeting.courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "This pastor meeting setup link is invalid",
+        });
+      }
+
+      if (
+        !meeting.pastorSetupTokenExpiresAt ||
+        meeting.pastorSetupTokenExpiresAt <
+          new Date()
+      ) {
+        return res.status(410).json({
+          success: false,
+          error:
+            "This pastor meeting setup link has expired",
+        });
+      }
+
+      const courtStudyRequest =
+        meeting.courtStudyRequest;
+
+      if (
+        courtStudyRequest.meetingFormat !==
+        "PASTOR_HOSTED"
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "This request is not a pastor-hosted Court Study session",
+        });
+      }
+
+      if (
+        courtStudyRequest.status ===
+        "MEETING_DETAILS_SUBMITTED"
+      ) {
+        return res.status(409).json({
+          success: false,
+          error:
+            "The Zoom meeting details have already been submitted",
+          alreadySubmitted: true,
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        setup: {
+          pastorName:
+            courtStudyRequest.pastorName,
+          pastorEmail:
+            courtStudyRequest.pastorEmail,
+          churchName:
+            courtStudyRequest.churchName,
+          recordingTitle:
+            courtStudyRequest.recording?.title ||
+            "Court of Compassion Interview",
+
+          scheduledStart:
+            meeting.scheduledStart,
+          scheduledEnd:
+            meeting.scheduledEnd,
+          timezone:
+            meeting.timezone ||
+            courtStudyRequest.timezone ||
+            "America/Los_Angeles",
+
+          zoomMeetingId:
+            meeting.zoomMeetingId || "",
+          zoomJoinUrl:
+            meeting.zoomJoinUrl || "",
+          zoomRegistrationUrl:
+            meeting.zoomRegistrationUrl || "",
+          zoomPasscode:
+            meeting.zoomPasscode || "",
+        },
+      });
+    } catch (err) {
+      console.error(
+        "❌ GET /api/pastor-court-study-setup/:token error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
+// ======================================================
+// Public: submit pastor-hosted Zoom meeting details
+// ======================================================
+app.post(
+  "/api/pastor-court-study-setup/:token",
+  async (req, res) => {
+    try {
+      const pastorSetupToken = String(
+        req.params.token || ""
+      ).trim();
+
+      if (!pastorSetupToken) {
+        return res.status(400).json({
+          success: false,
+          error: "The pastor setup token is required",
+        });
+      }
+
+      const {
+        zoomMeetingId,
+        zoomJoinUrl,
+        zoomRegistrationUrl,
+        zoomPasscode,
+        scheduledStart,
+        scheduledEnd,
+        timezone,
+      } = req.body || {};
+
+      const normalizedMeetingId = String(
+        zoomMeetingId || ""
+      )
+        .trim()
+        .replace(/\s+/g, "");
+
+      if (!normalizedMeetingId) {
+        return res.status(400).json({
+          success: false,
+          error: "Zoom meeting ID is required",
+        });
+      }
+
+      const validateHttpUrl = (
+        value,
+        fieldName
+      ) => {
+        try {
+          const parsedUrl = new URL(
+            String(value || "").trim()
+          );
+
+          if (
+            parsedUrl.protocol !== "https:" &&
+            parsedUrl.protocol !== "http:"
+          ) {
+            throw new Error();
+          }
+
+          return parsedUrl.toString();
+        } catch {
+          throw new Error(
+            `${fieldName} must be a valid web address`
+          );
+        }
+      };
+
+      let normalizedJoinUrl;
+
+      try {
+        normalizedJoinUrl = validateHttpUrl(
+          zoomJoinUrl,
+          "Zoom join URL"
+        );
+      } catch (validationError) {
+        return res.status(400).json({
+          success: false,
+          error: validationError.message,
+        });
+      }
+
+      let normalizedRegistrationUrl = null;
+
+      if (
+        zoomRegistrationUrl &&
+        String(zoomRegistrationUrl).trim()
+      ) {
+        try {
+          normalizedRegistrationUrl =
+            validateHttpUrl(
+              zoomRegistrationUrl,
+              "Zoom registration URL"
+            );
+        } catch (validationError) {
+          return res.status(400).json({
+            success: false,
+            error: validationError.message,
+          });
+        }
+      }
+
+      if (
+        !scheduledStart ||
+        !scheduledEnd ||
+        !timezone
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Confirmed start time, ending time, and time zone are required",
+        });
+      }
+
+      const parsedStart = new Date(
+        String(scheduledStart)
+      );
+
+      const parsedEnd = new Date(
+        String(scheduledEnd)
+      );
+
+      if (Number.isNaN(parsedStart.getTime())) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Confirmed start time is not valid",
+        });
+      }
+
+      if (Number.isNaN(parsedEnd.getTime())) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Confirmed ending time is not valid",
+        });
+      }
+
+      if (
+        parsedEnd.getTime() <=
+        parsedStart.getTime()
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "The ending time must be later than the start time",
+        });
+      }
+
+      const meeting =
+        await prisma.courtStudyMeeting.findFirst({
+          where: {
+            pastorSetupToken,
+          },
+          include: {
+            courtStudyRequest: {
+              include: {
+                recording: true,
+              },
+            },
+          },
+        });
+
+      if (!meeting || !meeting.courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "This pastor meeting setup link is invalid",
+        });
+      }
+
+      if (
+        !meeting.pastorSetupTokenExpiresAt ||
+        meeting.pastorSetupTokenExpiresAt <
+          new Date()
+      ) {
+        return res.status(410).json({
+          success: false,
+          error:
+            "This pastor meeting setup link has expired",
+        });
+      }
+
+      const courtStudyRequest =
+        meeting.courtStudyRequest;
+
+      if (
+        courtStudyRequest.meetingFormat !==
+        "PASTOR_HOSTED"
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "This request is not a pastor-hosted Court Study session",
+        });
+      }
+
+      if (
+        courtStudyRequest.status !==
+        "AWAITING_MEETING_DETAILS"
+      ) {
+        return res.status(409).json({
+          success: false,
+          error:
+            "This Court Study request is not currently awaiting meeting details",
+        });
+      }
+
+      const result = await prisma.$transaction(
+        async (tx) => {
+          const updatedMeeting =
+            await tx.courtStudyMeeting.update({
+              where: {
+                id: meeting.id,
+              },
+              data: {
+                zoomMeetingId:
+                  normalizedMeetingId,
+                zoomJoinUrl:
+                  normalizedJoinUrl,
+                zoomRegistrationUrl:
+                  normalizedRegistrationUrl,
+                zoomPasscode:
+                  String(
+                    zoomPasscode || ""
+                  ).trim() || null,
+
+                scheduledStart: parsedStart,
+                scheduledEnd: parsedEnd,
+                timezone:
+                  String(timezone).trim(),
+
+                meetingDetailsSubmittedAt:
+                  new Date(),
+
+                status: "PENDING",
+              },
+            });
+
+          const updatedRequest =
+            await tx.courtStudyRequest.update({
+              where: {
+                id: courtStudyRequest.id,
+              },
+              data: {
+                status:
+                  "MEETING_DETAILS_SUBMITTED",
+              },
+            });
+
+          return {
+            meeting: updatedMeeting,
+            request: updatedRequest,
+          };
+        }
+      );
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "Your Zoom meeting details have been submitted to the Court of Compassion for review",
+        requestStatus:
+          "MEETING_DETAILS_SUBMITTED",
+        meeting: result.meeting,
+      });
+    } catch (err) {
+      console.error(
+        "❌ POST /api/pastor-court-study-setup/:token error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
