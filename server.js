@@ -6008,6 +6008,314 @@ app.post(
   }
 );
 
+// ======================================================
+// Admin: send pastor-hosted Zoom setup link to the pastor
+// ======================================================
+app.post(
+  "/api/court-study-requests/:id/send-pastor-setup",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const requestId = String(req.params.id || "").trim();
+
+      if (!requestId) {
+        return res.status(400).json({
+          success: false,
+          error: "Court Study request ID is required",
+        });
+      }
+
+      const courtStudyRequest =
+        await prisma.courtStudyRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+          include: {
+            recording: true,
+            campaign: true,
+            courtStudyMeeting: true,
+          },
+        });
+
+      if (!courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error: "Court Study request not found",
+        });
+      }
+
+      if (courtStudyRequest.status !== "APPROVED") {
+        return res.status(400).json({
+          success: false,
+          error:
+            "The Court Study request must be APPROVED before the pastor setup link can be sent",
+        });
+      }
+
+      if (courtStudyRequest.meetingFormat !== "PASTOR_HOSTED") {
+        return res.status(400).json({
+          success: false,
+          error:
+            "This action is only available for pastor-hosted Court Study requests",
+        });
+      }
+
+      const pastorEmail = String(
+        courtStudyRequest.pastorEmail || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      if (!pastorEmail) {
+        return res.status(400).json({
+          success: false,
+          error: "The pastor email address is missing",
+        });
+      }
+
+      const publicBaseUrl = String(
+        process.env.PUBLIC_BASE_URL || ""
+      ).replace(/\/+$/, "");
+
+      if (!publicBaseUrl) {
+        return res.status(500).json({
+          success: false,
+          error: "PUBLIC_BASE_URL is not configured",
+        });
+      }
+
+      const pastorSetupToken = crypto
+        .randomBytes(32)
+        .toString("hex");
+
+      const pastorSetupTokenExpiresAt = new Date(
+        Date.now() + 7 * 24 * 60 * 60 * 1000
+      );
+
+      const preferredStart = courtStudyRequest.preferredStart
+        ? new Date(courtStudyRequest.preferredStart)
+        : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+      const provisionalEnd = new Date(
+        preferredStart.getTime() + 60 * 60 * 1000
+      );
+
+      const timezone =
+        String(
+          courtStudyRequest.timezone ||
+            "America/Los_Angeles"
+        ).trim() || "America/Los_Angeles";
+
+      const recordingTitle =
+        courtStudyRequest.recording?.title ||
+        "Court of Compassion Interview";
+
+      const churchName =
+        courtStudyRequest.churchName || "your church";
+
+      const meetingTitle = `Court Study — ${recordingTitle}`;
+
+      const meetingDescription =
+        `Pastor-hosted Court Study session requested by ` +
+        `${courtStudyRequest.pastorName} of ${churchName}.`;
+
+      const updatedMeeting = await prisma.$transaction(
+        async (tx) => {
+          let meeting = courtStudyRequest.courtStudyMeeting;
+
+          if (!meeting) {
+            meeting = await tx.courtStudyMeeting.create({
+              data: {
+                courtStudyRequestId: courtStudyRequest.id,
+                churchContactId: null,
+                timeSlotId: null,
+
+                title: meetingTitle,
+                description: meetingDescription,
+                discussionType: "INTERVIEW_RECORDING",
+                selectedChapter: null,
+                selectedSection: null,
+                selectedRecordingId:
+                  courtStudyRequest.recordingId,
+
+                scheduledStart: preferredStart,
+                scheduledEnd: provisionalEnd,
+                timezone,
+
+                zoomMeetingId: null,
+                zoomRegistrationUrl: null,
+                zoomJoinUrl: null,
+                zoomPasscode: null,
+
+                pastorSetupToken,
+                pastorSetupTokenExpiresAt,
+                meetingSetupRequestedAt: new Date(),
+                meetingDetailsSubmittedAt: null,
+
+                status: "PENDING",
+              },
+            });
+          } else {
+            meeting = await tx.courtStudyMeeting.update({
+              where: {
+                id: meeting.id,
+              },
+              data: {
+                pastorSetupToken,
+                pastorSetupTokenExpiresAt,
+                meetingSetupRequestedAt: new Date(),
+                meetingDetailsSubmittedAt: null,
+                status: "PENDING",
+              },
+            });
+          }
+
+          await tx.courtStudyRequest.update({
+            where: {
+              id: courtStudyRequest.id,
+            },
+            data: {
+              status: "AWAITING_MEETING_DETAILS",
+            },
+          });
+
+          return meeting;
+        }
+      );
+
+      const setupUrl =
+        `${publicBaseUrl}/pastor-court-study-setup/` +
+        encodeURIComponent(pastorSetupToken);
+
+      const subject =
+        `Court Study Meeting Setup Required — ${recordingTitle}`;
+
+      const textBody = [
+        `Dear ${courtStudyRequest.pastorName},`,
+        "",
+        "Your request for a pastor-hosted Court Study session has been approved.",
+        "",
+        `Church: ${churchName}`,
+        `Interview: ${recordingTitle}`,
+        "",
+        "Please create the Zoom meeting in your church's Zoom account.",
+        "After creating it, use the secure link below to submit the meeting details to the Court of Compassion:",
+        "",
+        setupUrl,
+        "",
+        "You will be asked to provide:",
+        "- Zoom meeting ID",
+        "- Zoom join URL",
+        "- Zoom registration URL, when registration is enabled",
+        "- Meeting passcode, when applicable",
+        "- Confirmed meeting date and time",
+        "- Time zone",
+        "- Meeting duration or ending time",
+        "",
+        "This secure link expires in seven days.",
+        "",
+        "Respectfully,",
+        "Court of Compassion",
+      ].join("\n");
+
+      const htmlBody = `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #14213d;">
+          <h2 style="color: #0b1e5b;">
+            Pastor-Hosted Court Study Meeting Setup
+          </h2>
+
+          <p>
+            Dear ${safeEmailHtml(courtStudyRequest.pastorName)},
+          </p>
+
+          <p>
+            Your request for a pastor-hosted Court Study session has been approved.
+          </p>
+
+          <p>
+            <strong>Church:</strong>
+            ${safeEmailHtml(churchName)}
+            <br>
+            <strong>Interview:</strong>
+            ${safeEmailHtml(recordingTitle)}
+          </p>
+
+          <p>
+            Please create the Zoom meeting in your church's Zoom account.
+            After creating it, use the secure button below to submit the
+            meeting details to the Court of Compassion.
+          </p>
+
+          <p style="margin: 24px 0;">
+            <a
+              href="${safeEmailWebUrl(setupUrl)}"
+              style="
+                display: inline-block;
+                padding: 12px 20px;
+                background: #d4af37;
+                color: #071b33;
+                text-decoration: none;
+                font-weight: bold;
+                border-radius: 5px;
+              "
+            >
+              Submit Church Zoom Meeting Details
+            </a>
+          </p>
+
+          <p>You will be asked to provide:</p>
+
+          <ul>
+            <li>Zoom meeting ID</li>
+            <li>Zoom join URL</li>
+            <li>Zoom registration URL, when enabled</li>
+            <li>Meeting passcode, when applicable</li>
+            <li>Confirmed meeting date and time</li>
+            <li>Time zone</li>
+            <li>Meeting duration or ending time</li>
+          </ul>
+
+          <p>
+            This secure link expires in seven days.
+          </p>
+
+          <p>
+            Respectfully,<br>
+            <strong>Court of Compassion</strong>
+          </p>
+        </div>
+      `;
+
+      await sendEmail(
+        pastorEmail,
+        subject,
+        textBody,
+        htmlBody
+      );
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "Pastor-hosted meeting setup link sent successfully",
+        requestStatus: "AWAITING_MEETING_DETAILS",
+        pastorEmail,
+        setupExpiresAt: pastorSetupTokenExpiresAt,
+        meeting: updatedMeeting,
+      });
+    } catch (err) {
+      console.error(
+        "❌ POST /api/court-study-requests/:id/send-pastor-setup error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
