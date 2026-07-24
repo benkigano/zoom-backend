@@ -6076,7 +6076,9 @@ app.post(
       const publicBaseUrl = String(
         process.env.PUBLIC_BASE_URL || ""
       ).replace(/\/+$/, "");
-
+     const frontendBaseUrl = String(
+  process.env.FRONTEND_BASE_URL || publicBaseUrl
+).replace(/\/+$/, ""); 
       if (!publicBaseUrl) {
         return res.status(500).json({
           success: false,
@@ -6184,7 +6186,7 @@ app.post(
       );
 
       const setupUrl =
-        `${publicBaseUrl}/pastor-court-study-setup/` +
+       `${frontendBaseUrl}/pastor-court-study-setup/`  +
         encodeURIComponent(pastorSetupToken);
 
       const subject =
