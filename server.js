@@ -4635,6 +4635,9 @@ app.get(
       const allowedStatuses = new Set([
         "PENDING",
         "APPROVED",
+        "AWAITING_MEETING_DETAILS",
+        "MEETING_DETAILS_SUBMITTED",
+        "MEETING_APPROVED",
         "DECLINED",
         "SCHEDULED",
         "COMPLETED",
@@ -4735,6 +4738,7 @@ app.patch(
   "APPROVED",
   "AWAITING_MEETING_DETAILS",
   "MEETING_DETAILS_SUBMITTED",
+  "MEETING_APPROVED",
   "DECLINED",
   "SCHEDULED",
   "COMPLETED",
@@ -4745,7 +4749,7 @@ app.patch(
         return res.status(400).json({
           success: false,
         error:
-  "Status must be PENDING, APPROVED, AWAITING_MEETING_DETAILS, MEETING_DETAILS_SUBMITTED, DECLINED, SCHEDULED, COMPLETED, or CANCELLED",  
+  "Status must be PENDING, APPROVED, AWAITING_MEETING_DETAILS, MEETING_DETAILS_SUBMITTED, MEETING_APPROVED, DECLINED, SCHEDULED, COMPLETED, or CANCELLED",  
         });
       }
 
