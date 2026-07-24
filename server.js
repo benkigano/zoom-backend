@@ -26,6 +26,112 @@ function requireAdminToken(req, res, next) {
   next();
 }
 const app = express();
+
+function parseDateTimeInTimeZone(value, timeZone) {
+  const dateTimeText = String(value || "").trim();
+  const zone = String(timeZone || "").trim();
+
+  if (!dateTimeText || !zone) {
+    return new Date(NaN);
+  }
+
+  // Respect values that already contain UTC or an explicit offset.
+  if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(dateTimeText)) {
+    return new Date(dateTimeText);
+  }
+
+  const match = dateTimeText.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/
+  );
+
+  if (!match) {
+    return new Date(NaN);
+  }
+
+  const desired = {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+    hour: Number(match[4]),
+    minute: Number(match[5]),
+    second: Number(match[6] || 0),
+  };
+
+  let formatter;
+
+  try {
+    formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    });
+  } catch {
+    return new Date(NaN);
+  }
+
+  const getZonedParts = (date) => {
+    const parts = {};
+
+    for (const part of formatter.formatToParts(date)) {
+      if (part.type !== "literal") {
+        parts[part.type] = Number(part.value);
+      }
+    }
+
+    return parts;
+  };
+
+  const desiredAsUtc = Date.UTC(
+    desired.year,
+    desired.month - 1,
+    desired.day,
+    desired.hour,
+    desired.minute,
+    desired.second
+  );
+
+  let utcMilliseconds = desiredAsUtc;
+
+  // Adjust until the selected timezone renders the requested local time.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const rendered = getZonedParts(new Date(utcMilliseconds));
+
+    const renderedAsUtc = Date.UTC(
+      rendered.year,
+      rendered.month - 1,
+      rendered.day,
+      rendered.hour,
+      rendered.minute,
+      rendered.second
+    );
+
+    const adjustment = desiredAsUtc - renderedAsUtc;
+    utcMilliseconds += adjustment;
+
+    if (adjustment === 0) {
+      break;
+    }
+  }
+
+  const result = new Date(utcMilliseconds);
+  const finalParts = getZonedParts(result);
+
+  const matchesRequestedTime =
+    finalParts.year === desired.year &&
+    finalParts.month === desired.month &&
+    finalParts.day === desired.day &&
+    finalParts.hour === desired.hour &&
+    finalParts.minute === desired.minute &&
+    finalParts.second === desired.second;
+
+  return matchesRequestedTime ? result : new Date(NaN);
+}
+
 function getZoomEncryptionKey() {
   const secret = process.env.ZOOM_TOKEN_ENCRYPTION_KEY;
 
@@ -6558,13 +6664,15 @@ app.post(
         });
       }
 
-      const parsedStart = new Date(
-        String(scheduledStart)
-      );
+      const parsedStart = parseDateTimeInTimeZone(
+  scheduledStart,
+  timezone
+);
 
-      const parsedEnd = new Date(
-        String(scheduledEnd)
-      );
+const parsedEnd = parseDateTimeInTimeZone(
+  scheduledEnd,
+  timezone
+);
 
       if (Number.isNaN(parsedStart.getTime())) {
         return res.status(400).json({
