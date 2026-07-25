@@ -4623,6 +4623,97 @@ if (preferredStart) {
           "Court of Compassion Interview Recording"
       );
 
+           // Send a confirmation receipt to the person who submitted the request.
+      // Email failure must not erase or duplicate the successfully created request.
+      try {
+        const readablePreferredStart = request.preferredStart
+          ? new Intl.DateTimeFormat("en-US", {
+              timeZone:
+                request.timezone || "America/Los_Angeles",
+              weekday: "long",
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+              timeZoneName: "short",
+            }).format(new Date(request.preferredStart))
+          : "Not provided";
+
+        const meetingFormatLabels = {
+          COURT_HOSTED: "Court-hosted online session",
+          PASTOR_HOSTED: "Pastor-hosted online session",
+          IN_PERSON: "In-person session",
+          HYBRID: "Hybrid session",
+        };
+
+        const readableMeetingFormat =
+          meetingFormatLabels[request.meetingFormat] ||
+          request.meetingFormat ||
+          "Not provided";
+
+        const confirmationSubject =
+          `Court Study Request Received — ${
+            campaign.recording.title ||
+            "Court of Compassion Interview Recording"
+          }`;
+
+        const confirmationBody = [
+          `Dear ${request.pastorName},`,
+          "",
+          `The Court of Compassion has received the Court Study request you submitted on behalf of ${request.churchName}.`,
+          "",
+          "Interview recording:",
+          campaign.recording.title ||
+            "Court of Compassion Interview Recording",
+          "",
+          "Preferred date and time:",
+          readablePreferredStart,
+          "",
+          "Time zone:",
+          request.timezone || "Not provided",
+          "",
+          "Requested meeting format:",
+          readableMeetingFormat,
+          "",
+          "Estimated attendance:",
+          request.estimatedAttendance != null
+            ? String(request.estimatedAttendance)
+            : "Not provided",
+          "",
+          "Current status:",
+          "PENDING",
+          "",
+          "Request reference:",
+          request.id,
+          "",
+          "The Court will review your request before approving, declining, or scheduling the session.",
+          "",
+          "Please retain this request reference for future communication.",
+          "",
+          "Respectfully,",
+          "Court of Compassion",
+        ].join("\n");
+
+        await sendEmail(
+          request.pastorEmail,
+          confirmationSubject,
+          confirmationBody
+        );
+
+        console.log(
+          "✅ COURT STUDY REQUEST CONFIRMATION SENT:",
+          request.id,
+          request.pastorEmail
+        );
+      } catch (emailError) {
+        console.error(
+          "❌ COURT STUDY REQUEST CONFIRMATION EMAIL FAILED:",
+          request.id,
+          emailError
+        );
+      } 
+
       return res.status(201).type("html").send(`
 <!doctype html>
 <html lang="en">
