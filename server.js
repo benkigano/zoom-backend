@@ -2424,6 +2424,25 @@ if (Buffer.isBuffer(req.body)) {
     }
 
     // Normal events
+
+ if (body?.event === "meeting.registration_created") {
+  const payload = body.payload || {};
+  const meeting = payload.object || {};
+  const registrant = meeting.registrant || {};
+
+  console.log("✅ ZOOM REGISTRATION CREATED:", {
+    accountId: payload.account_id || null,
+    meetingId: meeting.id ? String(meeting.id) : null,
+    meetingUuid: meeting.uuid || null,
+    registrantId: registrant.id || null,
+    firstName: registrant.first_name || null,
+    lastName: registrant.last_name || null,
+    email: registrant.email || null,
+    registrationStatus: registrant.status || null,
+    eventTimestamp: body.event_ts || null,
+  });
+}
+    
     return res.status(200).send("ok");
   } catch (err) {
     console.log("❌ ZOOM WEBHOOK ERROR:", err);
