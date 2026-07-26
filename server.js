@@ -5710,6 +5710,119 @@ app.get(
   }
 );
 
+// ================================================
+// Admin: view Zoom registrants for a Court Study
+// ================================================
+app.get(
+  "/api/court-study-requests/:id/registrants",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const requestId = String(req.params.id || "").trim();
+
+      if (!requestId) {
+        return res.status(400).json({
+          success: false,
+          error: "Court Study request ID is required",
+        });
+      }
+
+      const courtStudyRequest =
+        await prisma.courtStudyRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+          include: {
+            courtStudyMeeting: {
+              include: {
+                zoomRegistrants: {
+                  orderBy: {
+                    registeredAt: "desc",
+                  },
+                },
+              },
+            },
+          },
+        });
+
+      if (!courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error: "Court Study request not found",
+        });
+      }
+
+      const meeting = courtStudyRequest.courtStudyMeeting;
+
+      if (!meeting) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "This Court Study request does not have a scheduled meeting",
+        });
+      }
+
+      const registrants = meeting.zoomRegistrants || [];
+
+      const cancelledCount = registrants.filter(
+        (registrant) =>
+          Boolean(registrant.canceledAt) ||
+          registrant.lastEventType ===
+            "meeting.registration_cancelled"
+      ).length;
+
+      return res.status(200).json({
+        success: true,
+        courtStudyRequestId: courtStudyRequest.id,
+
+        meeting: {
+          id: meeting.id,
+          title: meeting.title,
+          zoomMeetingId: meeting.zoomMeetingId,
+          scheduledStart:
+            meeting.scheduledStart.toISOString(),
+          scheduledEnd:
+            meeting.scheduledEnd.toISOString(),
+          timezone: meeting.timezone,
+        },
+
+        summary: {
+          total: registrants.length,
+          active: registrants.length - cancelledCount,
+          cancelled: cancelledCount,
+        },
+
+        registrants: registrants.map((registrant) => ({
+          id: registrant.id,
+          zoomRegistrantId:
+            registrant.zoomRegistrantId,
+          firstName: registrant.firstName,
+          lastName: registrant.lastName,
+          email: registrant.email,
+          registrationStatus:
+            registrant.registrationStatus,
+          lastEventType: registrant.lastEventType,
+          registeredAt:
+            registrant.registeredAt.toISOString(),
+          canceledAt: registrant.canceledAt
+            ? registrant.canceledAt.toISOString()
+            : null,
+        })),
+      });
+    } catch (err) {
+      console.error(
+        "❌ GET /api/court-study-requests/:id/registrants error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
 // ==================================================
 // Admin: send the Court Study invitation package
 // to the pastor
