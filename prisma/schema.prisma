@@ -403,12 +403,41 @@ model CourtStudyMeeting {
  churchContact     ChurchContact?    @relation(fields: [churchContactId], references: [id], onDelete: SetNull)
 courtStudyRequest CourtStudyRequest? @relation(fields: [courtStudyRequestId], references: [id], onDelete: SetNull)
 timeSlot          CourtStudyTimeSlot? @relation(fields: [timeSlotId], references: [id], onDelete: SetNull)
-
+zoomRegistrants ZoomRegistrant[]
   @@index([churchContactId])
   @@index([timeSlotId])
   @@index([scheduledStart])
   @@index([status])
   @@index([courtStudyRequestId])
+}
+
+model ZoomRegistrant {
+  id                   String   @id @default(cuid())
+  courtStudyMeetingId  String
+  zoomMeetingId        String
+  zoomMeetingUuid      String?
+  zoomRegistrantId     String
+  accountId            String?
+  firstName            String?
+  lastName             String?
+  email                String
+  registrationStatus   String?
+  lastEventType        String   @default("meeting.registration_created")
+  registeredAt         DateTime @default(now())
+  canceledAt           DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  courtStudyMeeting CourtStudyMeeting @relation(
+    fields: [courtStudyMeetingId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  @@unique([zoomMeetingId, zoomRegistrantId])
+  @@index([courtStudyMeetingId])
+  @@index([zoomMeetingId])
+  @@index([email])
 }
 
 model GuestDistributionCampaign {
