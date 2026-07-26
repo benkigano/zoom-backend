@@ -428,11 +428,7 @@ model ZoomRegistrant {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  courtStudyMeeting CourtStudyMeeting @relation(
-    fields: [courtStudyMeetingId],
-    references: [id],
-    onDelete: Cascade
-  )
+  courtStudyMeeting CourtStudyMeeting @relation(fields: [courtStudyMeetingId], references: [id], onDelete: Cascade)
 
   @@unique([zoomMeetingId, zoomRegistrantId])
   @@index([courtStudyMeetingId])
