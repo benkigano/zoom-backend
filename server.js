@@ -2386,8 +2386,7 @@ app.get("/zoom/webhook", (req, res) => {
 app.post(
   ["/zoom/webhook", "/zoom/s2s-webhook"],
   express.raw({ type: "application/json" }),
-  (req, res) => {
-
+  async (req, res) => {
   try {
    let body = {};
 
@@ -2430,17 +2429,115 @@ if (Buffer.isBuffer(req.body)) {
   const meeting = payload.object || {};
   const registrant = meeting.registrant || {};
 
+  const zoomMeetingId = meeting.id ? String(meeting.id) : "";
+  const zoomRegistrantId = registrant.id
+    ? String(registrant.id)
+    : "";
+  const email = String(registrant.email || "")
+    .trim()
+    .toLowerCase();
+
   console.log("✅ ZOOM REGISTRATION CREATED:", {
     accountId: payload.account_id || null,
-    meetingId: meeting.id ? String(meeting.id) : null,
+    meetingId: zoomMeetingId || null,
     meetingUuid: meeting.uuid || null,
-    registrantId: registrant.id || null,
+    registrantId: zoomRegistrantId || null,
     firstName: registrant.first_name || null,
     lastName: registrant.last_name || null,
-    email: registrant.email || null,
+    email: email || null,
     registrationStatus: registrant.status || null,
     eventTimestamp: body.event_ts || null,
   });
+
+  if (!zoomMeetingId || !zoomRegistrantId || !email) {
+    console.warn(
+      "⚠️ Registration webhook is missing the meeting ID, registrant ID, or email."
+    );
+  } else {
+    const courtStudyMeeting =
+      await prisma.courtStudyMeeting.findFirst({
+        where: {
+          zoomMeetingId,
+        },
+        select: {
+          id: true,
+          title: true,
+          courtStudyRequestId: true,
+        },
+      });
+
+    if (!courtStudyMeeting) {
+      console.warn(
+        `⚠️ No CourtStudyMeeting record found for Zoom meeting ${zoomMeetingId}.`
+      );
+    } else {
+      const rawTimestamp = Number(body.event_ts);
+
+      const registeredAt = Number.isFinite(rawTimestamp)
+        ? new Date(
+            rawTimestamp < 1000000000000
+              ? rawTimestamp * 1000
+              : rawTimestamp
+          )
+        : new Date();
+
+      const savedRegistrant =
+        await prisma.zoomRegistrant.upsert({
+          where: {
+            zoomMeetingId_zoomRegistrantId: {
+              zoomMeetingId,
+              zoomRegistrantId,
+            },
+          },
+
+          update: {
+            zoomMeetingUuid: meeting.uuid
+              ? String(meeting.uuid)
+              : null,
+            accountId: payload.account_id
+              ? String(payload.account_id)
+              : null,
+            firstName: registrant.first_name || null,
+            lastName: registrant.last_name || null,
+            email,
+            registrationStatus:
+              registrant.status || "approved",
+            lastEventType: body.event,
+            registeredAt,
+            canceledAt: null,
+          },
+
+          create: {
+            courtStudyMeetingId: courtStudyMeeting.id,
+            zoomMeetingId,
+            zoomMeetingUuid: meeting.uuid
+              ? String(meeting.uuid)
+              : null,
+            zoomRegistrantId,
+            accountId: payload.account_id
+              ? String(payload.account_id)
+              : null,
+            firstName: registrant.first_name || null,
+            lastName: registrant.last_name || null,
+            email,
+            registrationStatus:
+              registrant.status || "approved",
+            lastEventType: body.event,
+            registeredAt,
+          },
+        });
+
+      console.log("💾 ZOOM REGISTRANT SAVED:", {
+        id: savedRegistrant.id,
+        courtStudyMeetingId:
+          savedRegistrant.courtStudyMeetingId,
+        zoomMeetingId: savedRegistrant.zoomMeetingId,
+        zoomRegistrantId:
+          savedRegistrant.zoomRegistrantId,
+        email: savedRegistrant.email,
+      });
+    }
+  }
 }
     
     return res.status(200).send("ok");
