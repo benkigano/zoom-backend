@@ -2383,8 +2383,11 @@ app.get("/zoom/webhook", (req, res) => {
   res.status(200).send("ok");
 });
 
+app.post(
+  ["/zoom/webhook", "/zoom/s2s-webhook"],
+  express.raw({ type: "application/json" }),
+  (req, res) => {
 
-app.post("/zoom/webhook", express.raw({ type: "application/json" }), (req, res) => {
   try {
    let body = {};
 
@@ -2402,10 +2405,13 @@ if (Buffer.isBuffer(req.body)) {
     // Zoom URL validation handshake
     if (body?.event === "endpoint.url_validation") {
       const plainToken = body?.payload?.plainToken;
-      const secret = process.env.ZOOM_WEBHOOK_SECRET || "";
+      const secret =
+  req.path === "/zoom/s2s-webhook"
+    ? process.env.ZOOM_S2S_WEBHOOK_SECRET_TOKEN || ""
+    : process.env.ZOOM_WEBHOOK_SECRET || "";
 
       if (!plainToken || !secret) {
-        console.log("❌ Missing plainToken or ZOOM_WEBHOOK_SECRET");
+       console.log("❌ Missing plainToken or Zoom webhook secret"); 
         return res.status(400).json({ error: "Missing plainToken or secret" });
       }
 
