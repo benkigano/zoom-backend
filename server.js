@@ -6207,22 +6207,7 @@ const safeMemberMailtoUrl =
   For privacy, the Court of Compassion does not receive or store your church members’ email addresses.
 </p>
 
-              <h3 style="color:#0B1E5B;">
-                Ready-Made Church-Member Invitation
-              </h3>
-
-              <pre
-                style="
-                  white-space:pre-wrap;
-                  overflow-wrap:anywhere;
-                  padding:16px;
-                  background:#f6f8fc;
-                  border:1px solid #d9e1ef;
-                  border-radius:4px;
-                  font-family:Arial,sans-serif;
-                  line-height:1.5;
-                "
-              >${safeEmailHtml(memberInvitationText)}</pre>
+              
 
               <p style="margin-bottom:0;">
                 Court of Compassion
