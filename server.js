@@ -6239,6 +6239,15 @@ const safeMemberMailtoUrl =
           },
         });
 
+      await prisma.courtStudyRequest.update({
+  where: {
+    id: requestId,
+  },
+  data: {
+    status: "SESSION_READY",
+  },
+});
+
       return res.status(200).json({
         success: true,
         message:
