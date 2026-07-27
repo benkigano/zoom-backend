@@ -6019,6 +6019,26 @@ app.post(
        const safeRegistrationUrl =
        safeEmailWebUrl(registrationUrl); 
 
+      const memberEmailSubject =
+  `Invitation: Court Study — ${interviewTitle}`;
+
+const memberEmailBody = [
+  "Dear Church Members,",
+  "",
+  memberInvitationText,
+  "",
+  "Regards,",
+  pastorName,
+  churchName,
+].join("\n");
+
+const memberMailtoUrl =
+  `mailto:?subject=${encodeURIComponent(memberEmailSubject)}` +
+  `&body=${encodeURIComponent(memberEmailBody)}`;
+
+const safeMemberMailtoUrl =
+  safeEmailHtml(memberMailtoUrl);
+      
       const htmlBody = `
         <!doctype html>
         <html lang="en">
@@ -6157,6 +6177,35 @@ app.post(
               <strong>For the pastor and church members:</strong>
               Each person—including the pastor—must register separately using the gold Register for the Court Study Session button. After registration, Zoom will email that person a unique personal join link.
               </p>
+
+              <h3 style="color:#0B1E5B;">
+  Invite Your Church Members
+</h3>
+
+<p>
+  Use the button below to open a ready-to-send invitation in your normal email application. Add the church members’ addresses in the Bcc field, review the message, and send it.
+</p>
+
+<p style="margin:18px 0;">
+  <a
+    href="${safeMemberMailtoUrl}"
+    style="
+      display:inline-block;
+      padding:12px 18px;
+      background:#0B1E5B;
+      color:#ffffff;
+      text-decoration:none;
+      border-radius:4px;
+      font-weight:bold;
+    "
+  >
+    Email Invitation to Church Members
+  </a>
+</p>
+
+<p style="font-size:13px;color:#555555;">
+  For privacy, the Court of Compassion does not receive or store your church members’ email addresses.
+</p>
 
               <h3 style="color:#0B1E5B;">
                 Ready-Made Church-Member Invitation
