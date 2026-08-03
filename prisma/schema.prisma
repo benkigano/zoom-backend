@@ -91,6 +91,12 @@ enum CourtStudyHostMode {
   HYBRID
 }
 
+enum CourtStudySessionFormat {
+  ONLINE
+  IN_PERSON
+  HYBRID
+}
+
 /**
  * PHASE 1 TABLES
  */
@@ -481,33 +487,66 @@ model PastorInvitation {
 }
 
 model CourtStudyRequest {
-  id                  String   @id @default(cuid())
-  campaignId          String
-  recordingId         String
-  pastorName          String
-  pastorEmail         String
-  roleTitle           String?
-  churchName          String
-  dioceseOrGroup      String?
-  phone               String?
+  id String @id @default(cuid())
+
+  // Legacy interview / guest-distribution workflow
+  campaignId  String?
+  recordingId String?
+  pastorName  String?
+  pastorEmail String?
+  roleTitle   String?
+  churchName  String?
+  dioceseOrGroup String?
+  phone       String?
+
+  // Inclusive Court Study Organizer workflow
+  organizerName  String?
+  organizerEmail String?
+  organizerPhone String?
+  organizerRole  String?
+
+  hostGroupName    String?
+  hostGroupType    String?
+  hostGroupWebsite String?
+  hostGroupCity    String?
+  hostGroupState   String?
+  hostGroupZip     String?
+  hostGroupCountry String?
+
+  // Study material
+  studyFocusType       CourtStudyDiscussionType?
+  selectedRulesSections Json?
+
+  // Requested session details
   preferredStart      DateTime?
   timezone            String?
   meetingFormat       CourtStudyHostMode?
+  sessionFormat       CourtStudySessionFormat?
   estimatedAttendance Int?
   notes               String?
-  status              CourtStudyRequestStatus @default(PENDING)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
 
-  campaign GuestDistributionCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  status    CourtStudyRequestStatus @default(PENDING)
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
 
-  recording Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+  campaign GuestDistributionCampaign? @relation(
+    fields: [campaignId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  recording Recording? @relation(
+    fields: [recordingId],
+    references: [id],
+    onDelete: Cascade
+  )
 
   courtStudyMeeting CourtStudyMeeting?
 
   @@index([campaignId])
   @@index([recordingId])
   @@index([pastorEmail])
+  @@index([organizerEmail])
   @@index([status])
   @@index([preferredStart])
 }
