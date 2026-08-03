@@ -5187,10 +5187,124 @@ const timezoneInput = cleanText(body.timezone);
           },
         });
 
+      // Send a receipt confirmation without allowing an email failure
+// to undo the successfully saved Court Study request.
+let confirmationEmailSent = false;
+
+try {
+  const transporter = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    auth: {
+      user: process.env.GMAIL_USER,
+      pass: process.env.GMAIL_APP_PASSWORD,
+    },
+  });
+
+  let readablePreferredStart = "Not specified";
+
+  try {
+    if (
+      preferredStart instanceof Date &&
+      !Number.isNaN(preferredStart.getTime())
+    ) {
+      readablePreferredStart = preferredStart.toLocaleString("en-US", {
+        timeZone: timezone,
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      });
+    }
+  } catch (dateFormatError) {
+    readablePreferredStart =
+      preferredStart instanceof Date
+        ? preferredStart.toISOString()
+        : String(preferredStart || "Not specified");
+  }
+
+  const selectedMaterialText =
+    Array.isArray(selectedRulesSections) &&
+    selectedRulesSections.length > 0
+      ? selectedRulesSections
+          .map((section, index) => {
+            const chapter =
+              section?.chapterTitle || section?.chapterId || "";
+            const title =
+              section?.sectionTitle ||
+              section?.videoTitle ||
+              section?.sectionId ||
+              section?.id ||
+              "Selected section";
+
+            return `${index + 1}. ${
+              chapter ? `${chapter} — ` : ""
+            }${title}`;
+          })
+          .join("\n")
+      : "No specific Rules sections were listed.";
+
+  const readableStudyFocus =
+    typeof studyFocusType === "string"
+      ? studyFocusType.replaceAll("_", " ")
+      : "Court Study";
+
+  const readableFormat =
+    sessionFormat || meetingFormat || "Not specified";
+
+  const confirmationText = [
+    `Dear ${organizerName},`,
+    "",
+    "Thank you. We have received your Court Study request.",
+    "",
+    `Request reference: ${request.id}`,
+    `Organizer: ${organizerName}`,
+    `Host group or community: ${hostGroupName}`,
+    `Group type: ${hostGroupType}`,
+    `Study focus: ${readableStudyFocus}`,
+    `Preferred session time: ${readablePreferredStart}`,
+    `Format: ${readableFormat}`,
+    `Estimated attendance: ${
+      estimatedAttendance ?? "Not specified"
+    }`,
+    "",
+    "Selected Court Study material:",
+    selectedMaterialText,
+    "",
+    "Your request is now pending administrative review. This confirmation acknowledges receipt of the request; it does not yet mean that the request has been approved or scheduled.",
+    "",
+    "Court of Compassion",
+  ].join("\n");
+
+  await transporter.sendMail({
+    from: `"Court of Compassion" <${process.env.GMAIL_USER}>`,
+    to: organizerEmail,
+    subject: "Court Study Request Received",
+    text: confirmationText,
+    replyTo: process.env.GMAIL_USER,
+  });
+
+  confirmationEmailSent = true;
+
+  console.log(
+    `✅ Court Study confirmation email sent for request ${request.id}`
+  );
+} catch (emailError) {
+  console.error(
+    `⚠️ Court Study request ${request.id} was saved, but its confirmation email failed:`,
+    emailError
+  );
+}
+      
       return res.status(201).json({
         success: true,
         message:
           "Court Study request submitted successfully.",
+        confirmationEmailSent,
         request: {
           id: request.id,
           status: request.status,
