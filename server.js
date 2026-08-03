@@ -4965,9 +4965,23 @@ app.post(
       const hostGroupZip = cleanText(body.hostGroupZip);
       const hostGroupCountry = cleanText(body.hostGroupCountry);
 
-      const preferredDate = cleanText(body.preferredDate);
-      const preferredTime = cleanText(body.preferredTime);
-      const timezoneInput = cleanText(body.timezone);
+      const preferredStartInput = cleanText(body.preferredStart);
+
+let preferredDate = cleanText(body.preferredDate);
+let preferredTime = cleanText(body.preferredTime);
+
+if ((!preferredDate || !preferredTime) && preferredStartInput) {
+  const preferredStartMatch = preferredStartInput.match(
+    /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/
+  );
+
+  if (preferredStartMatch) {
+    preferredDate = preferredDate || preferredStartMatch[1];
+    preferredTime = preferredTime || preferredStartMatch[2];
+  }
+}
+
+const timezoneInput = cleanText(body.timezone);
 
       const rawSessionFormat = cleanText(
         body.meetingFormat ?? body.format
