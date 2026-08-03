@@ -529,17 +529,9 @@ model CourtStudyRequest {
   createdAt DateTime                @default(now())
   updatedAt DateTime                @updatedAt
 
-  campaign GuestDistributionCampaign? @relation(
-    fields: [campaignId],
-    references: [id],
-    onDelete: Cascade
-  )
+  campaign GuestDistributionCampaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
-  recording Recording? @relation(
-    fields: [recordingId],
-    references: [id],
-    onDelete: Cascade
-  )
+recording Recording? @relation(fields: [recordingId], references: [id], onDelete: Cascade)
 
   courtStudyMeeting CourtStudyMeeting?
 
