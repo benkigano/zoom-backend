@@ -7319,8 +7319,7 @@ app.post(
       }
 
       const {
-        zoomMeetingId,
-        zoomJoinUrl,
+        zoomMeetingId,        
         zoomRegistrationUrl,
         zoomPasscode,
         scheduledStart,
@@ -7365,19 +7364,7 @@ app.post(
         }
       };
 
-      let normalizedJoinUrl;
-
-      try {
-        normalizedJoinUrl = validateHttpUrl(
-          zoomJoinUrl,
-          "Zoom join URL"
-        );
-      } catch (validationError) {
-        return res.status(400).json({
-          success: false,
-          error: validationError.message,
-        });
-      }
+      
 
       let normalizedRegistrationUrl = null;
 
@@ -7515,10 +7502,8 @@ const parsedEnd = parseDateTimeInTimeZone(
                 id: meeting.id,
               },
               data: {
-                zoomMeetingId:
-                  normalizedMeetingId,
-                zoomJoinUrl:
-                  normalizedJoinUrl,
+                zoomJoinUrl: null,
+                
                 zoomRegistrationUrl:
                   normalizedRegistrationUrl,
                 zoomPasscode:
