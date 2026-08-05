@@ -6479,67 +6479,126 @@ const podcastUrl = isRulesStudy
       const readableSessionTime =
         `${formattedDateTime} ${timezoneLabel}`;
 
-      const interviewTitle =
-        recording?.title ||
-        meeting.title ||
-        "Court of Compassion Interview";
+      const interviewTitle = isRulesStudy
+  ? [
+      selectedRulesSection?.chapterTitle,
+      selectedRulesSection?.sectionTitle,
+    ]
+      .filter(Boolean)
+      .join(" — ") ||
+    meeting.title ||
+    "Rules of Court Procedure"
+  : recording?.title ||
+    meeting.title ||
+    "Court of Compassion Interview";
 
-      const memberInvitationText = [
-        `You are invited to participate in a Court of Compassion Court Study session hosted for ${churchName}.`,
-        "",
-        `Interview: ${interviewTitle}`,
-        `Session: ${readableSessionTime}`,
-        "",
-        "Watch the Interview Recording:",
-        recordingUrl,
-        "",
-        ...(podcastUrl
-          ? [
-              "Listen to the Podcast:",
-              podcastUrl,
-              "",
-            ]
-          : []),
-        "Register for the Zoom Court Study Session:",
-        registrationUrl,
-        "",
-        "Important: Each participant must register separately using the registration link above. Zoom will send each registered participant a personal confirmation email and unique join link.",
-      ].join("\n");
+const memberInvitationText = isRulesStudy
+  ? [
+      `You are invited to participate in a Court of Compassion Court Study session hosted for ${churchName}.`,
+      "",
+      `Study Material: ${interviewTitle}`,
+      ...(recordingUrl
+        ? [
+            "",
+            "Watch the Selected Rules Video:",
+            recordingUrl,
+          ]
+        : []),
+      "",
+      `Session: ${readableSessionTime}`,
+      "",
+      "Register for the Zoom Court Study Session:",
+      registrationUrl,
+      "",
+      "Important: Each participant must register separately using the registration link above. Zoom will send each registered participant a personal confirmation email and unique join link.",
+    ].join("\n")
+  : [
+      `You are invited to participate in a Court of Compassion Court Study session hosted for ${churchName}.`,
+      "",
+      `Interview: ${interviewTitle}`,
+      `Session: ${readableSessionTime}`,
+      "",
+      "Watch the Interview Recording:",
+      recordingUrl,
+      "",
+      ...(podcastUrl
+        ? [
+            "Listen to the Podcast:",
+            podcastUrl,
+            "",
+          ]
+        : []),
+      "Register for the Zoom Court Study Session:",
+      registrationUrl,
+      "",
+      "Important: Each participant must register separately using the registration link above. Zoom will send each registered participant a personal confirmation email and unique join link.",
+    ].join("\n");
 
       const subject =
         `Court Study Session Ready — ${interviewTitle}`;
 
-      const plainTextBody = [
-        `Dear ${pastorName || "Pastor"},`,
-        "",
-        "Your Court of Compassion Court Study session is ready.",
-        "",
-        `Church: ${churchName}`,
-        `Interview: ${interviewTitle}`,
-        `Session: ${readableSessionTime}`,
-        "",
-        "Watch Interview Recording:",
-        recordingUrl,
-        "",
-        ...(podcastUrl
-          ? [
-              "Listen to Podcast:",
-              podcastUrl,
-              "",
-            ]
-          : []),
-        "Public Zoom Registration URL:",
-        registrationUrl,
-        "",
-        "FOR THE PASTOR AND CHURCH MEMBERS:",
-        "Each person—including the pastor—must register separately using the public Zoom Registration URL above. After registration, Zoom will email that person a unique personal join link.",
-        "",
-        "READY-MADE CHURCH-MEMBER INVITATION",
-        "-----------------------------------",
-        memberInvitationText,
-        "",
-        "Court of Compassion",
-      ].join("\n");
+      const plainTextBody = isRulesStudy
+  ? [
+      `Dear ${pastorName || "Court Study Organizer"},`,
+      "",
+      "Your Court of Compassion Court Study session is ready.",
+      "",
+      `Host Group or Community: ${churchName}`,
+      `Study Material: ${interviewTitle}`,
+      `Session: ${readableSessionTime}`,
+      "",
+      ...(recordingUrl
+        ? [
+            "Watch the Selected Rules Video:",
+            recordingUrl,
+            "",
+          ]
+        : []),
+      "Public Zoom Registration:",
+      registrationUrl,
+      "",
+      "FOR THE ORGANIZER AND PARTICIPANTS:",
+      "Each person—including the organizer—must register separately using the public Zoom Registration link above. After registration, Zoom will email that person a unique personal join link.",
+      "",
+      "READY-MADE PARTICIPANT INVITATION",
+      "---------------------------------",
+      "",
+      memberInvitationText,
+      "",
+      "Court of Compassion",
+    ].join("\n")
+  : [
+      `Dear ${pastorName || "Pastor"},`,
+      "",
+      "Your Court of Compassion Court Study session is ready.",
+      "",
+      `Church: ${churchName}`,
+      `Interview: ${interviewTitle}`,
+      `Session: ${readableSessionTime}`,
+      "",
+      "Watch Interview Recording:",
+      recordingUrl,
+      "",
+      ...(podcastUrl
+        ? [
+            "Listen to Podcast:",
+            podcastUrl,
+            "",
+          ]
+        : []),
+      "Public Zoom Registration URL:",
+      registrationUrl,
+      "",
+      "FOR THE PASTOR AND CHURCH MEMBERS:",
+      "Each person—including the pastor—must register separately using the public Zoom Registration URL above. After registration, Zoom will email that person a unique personal join link.",
+      "",
+      "READY-MADE CHURCH-MEMBER INVITATION",
+      "-----------------------------------",
+      "",
+      memberInvitationText,
+      "",
+      "Court of Compassion",
+    ].join("\n");
 
        const safeRecordingUrl = safeEmailWebUrl(recordingUrl);
        const safePodcastUrl = safeEmailWebUrl(podcastUrl);
@@ -6549,15 +6608,33 @@ const podcastUrl = isRulesStudy
       const memberEmailSubject =
   `Invitation: Court Study — ${interviewTitle}`;
 
-const memberEmailBody = [
-  "Dear Church Members,",
-  "",
-  memberInvitationText,
-  "",
-  "Regards,",
-  pastorName,
-  churchName,
-].join("\n");
+      const organizerName = String(
+        courtStudyRequest.organizerName ||
+        courtStudyRequest.pastorName ||
+        ""
+      ).trim();
+
+      const organizerEmail = String(
+        courtStudyRequest.organizerEmail ||
+        courtStudyRequest.pastorEmail ||
+        ""
+      ).trim();
+
+      const hostGroupName = String(
+        courtStudyRequest.hostGroupName ||
+        courtStudyRequest.churchName ||
+        ""
+      ).trim();
+
+      const memberEmailBody = [
+        "Dear Court Study Participants,",
+        "",
+        memberInvitationText,
+        "",
+        "Regards,",
+        organizerName,
+        hostGroupName,
+      ].join("\n");
 
 const memberMailtoUrl =
   `mailto:?subject=${encodeURIComponent(memberEmailSubject)}` +
