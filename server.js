@@ -6348,26 +6348,81 @@ app.post(
       meetingId = meeting.id;
 
       const pastorName = String(
-        courtStudyRequest.pastorName || ""
-      ).trim();
+  courtStudyRequest.organizerName ||
+  courtStudyRequest.pastorName ||
+  ""
+).trim();
 
-      const pastorEmail = String(
-        courtStudyRequest.pastorEmail || ""
-      ).trim();
+const pastorEmail = String(
+  courtStudyRequest.organizerEmail ||
+  courtStudyRequest.pastorEmail ||
+  ""
+).trim();
 
-      const churchName = String(
-        courtStudyRequest.churchName || ""
-      ).trim();
+const churchName = String(
+  courtStudyRequest.hostGroupName ||
+  courtStudyRequest.churchName ||
+  ""
+).trim();
 
       pastorEmailForAudit = pastorEmail;
 
-      const recordingUrl = String(
-        recording?.recordingUrl || ""
-      ).trim();
+      let selectedRulesSections = [];
 
-      const podcastUrl = String(
-        recording?.podcastUrl || ""
-      ).trim();
+try {
+  const rawSelectedRulesSections =
+    courtStudyRequest.selectedRulesSections;
+
+  if (Array.isArray(rawSelectedRulesSections)) {
+    selectedRulesSections = rawSelectedRulesSections;
+  } else if (
+    typeof rawSelectedRulesSections === "string" &&
+    rawSelectedRulesSections.trim()
+  ) {
+    const parsedSelectedRulesSections =
+      JSON.parse(rawSelectedRulesSections);
+
+    selectedRulesSections = Array.isArray(
+      parsedSelectedRulesSections
+    )
+      ? parsedSelectedRulesSections
+      : [parsedSelectedRulesSections];
+  }
+} catch (parseError) {
+  console.warn(
+    "Could not parse selectedRulesSections for invitation send:",
+    parseError
+  );
+}
+
+const selectedRulesSection =
+  selectedRulesSections.find((section) =>
+    String(section?.videoUrl || "").trim()
+  ) ||
+  selectedRulesSections[0] ||
+  null;
+
+const isRulesStudy =
+  String(courtStudyRequest.studyFocusType || "")
+    .trim()
+    .toUpperCase() === "RULES_OF_PROCEDURE" ||
+  Boolean(selectedRulesSection);
+
+const rulesVideoUrl = String(
+  selectedRulesSection?.videoUrl || ""
+).trim();
+
+const interviewRecordingUrl = String(
+  recording?.recordingUrl || ""
+).trim();
+
+const recordingUrl = isRulesStudy
+  ? rulesVideoUrl
+  : interviewRecordingUrl;
+
+const podcastUrl = isRulesStudy
+  ? ""
+  : String(recording?.podcastUrl || "").trim();
 
       const registrationUrl = String(
         meeting.zoomRegistrationUrl || ""
