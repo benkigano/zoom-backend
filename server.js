@@ -4765,6 +4765,7 @@ if (preferredStart) {
         const meetingFormatLabels = {
           COURT_HOSTED: "Court-hosted online session",
           PASTOR_HOSTED: "Pastor-hosted online session",
+          COMMUNITY_HOSTED: "Community-hosted online session",
           IN_PERSON: "In-person session",
           HYBRID: "Hybrid session",
         };
@@ -4959,12 +4960,13 @@ app.post(
 
       const hostGroupName = cleanText(body.hostGroupName);
       const hostGroupType = cleanText(body.hostGroupType);
+      const rawHostMode = cleanText(body.hostMode);
       const hostGroupWebsite = cleanText(body.hostGroupWebsite);
       const hostGroupCity = cleanText(body.hostGroupCity);
       const hostGroupState = cleanText(body.hostGroupState);
       const hostGroupZip = cleanText(body.hostGroupZip);
       const hostGroupCountry = cleanText(body.hostGroupCountry);
-
+      
       const preferredStartInput = cleanText(body.preferredStart);
 
 let preferredDate = cleanText(body.preferredDate);
@@ -4987,6 +4989,26 @@ const timezoneInput = cleanText(body.timezone);
         body.meetingFormat ?? body.format
       );
 
+      const normalizedHostMode = rawHostMode
+  ? rawHostMode.toUpperCase().replace(/[\s-]+/g, "_")
+  : "";
+
+const allowedHostModes = new Set([
+  "PASTOR_HOSTED",
+  "COMMUNITY_HOSTED",
+]);
+
+if (
+  normalizedHostMode &&
+  !allowedHostModes.has(normalizedHostMode)
+) {
+  return res.status(400).json({
+    success: false,
+    error:
+      "Host mode must be Pastor Hosted or Community Hosted.",
+  });
+}
+      
       if (
         !organizerName ||
         !organizerEmail ||
@@ -5104,7 +5126,7 @@ const timezoneInput = cleanText(body.timezone);
       };
 
       const legacyMeetingFormatMap = {
-        ONLINE: "PASTOR_HOSTED",
+        ONLINE: normalizedHostMode || "PASTOR_HOSTED",
         IN_PERSON: "IN_PERSON",
         HYBRID: "HYBRID",
       };
