@@ -5956,95 +5956,181 @@ app.get(
         });
       }
 
-      const recordingUrl = String(
-        recording?.recordingUrl || ""
-      ).trim();
+      let selectedRulesSections = [];
 
-      const podcastUrl = String(
-        recording?.podcastUrl || ""
-      ).trim();
+try {
+  const rawSelectedRulesSections =
+    courtStudyRequest.selectedRulesSections;
 
-      const registrationUrl = String(
-        meeting.zoomRegistrationUrl || ""
-      ).trim();
+  if (Array.isArray(rawSelectedRulesSections)) {
+    selectedRulesSections = rawSelectedRulesSections;
+  } else if (
+    typeof rawSelectedRulesSections === "string" &&
+    rawSelectedRulesSections.trim()
+  ) {
+    const parsedSelectedRulesSections =
+      JSON.parse(rawSelectedRulesSections);
 
-      const missingFields = [];
+    selectedRulesSections = Array.isArray(
+      parsedSelectedRulesSections
+    )
+      ? parsedSelectedRulesSections
+      : [parsedSelectedRulesSections];
+  }
+} catch (parseError) {
+  console.warn(
+    "Could not parse selectedRulesSections for invitation preview:",
+    parseError
+  );
+}
 
-      if (!recordingUrl) {
-        missingFields.push("recordingUrl");
-      }
+const selectedRulesSection =
+  selectedRulesSections.find((section) =>
+    String(section?.videoUrl || "").trim()
+  ) ||
+  selectedRulesSections[0] ||
+  null;
 
-      if (!registrationUrl) {
-        missingFields.push("zoomRegistrationUrl");
-      }
+const rulesVideoUrl = String(
+  selectedRulesSection?.videoUrl || ""
+).trim();
 
-      if (missingFields.length > 0) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "The invitation package is not ready because required links are missing",
-          missingFields,
-        });
-      }
+const interviewRecordingUrl = String(
+  recording?.recordingUrl || ""
+).trim();
 
-      const timezone =
-        meeting.timezone ||
-        courtStudyRequest.timezone ||
-        "America/Los_Angeles";
+const isRulesStudy = Boolean(selectedRulesSection);
 
-      const scheduledStart = new Date(
-        meeting.scheduledStart
-      );
+const recordingUrl = isRulesStudy
+  ? rulesVideoUrl
+  : interviewRecordingUrl;
 
-      const formattedDateTime =
-        new Intl.DateTimeFormat("en-US", {
-          timeZone: timezone,
-          month: "long",
-          day: "numeric",
-          year: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-        }).format(scheduledStart);
+const podcastUrl = isRulesStudy
+  ? ""
+  : String(recording?.podcastUrl || "").trim();
 
-      const timezoneLabel =
-        timezone === "America/Los_Angeles"
-          ? "Pacific Time"
-          : timezone;
+const registrationUrl = String(
+  meeting.zoomRegistrationUrl || ""
+).trim();
 
-      const readableSessionTime =
-        `${formattedDateTime} ${timezoneLabel}`;
+const missingFields = [];
 
-      const pastorName = courtStudyRequest.pastorName;
-      const pastorEmail = courtStudyRequest.pastorEmail;
-      const churchName = courtStudyRequest.churchName;
-      const interviewTitle =
-        recording?.title ||
-        meeting.title ||
-        "Court of Compassion Interview";
+if (!recordingUrl) {
+  missingFields.push(
+    isRulesStudy
+      ? "selectedRulesSection.videoUrl"
+      : "recordingUrl"
+  );
+}
 
-      const memberInvitationText = [
-        `You are invited to participate in a Court of Compassion Court Study session hosted for ${churchName}.`,
-        "",
-        `Interview: ${interviewTitle}`,
-        `Session: ${readableSessionTime}`,
-        "",
-        `Watch the Interview Recording:`,
-        recordingUrl,
-        "",
-        ...(podcastUrl
-          ? [
-              `Listen to the Podcast:`,
-              podcastUrl,
-              "",
-            ]
-          : []),
-        `Register for the Zoom Court Study Session:`,
-        registrationUrl,
-        "",
-        `Important: Each participant must register separately using the registration link above. Zoom will send each registered participant a personal confirmation email and unique join link.`,
-      ].join("\n");
+if (!registrationUrl) {
+  missingFields.push("zoomRegistrationUrl");
+}
 
+if (missingFields.length > 0) {
+  return res.status(400).json({
+    success: false,
+    error:
+      "The invitation package is not ready because required links are missing",
+    missingFields,
+  });
+}
+
+const timezone =
+  meeting.timezone ||
+  courtStudyRequest.timezone ||
+  "America/Los_Angeles";
+
+const scheduledStart = new Date(
+  meeting.scheduledStart
+);
+
+const formattedDateTime =
+  new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(scheduledStart);
+
+const timezoneLabel =
+  timezone === "America/Los_Angeles"
+    ? "Pacific Time"
+    : timezone;
+
+const readableSessionTime =
+  `${formattedDateTime} (${timezoneLabel})`;
+
+const pastorName =
+  courtStudyRequest.organizerName ||
+  courtStudyRequest.pastorName;
+
+const pastorEmail =
+  courtStudyRequest.organizerEmail ||
+  courtStudyRequest.pastorEmail;
+
+const churchName =
+  courtStudyRequest.hostGroupName ||
+  courtStudyRequest.churchName;
+
+const interviewTitle = isRulesStudy
+  ? [
+      selectedRulesSection?.chapterTitle,
+      selectedRulesSection?.sectionTitle,
+    ]
+      .filter(Boolean)
+      .join(" — ") ||
+    meeting.title ||
+    "Court Study"
+  : recording?.title ||
+    meeting.title ||
+    "Court of Compassion Interview";
+
+     const memberInvitationText = isRulesStudy
+  ? [
+      `You are invited to participate in a Court of Compassion Court Study session hosted for ${churchName}.`,
+      "",
+      `Study Material: ${interviewTitle}`,
+      ...(recordingUrl
+        ? [
+            "",
+            "Watch the Selected Rules Video:",
+            recordingUrl,
+          ]
+        : []),
+      "",
+      `Session: ${readableSessionTime}`,
+      "",
+      "Register for the Zoom Court Study Session:",
+      registrationUrl,
+      "",
+      "Important: Each participant must register separately using the registration link above. Zoom will send each registered participant a personal confirmation email and unique join link.",
+    ].join("\n")
+  : [
+      `You are invited to participate in a Court of Compassion Court Study session hosted for ${churchName}.`,
+      "",
+      `Interview: ${interviewTitle}`,
+      `Session: ${readableSessionTime}`,
+      "",
+      "Watch the Interview Recording:",
+      recordingUrl,
+      "",
+      ...(podcastUrl
+        ? [
+            "Listen to the Podcast:",
+            podcastUrl,
+            "",
+          ]
+        : []),
+      "Register for the Zoom Court Study Session:",
+      registrationUrl,
+      "",
+      "Important: Each participant must register separately using the registration link above. Zoom will send each registered participant a personal confirmation email and unique join link.",
+    ].join("\n"); 
+      
       return res.status(200).json({
         success: true,
         invitation: {
