@@ -6648,15 +6648,28 @@ const memberInvitationText = isRulesStudy
         ""
       ).trim();
 
-      const memberEmailBody = [
-        "Dear Court Study Participants,",
-        "",
-        memberInvitationText,
-        "",
-        "Regards,",
-        organizerName,
-        hostGroupName,
-      ].join("\n");
+      const isCommunityHosted =
+  courtStudyRequest.meetingFormat === "COMMUNITY_HOSTED";
+      
+      const memberEmailBody = isCommunityHosted
+  ? [
+      "Dear Court Study Participants,",
+      "",
+      memberInvitationText,
+      "",
+      "Regards,",
+      organizerName,
+      hostGroupName,
+    ].join("\n")
+  : [
+      "Dear Church Members,",
+      "",
+      memberInvitationText,
+      "",
+      "Regards,",
+      pastorName,
+      churchName,
+    ].join("\n");
 
 const memberMailtoUrl =
   `mailto:?subject=${encodeURIComponent(memberEmailSubject)}` +
