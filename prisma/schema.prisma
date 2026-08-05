@@ -87,6 +87,7 @@ enum CourtStudyRequestStatus {
 enum CourtStudyHostMode {
   COURT_HOSTED
   PASTOR_HOSTED
+  COMMUNITY_HOSTED
   IN_PERSON
   HYBRID
 }
