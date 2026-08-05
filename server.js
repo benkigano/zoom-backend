@@ -7502,6 +7502,7 @@ const parsedEnd = parseDateTimeInTimeZone(
                 id: meeting.id,
               },
               data: {
+                zoomMeetingId: normalizedMeetingId,
                 zoomJoinUrl: null,
                 
                 zoomRegistrationUrl:
