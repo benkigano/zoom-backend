@@ -6379,7 +6379,7 @@ app.post(
         missingFields.push("pastorEmail");
       }
 
-      if (!recordingUrl) {
+      if (!isRulesStudy && !recordingUrl) {
         missingFields.push("recordingUrl");
       }
 
