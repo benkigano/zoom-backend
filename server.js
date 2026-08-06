@@ -6113,13 +6113,13 @@ const interviewTitle = isRulesStudy
 
      const memberInvitationText = isRulesStudy
   ? [
-      `You are invited to participate in a Court of Compassion Court Study session hosted for ${churchName}.`,
+      `You are invited to participate in a Court of Compassion Court Study session hosted by ${churchName}.`,
       "",
       `Study Material: ${interviewTitle}`,
       ...(recordingUrl
         ? [
             "",
-            "Watch the Selected Rules Video:",
+           "Watch the Selected Court Study Video:", 
             recordingUrl,
           ]
         : []),
@@ -6132,7 +6132,7 @@ const interviewTitle = isRulesStudy
       "Important: Each participant must register separately using the registration link above. Zoom will send each registered participant a personal confirmation email and unique join link.",
     ].join("\n")
   : [
-      `You are invited to participate in a Court of Compassion Court Study session hosted for ${churchName}.`,
+      `You are invited to participate in a Court of Compassion Court Study session hosted by ${churchName}.`,
       "",
       `Interview: ${interviewTitle}`,
       `Session: ${readableSessionTime}`,
@@ -6516,13 +6516,13 @@ const podcastUrl = isRulesStudy
 
 const memberInvitationText = isRulesStudy
   ? [
-      `You are invited to participate in a Court of Compassion Court Study session hosted for ${churchName}.`,
+      `You are invited to participate in a Court of Compassion Court Study session hosted by ${churchName}.`,
       "",
       `Study Material: ${interviewTitle}`,
       ...(recordingUrl
         ? [
             "",
-            "Watch the Selected Rules Video:",
+            "Watch the Selected Court Study Video:",
             recordingUrl,
           ]
         : []),
@@ -6535,7 +6535,7 @@ const memberInvitationText = isRulesStudy
       "Important: Each participant must register separately using the registration link above. Zoom will send each registered participant a personal confirmation email and unique join link.",
     ].join("\n")
   : [
-      `You are invited to participate in a Court of Compassion Court Study session hosted for ${churchName}.`,
+      `You are invited to participate in a Court of Compassion Court Study session hosted by ${churchName}.`,
       "",
       `Interview: ${interviewTitle}`,
       `Session: ${readableSessionTime}`,
