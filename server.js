@@ -7834,6 +7834,152 @@ const parsedEnd = parseDateTimeInTimeZone(
         }
       );
 
+       
+    // Notify the person who submitted the meeting details
+    // and notify the Court administrator.
+    const submitterName = String(
+      courtStudyRequest.organizerName ||
+        courtStudyRequest.pastorName ||
+        "Court Study Organizer"
+    ).trim();
+
+    const submitterEmail = String(
+      courtStudyRequest.organizerEmail ||
+        courtStudyRequest.pastorEmail ||
+        ""
+    ).trim();
+
+    const submittedTimeZone = String(
+      timezone || "America/Los_Angeles"
+    ).trim();
+
+    const formatSubmittedDateTime = (value) => {
+      try {
+        return value.toLocaleString("en-US", {
+          timeZone: submittedTimeZone,
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          timeZoneName: "short",
+        });
+      } catch (formatError) {
+        return value.toISOString();
+      }
+    };
+
+    const readableSubmittedStart =
+      formatSubmittedDateTime(parsedStart);
+
+    const readableSubmittedEnd =
+      formatSubmittedDateTime(parsedEnd);
+
+    const requestReference = courtStudyRequest.id;
+
+    const adminEmail = String(
+      process.env.ADMIN_EMAIL ||
+        process.env.GMAIL_USER ||
+        ""
+    ).trim();
+
+    if (submitterEmail) {
+      try {
+        const submitterSubject =
+          "Court Study meeting details received";
+
+        const submitterBody = [
+          `Dear ${submitterName},`,
+          "",
+          "Your Zoom meeting details have been received by the Court of Compassion.",
+          "",
+          `Confirmed start: ${readableSubmittedStart}`,
+          `Confirmed end: ${readableSubmittedEnd}`,
+          `Time zone: ${submittedTimeZone}`,
+          `Request reference: ${requestReference}`,
+          "",
+          "The Court will review the submitted meeting details. You will be contacted after the review has been completed.",
+          "",
+          "Respectfully,",
+          "Court of Compassion",
+        ].join("\n");
+
+        await sendEmail(
+          submitterEmail,
+          submitterSubject,
+          submitterBody
+        );
+
+        console.log(
+          "✅ MEETING DETAILS CONFIRMATION EMAIL SENT:",
+          submitterEmail
+        );
+      } catch (submitterEmailError) {
+        console.error(
+          "❌ MEETING DETAILS CONFIRMATION EMAIL FAILED:",
+          submitterEmail,
+          submitterEmailError
+        );
+      }
+    } else {
+      console.warn(
+        "⚠️ No organizer or pastor email was available for the meeting-details confirmation."
+      );
+    }
+
+    if (adminEmail) {
+      try {
+        const adminReviewUrl =
+          `https://www.courtofcompassion.com/admin/court-study-requests?requestId=${encodeURIComponent(
+            requestReference
+          )}`;
+
+        const adminSubject =
+          `Action required: Court Study meeting details submitted — ${requestReference}`;
+
+        const adminBody = [
+          "Court Study meeting details have been submitted and require administrator review.",
+          "",
+          `Submitted by: ${submitterName}`,
+          `Submitter email: ${submitterEmail || "Not provided"}`,
+          `Request reference: ${requestReference}`,
+          `Confirmed start: ${readableSubmittedStart}`,
+          `Confirmed end: ${readableSubmittedEnd}`,
+          `Time zone: ${submittedTimeZone}`,
+          "",
+          "Next required action: Review the submitted Zoom details and select Approve Meeting Details if everything is correct.",
+          "",
+          `Open the Court Study admin page: ${adminReviewUrl}`,
+          "",
+          "Court of Compassion",
+        ].join("\n");
+
+        await sendEmail(
+          adminEmail,
+          adminSubject,
+          adminBody
+        );
+
+        console.log(
+          "✅ ADMIN MEETING DETAILS NOTIFICATION SENT:",
+          adminEmail
+        );
+      } catch (adminEmailError) {
+        console.error(
+          "❌ ADMIN MEETING DETAILS NOTIFICATION FAILED:",
+          adminEmail,
+          adminEmailError
+        );
+      }
+    } else {
+      console.warn(
+        "⚠️ Administrator notification was skipped because ADMIN_EMAIL and GMAIL_USER are missing."
+      );
+    }
+
+   
+      
       return res.status(200).json({
         success: true,
         message:
