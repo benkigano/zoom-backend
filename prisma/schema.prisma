@@ -78,6 +78,7 @@ enum CourtStudyRequestStatus {
   MEETING_DETAILS_SUBMITTED 
   MEETING_APPROVED
   SESSION_READY
+  SESSION_REVIEW_PENDING
   DECLINED
   SCHEDULED
   COMPLETED
@@ -394,6 +395,13 @@ model CourtStudyMeeting {
   zoomRegistrationUrl String?
   zoomJoinUrl         String?
   zoomPasscode              String?
+  zoomMeetingUuid       String?
+  actualSessionStart    DateTime?
+  actualSessionEnd      DateTime?
+  attendanceSyncedAt    DateTime?
+  totalRegistered       Int?
+  totalAttended         Int?
+  sessionCompletedAt    DateTime?
   pastorSetupToken          String?   @unique
   pastorSetupTokenExpiresAt DateTime?
   meetingSetupRequestedAt   DateTime?
