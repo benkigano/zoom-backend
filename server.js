@@ -6844,7 +6844,7 @@ const safeMemberMailtoUrl =
               <strong>${isCommunityHosted ? "For the organizer and participants:" : "For the Court Study organizer and participants:"}</strong>
               ${isCommunityHosted
   ? "Each person—including the organizer—must register separately using the gold Register for the Court Study Session button. After registration, Zoom will email that person a unique personal join link."
-  : "Each person—including the Court Study organizer—must register separately using the gold Register for the Court Study Session button. After registration, Zoom will email that person a unique personal join link."
+  : "Each person—including the Court Study organizer—must register separately using the gold Register for the Court Study Session button. After registration, Zoom will email that person a unique personal join link."}
               </p>
 
               <h3 style="color:#0B1E5B;">
