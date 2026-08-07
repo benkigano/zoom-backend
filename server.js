@@ -2424,6 +2424,80 @@ if (Buffer.isBuffer(req.body)) {
 
     // Normal events
 
+  if (body?.event === "meeting.ended") {
+  const payload = body.payload || {};
+  const meeting = payload.object || {};
+
+  const zoomMeetingId = meeting.id ? String(meeting.id) : "";
+  const zoomMeetingUuid = meeting.uuid ? String(meeting.uuid) : null;
+
+  const actualSessionStart = meeting.start_time
+    ? new Date(meeting.start_time)
+    : null;
+
+  const actualSessionEnd = meeting.end_time
+    ? new Date(meeting.end_time)
+    : null;
+
+  console.log("🛑 ZOOM MEETING ENDED:", {
+    meetingId: zoomMeetingId || null,
+    meetingUuid: zoomMeetingUuid,
+    startTime: meeting.start_time || null,
+    endTime: meeting.end_time || null,
+  });
+
+  if (!zoomMeetingId) {
+    console.warn("⚠️ meeting.ended webhook is missing the meeting ID.");
+  } else {
+    const courtStudyMeeting =
+      await prisma.courtStudyMeeting.findFirst({
+        where: {
+          zoomMeetingId,
+        },
+        select: {
+          id: true,
+          courtStudyRequestId: true,
+        },
+      });
+
+    if (!courtStudyMeeting) {
+      console.log(
+        `ℹ️ No CourtStudyMeeting record found for ended Zoom meeting ${zoomMeetingId}.`
+      );
+    } else {
+      await prisma.$transaction(async (tx) => {
+        await tx.courtStudyMeeting.update({
+          where: {
+            id: courtStudyMeeting.id,
+          },
+          data: {
+            zoomMeetingUuid,
+            actualSessionStart,
+            actualSessionEnd,
+          },
+        });
+
+        await tx.courtStudyRequest.updateMany({
+          where: {
+            id: courtStudyMeeting.courtStudyRequestId,
+            status: "SESSION_READY",
+          },
+          data: {
+            status: "SESSION_REVIEW_PENDING",
+          },
+        });
+      });
+
+      console.log("✅ COURT STUDY SESSION READY FOR REVIEW:", {
+        courtStudyMeetingId: courtStudyMeeting.id,
+        courtStudyRequestId: courtStudyMeeting.courtStudyRequestId,
+        zoomMeetingId,
+        zoomMeetingUuid,
+      });
+    }
+  }
+}
+    
  if (body?.event === "meeting.registration_created") {
   const payload = body.payload || {};
   const meeting = payload.object || {};
