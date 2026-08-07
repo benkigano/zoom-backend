@@ -6578,9 +6578,7 @@ const memberInvitationText = isRulesStudy
   ? organizerName || "Court Study Organizer"
   : pastorName || "Pastor";
 
-const hostLabel = isCommunityHosted
-  ? "Host Group or Community"
-  : "Church";
+const hostLabel = "Host Group or Community";
 
 const hostDisplayName = isCommunityHosted
   ? hostGroupName
@@ -6598,7 +6596,7 @@ const hostDisplayName = isCommunityHosted
       "",
       ...(recordingUrl
         ? [
-            "Watch the Selected Rules Video:",
+            "Watch the Selected Court Study Video:",
             recordingUrl,
             "",
           ]
@@ -6608,14 +6606,14 @@ const hostDisplayName = isCommunityHosted
       "",
       isCommunityHosted
   ? "FOR THE ORGANIZER AND PARTICIPANTS:"
-  : "FOR THE PASTOR AND CHURCH MEMBERS:",
+  : "FOR THE COURT STUDY ORGANIZER AND PARTICIPANTS:",
       isCommunityHosted
   ? "Each person—including the organizer—must register separately using the public Zoom Registration link above. After registration, Zoom will email that person a unique personal join link."
-  : "Each person—including the pastor—must register separately using the public Zoom Registration link above. After registration, Zoom will email that person a unique personal join link.",
+  : "Each person—including the Court Study organizer—must register separately using the public Zoom Registration link above. After registration, Zoom will email that person a unique personal join link.",
       "",
       isCommunityHosted
   ? "READY-MADE PARTICIPANT INVITATION"
-  : "READY-MADE CHURCH-MEMBER INVITATION",
+  : "READY-MADE PARTICIPANT INVITATION",
       "---------------------------------",
       "",
       memberInvitationText,
@@ -6646,14 +6644,14 @@ const hostDisplayName = isCommunityHosted
       "",
       isCommunityHosted
   ? "FOR THE ORGANIZER AND PARTICIPANTS:"
-  : "FOR THE PASTOR AND CHURCH MEMBERS:",
+  : "FOR THE COURT STUDY ORGANIZER AND PARTICIPANTS:",
       isCommunityHosted
   ? "Each person—including the organizer—must register separately using the public Zoom Registration URL above. After registration, Zoom will email that person a unique personal join link."
-  : "Each person—including the pastor—must register separately using the public Zoom Registration URL above. After registration, Zoom will email that person a unique personal join link.",
+  : "Each person—including the Court Study organizer—must register separately using the public Zoom Registration URL above. After registration, Zoom will email that person a unique personal join link.",
       "",
       isCommunityHosted
   ? "READY-MADE PARTICIPANT INVITATION"
-  : "READY-MADE CHURCH-MEMBER INVITATION",
+  : "READY-MADE PARTICIPANT INVITATION",
       "-----------------------------------",
       "",
       memberInvitationText,
@@ -6692,13 +6690,13 @@ const hostDisplayName = isCommunityHosted
       hostGroupName,
     ].join("\n")
   : [
-      "Dear Church Members,",
+     "Dear Court Study Participants,", 
       "",
       memberInvitationText,
       "",
       "Regards,",
-      pastorName,
-      churchName,
+     organizerName,
+hostGroupName,
     ].join("\n");
 
 const memberMailtoUrl =
@@ -6781,7 +6779,7 @@ const safeMemberMailtoUrl =
                     border-radius:4px;
                   "
                 >
-                 ${isRulesStudy ? "Watch Selected Rules Video" : "Watch Interview Recording"} 
+                 ${isRulesStudy ? "Watch Selected Court Study Video" : "Watch Interview Recording"} 
                 </a>
 
                 ${
@@ -6813,8 +6811,8 @@ const safeMemberMailtoUrl =
               </h3>
 
               <p>
-                Share this registration link with church
-                members:
+               Share this registration link with participants: 
+               
               </p>
 
               <p>
@@ -6843,20 +6841,20 @@ const safeMemberMailtoUrl =
                   border-left:4px solid #8a6500;
                 "
               >
-              <strong>${isCommunityHosted ? "For the organizer and participants:" : "For the pastor and church members:"}</strong>
+              <strong>${isCommunityHosted ? "For the organizer and participants:" : "For the Court Study organizer and participants:"}</strong>
               ${isCommunityHosted
   ? "Each person—including the organizer—must register separately using the gold Register for the Court Study Session button. After registration, Zoom will email that person a unique personal join link."
-  : "Each person—including the pastor—must register separately using the gold Register for the Court Study Session button. After registration, Zoom will email that person a unique personal join link."}
+  : "Each person—including the Court Study organizer—must register separately using the gold Register for the Court Study Session button. After registration, Zoom will email that person a unique personal join link."
               </p>
 
               <h3 style="color:#0B1E5B;">
-  ${isCommunityHosted ? "Invite Court Study Participants" : "Invite Your Church Members"}
+  ${isCommunityHosted ? "Invite Court Study Participants" : "Invite Court Study Participants"}
 </h3>
 
 <p>
   ${isCommunityHosted
   ? "Use the button below to open a ready-to-send invitation in your normal email application. Add the participants’ addresses in the Bcc field, review the message, and send it."
-  : "Use the button below to open a ready-to-send invitation in your normal email application. Add the church members’ addresses in the Bcc field, review the message, and send it."}
+  : "Use the button below to open a ready-to-send invitation in your normal email application. Add the participants’ addresses in the Bcc field, review the message, and send it."}
 </p>
 
 <p style="margin:18px 0;">
@@ -6874,14 +6872,14 @@ const safeMemberMailtoUrl =
   >
     ${isCommunityHosted
   ? "Email Invitation to Participants"
-  : "Email Invitation to Church Members"}
+  : "Email Invitation to Participants"}
   </a>
 </p>
 
 <p style="font-size:13px;color:#555555;">
   ${isCommunityHosted
   ? "For privacy, the Court of Compassion does not receive or store participants’ email addresses."
-  : "For privacy, the Court of Compassion does not receive or store your church members’ email addresses."}
+  : "For privacy, the Court of Compassion does not receive or store participants’ email addresses."}
 </p>
 
               
@@ -6929,7 +6927,7 @@ const safeMemberMailtoUrl =
         success: true,
         message: isCommunityHosted
   ? "Court Study invitation package sent to the organizer"
-  : "Court Study invitation package sent to the pastor",
+  : "Court Study invitation package sent to the Court Study organizer",
         sentTo: organizerEmail,
         invitationSentAt:
           updatedMeeting.invitationSentAt,
