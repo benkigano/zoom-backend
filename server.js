@@ -6391,6 +6391,160 @@ app.get(
   }
 );
 
+// ================================================
+// Admin: view actual Zoom attendance for a Court Study
+// ================================================
+app.get(
+  "/api/court-study-requests/:id/attendance",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const requestId = String(req.params.id || "").trim();
+
+      if (!requestId) {
+        return res.status(400).json({
+          success: false,
+          error: "Court Study request ID is required",
+        });
+      }
+
+      const courtStudyRequest =
+        await prisma.courtStudyRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+          include: {
+            courtStudyMeeting: true,
+          },
+        });
+
+      if (!courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error: "Court Study request not found",
+        });
+      }
+
+      const meeting = courtStudyRequest.courtStudyMeeting;
+
+      if (!meeting) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "This Court Study request does not have a Zoom meeting",
+        });
+      }
+
+      const zoomMeetingId = String(
+        meeting.zoomMeetingId || ""
+      ).trim();
+
+      const zoomMeetingUuid = String(
+        meeting.zoomMeetingUuid || ""
+      ).trim();
+
+      if (!zoomMeetingUuid && !zoomMeetingId) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "No Zoom meeting ID or meeting UUID is available for this Court Study",
+        });
+      }
+
+      const accessToken = await getS2SAccessToken();
+
+      const meetingIdentifier = zoomMeetingUuid
+        ? encodeURIComponent(
+            encodeURIComponent(zoomMeetingUuid)
+          )
+        : encodeURIComponent(zoomMeetingId);
+
+      const participants = [];
+      let nextPageToken = "";
+
+      do {
+        const zoomUrl = new URL(
+          `https://api.zoom.us/v2/past_meetings/${meetingIdentifier}/participants`
+        );
+
+        zoomUrl.searchParams.set("page_size", "300");
+
+        if (nextPageToken) {
+          zoomUrl.searchParams.set(
+            "next_page_token",
+            nextPageToken
+          );
+        }
+
+        const zoomResponse = await fetch(
+          zoomUrl.toString(),
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
+
+        const zoomData = await zoomResponse
+          .json()
+          .catch(() => ({}));
+
+        if (!zoomResponse.ok) {
+          console.error(
+            "❌ ZOOM PAST MEETING PARTICIPANTS ERROR:",
+            zoomData
+          );
+
+          return res.status(zoomResponse.status).json({
+            success: false,
+            error:
+              zoomData?.message ||
+              "Unable to retrieve Zoom attendance",
+          });
+        }
+
+        if (Array.isArray(zoomData.participants)) {
+          participants.push(...zoomData.participants);
+        }
+
+        nextPageToken = String(
+          zoomData.next_page_token || ""
+        ).trim();
+      } while (nextPageToken);
+
+      return res.status(200).json({
+        success: true,
+        requestId,
+        zoomMeetingId: zoomMeetingId || null,
+        zoomMeetingUuid: zoomMeetingUuid || null,
+        totalAttendanceEntries: participants.length,
+        participants: participants.map((participant) => ({
+          participantId: participant.id || null,
+          userId: participant.user_id || null,
+          name: participant.name || null,
+          email: participant.user_email || null,
+          joinTime: participant.join_time || null,
+          leaveTime: participant.leave_time || null,
+          durationSeconds:
+            participant.duration !== undefined
+              ? Number(participant.duration)
+              : null,
+        })),
+      });
+    } catch (err) {
+      console.error(
+        "❌ GET /api/court-study-requests/:id/attendance error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
 // ==================================================
 // Admin: send the Court Study invitation package
 // to the pastor
