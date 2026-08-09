@@ -258,8 +258,8 @@ async function getChurchContactZoomAccessToken(churchContactId) {
     connection.refreshTokenEncrypted
   );
 
-  const clientId = process.env.ZOOM_CLIENT_ID;
-  const clientSecret = process.env.ZOOM_CLIENT_SECRET;
+  const clientId = process.env.ZOOM_CONNECT_CLIENT_ID;
+  const clientSecret = process.env.ZOOM_CONNECT_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
     throw new Error(
@@ -388,8 +388,8 @@ app.get("/court-study/zoom/connect/:churchContactId", async (req, res) => {
       });
     }
 
-    const clientId = process.env.ZOOM_CLIENT_ID;
-    const redirectUri = process.env.ZOOM_REDIRECT_URL;
+    const clientId = process.env.ZOOM_CONNECT_CLIENT_ID;
+    const redirectUri = process.env.ZOOM_CONNECT_REDIRECT_URL;
 
     if (!clientId || !redirectUri) {
       return res.status(500).json({
@@ -431,6 +431,251 @@ app.get("/court-study/zoom/connect/:churchContactId", async (req, res) => {
       success: false,
       error: "Unable to begin Zoom authorization.",
     });
+  }
+});
+
+// =====================================================
+// COURT STUDY ZOOM CONNECT — OAUTH CALLBACK
+// =====================================================
+app.get("/court-study/zoom/callback", async (req, res) => {
+  try {
+    const code = String(req.query.code || "").trim();
+    const state = String(req.query.state || "").trim();
+
+    if (!code || !state) {
+      return res.status(400).send(
+        "Missing Zoom authorization code or state."
+      );
+    }
+
+    // Decode the state created by the Court Study Connect route.
+    let stateData;
+
+    try {
+      stateData = JSON.parse(
+        Buffer.from(state, "base64url").toString("utf8")
+      );
+    } catch {
+      return res.status(400).send(
+        "Invalid Zoom authorization state."
+      );
+    }
+
+    const churchContactId = String(
+      stateData?.churchContactId || ""
+    ).trim();
+
+    const invitationToken = String(
+      stateData?.invitationToken || ""
+    ).trim();
+
+    if (!churchContactId || !invitationToken) {
+      return res.status(400).send(
+        "Invalid Zoom connection request."
+      );
+    }
+
+    // Verify that this is a valid, unused Court Study Zoom invitation.
+    const tokenHash = hashZoomOAuthToken(invitationToken);
+
+    const invitation =
+      await prisma.zoomOAuthInvitation.findFirst({
+        where: {
+          churchContactId,
+          tokenHash,
+        },
+      });
+
+    if (!invitation) {
+      return res.status(400).send(
+        "This Zoom connection invitation is invalid."
+      );
+    }
+
+    if (invitation.usedAt) {
+      return res.status(400).send(
+        "This Zoom connection invitation has already been used."
+      );
+    }
+
+    if (invitation.expiresAt <= new Date()) {
+      return res.status(400).send(
+        "This Zoom connection invitation has expired."
+      );
+    }
+
+    // IMPORTANT:
+    // Court Study Zoom Connect has its own OAuth credentials.
+    const clientId = process.env.ZOOM_CONNECT_CLIENT_ID;
+    const clientSecret =
+      process.env.ZOOM_CONNECT_CLIENT_SECRET;
+    const redirectUri =
+      process.env.ZOOM_CONNECT_REDIRECT_URL;
+
+    if (!clientId || !clientSecret || !redirectUri) {
+      throw new Error(
+        "Court Study Zoom Connect OAuth is not fully configured"
+      );
+    }
+
+    const basicAuthorization = Buffer.from(
+      `${clientId}:${clientSecret}`
+    ).toString("base64");
+
+    // Exchange Zoom's one-time authorization code for tokens.
+    const tokenResponse = await fetch(
+      "https://zoom.us/oauth/token",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${basicAuthorization}`,
+          "Content-Type":
+            "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          code,
+          redirect_uri: redirectUri,
+        }),
+      }
+    );
+
+    const tokenData = await tokenResponse
+      .json()
+      .catch(() => ({}));
+
+    if (!tokenResponse.ok) {
+      throw new Error(
+        `Court Study Zoom token exchange failed: ${
+          tokenData.reason ||
+          tokenData.message ||
+          JSON.stringify(tokenData)
+        }`
+      );
+    }
+
+    if (
+      !tokenData.access_token ||
+      !tokenData.refresh_token
+    ) {
+      throw new Error(
+        "Zoom did not return the required OAuth tokens"
+      );
+    }
+
+    // Identify the Zoom account that was connected.
+    const userResponse = await fetch(
+      "https://api.zoom.us/v2/users/me",
+      {
+        headers: {
+          Authorization: `Bearer ${tokenData.access_token}`,
+        },
+      }
+    );
+
+    const zoomUser = await userResponse
+      .json()
+      .catch(() => ({}));
+
+    if (!userResponse.ok || !zoomUser.id) {
+      throw new Error(
+        `Unable to identify connected Zoom user: ${
+          zoomUser.message || JSON.stringify(zoomUser)
+        }`
+      );
+    }
+
+    const expiresInSeconds = Number(
+      tokenData.expires_in || 3600
+    );
+
+    const tokenExpiresAt = new Date(
+      Date.now() + expiresInSeconds * 1000
+    );
+
+    const now = new Date();
+
+    // Save the connected Zoom account securely.
+    await prisma.$transaction([
+      prisma.churchContactZoomConnection.upsert({
+        where: {
+          churchContactId,
+        },
+
+        create: {
+          churchContactId,
+          zoomUserId: String(zoomUser.id),
+          zoomAccountId: zoomUser.account_id
+            ? String(zoomUser.account_id)
+            : null,
+          zoomEmail: zoomUser.email
+            ? String(zoomUser.email)
+            : null,
+          accessTokenEncrypted: encryptZoomToken(
+            tokenData.access_token
+          ),
+          refreshTokenEncrypted: encryptZoomToken(
+            tokenData.refresh_token
+          ),
+          tokenExpiresAt,
+          authorizedScopes: tokenData.scope || null,
+          status: "CONNECTED",
+          connectedAt: now,
+          disconnectedAt: null,
+        },
+
+        update: {
+          zoomUserId: String(zoomUser.id),
+          zoomAccountId: zoomUser.account_id
+            ? String(zoomUser.account_id)
+            : null,
+          zoomEmail: zoomUser.email
+            ? String(zoomUser.email)
+            : null,
+          accessTokenEncrypted: encryptZoomToken(
+            tokenData.access_token
+          ),
+          refreshTokenEncrypted: encryptZoomToken(
+            tokenData.refresh_token
+          ),
+          tokenExpiresAt,
+          authorizedScopes: tokenData.scope || null,
+          status: "CONNECTED",
+          connectedAt: now,
+          disconnectedAt: null,
+        },
+      }),
+
+      prisma.zoomOAuthInvitation.update({
+        where: {
+          id: invitation.id,
+        },
+        data: {
+          usedAt: now,
+        },
+      }),
+    ]);
+
+    console.log(
+      "✅ COURT STUDY ZOOM CONNECTED:",
+      churchContactId,
+      zoomUser.id
+    );
+
+    return res.status(200).send(
+      "✅ Zoom connected successfully. You may close this tab and return to Court of Compassion."
+    );
+  } catch (error) {
+    console.error(
+      "❌ COURT STUDY ZOOM CALLBACK ERROR:",
+      error
+    );
+
+    return res.status(500).send(
+      `Unable to connect Zoom account: ${String(
+        error?.message || error
+      )}`
+    );
   }
 });
 
