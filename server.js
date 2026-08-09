@@ -679,6 +679,107 @@ app.get("/court-study/zoom/callback", async (req, res) => {
   }
 });
 
+// ============================================================
+// COURT STUDY ZOOM CONNECT — TEST CREATE MEETING
+// ============================================================
+app.post(
+  "/court-study/zoom/test-create-meeting/:churchContactId",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const churchContactId = String(
+        req.params.churchContactId || ""
+      ).trim();
+
+      if (!churchContactId) {
+        return res.status(400).json({
+          success: false,
+          error: "A church contact ID is required.",
+        });
+      }
+
+      // Gets the pastor's stored Zoom token and refreshes it
+      // automatically if necessary.
+      const accessToken =
+        await getChurchContactZoomAccessToken(churchContactId);
+
+      // Schedule this harmless test meeting 30 minutes from now.
+      const startTime = new Date(
+        Date.now() + 30 * 60 * 1000
+      ).toISOString();
+
+      const zoomResponse = await fetch(
+        "https://api.zoom.us/v2/users/me/meetings",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            topic: "Court of Compassion — Zoom Connect Test",
+            type: 2,
+            start_time: startTime,
+            duration: 30,
+            timezone: "America/Los_Angeles",
+            agenda:
+              "Temporary test meeting created through Court of Compassion Connect.",
+            settings: {
+              join_before_host: false,
+              waiting_room: true,
+            },
+          }),
+        }
+      );
+
+      const zoomMeeting = await zoomResponse
+        .json()
+        .catch(() => ({}));
+
+      if (!zoomResponse.ok) {
+        throw new Error(
+          `Zoom create meeting failed: ${
+            zoomMeeting.reason ||
+            zoomMeeting.message ||
+            JSON.stringify(zoomMeeting)
+          }`
+        );
+      }
+
+      console.log(
+        "✅ COURT STUDY CONNECT TEST MEETING CREATED:",
+        churchContactId,
+        zoomMeeting.id,
+        zoomMeeting.host_email
+      );
+
+      return res.status(201).json({
+        success: true,
+        message: "Test Zoom meeting created successfully.",
+        meeting: {
+          id: zoomMeeting.id,
+          topic: zoomMeeting.topic,
+          startTime: zoomMeeting.start_time,
+          timezone: zoomMeeting.timezone,
+          duration: zoomMeeting.duration,
+          hostEmail: zoomMeeting.host_email,
+          joinUrl: zoomMeeting.join_url,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "❌ COURT STUDY CONNECT TEST MEETING ERROR:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(error?.message || error),
+      });
+    }
+  }
+);
+
 async function sendEmail(to, subject, body, htmlBody = null) {
   const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
