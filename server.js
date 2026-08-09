@@ -704,9 +704,28 @@ app.post(
         await getChurchContactZoomAccessToken(churchContactId);
 
       // Schedule this harmless test meeting 30 minutes from now.
-      const startTime = new Date(
-        Date.now() + 30 * 60 * 1000
-      ).toISOString();
+      const testTimeZone = "America/Los_Angeles";
+const testStartDate = new Date(Date.now() + 30 * 60 * 1000);
+
+const testTimeParts = Object.fromEntries(
+  new Intl.DateTimeFormat("en-US", {
+    timeZone: testTimeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  })
+    .formatToParts(testStartDate)
+    .filter((part) => part.type !== "literal")
+    .map((part) => [part.type, part.value])
+);
+
+const startTime =
+  `${testTimeParts.year}-${testTimeParts.month}-${testTimeParts.day}` +
+  `T${testTimeParts.hour}:${testTimeParts.minute}:${testTimeParts.second}`;
 
       const zoomResponse = await fetch(
         "https://api.zoom.us/v2/users/me/meetings",
@@ -721,7 +740,7 @@ app.post(
             type: 2,
             start_time: startTime,
             duration: 30,
-            timezone: "America/Los_Angeles",
+            timezone: testTimeZone,
             agenda:
               "Temporary test meeting created through Court of Compassion Connect.",
             settings: {
