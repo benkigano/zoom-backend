@@ -1,0 +1,1 @@
+ALTER TYPE "CourtStudyRequestStatus" ADD VALUE 'ZOOM_CONNECTED';
