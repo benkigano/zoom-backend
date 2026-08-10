@@ -537,7 +537,7 @@ app.get(
       }
 
       const clientId = process.env.ZOOM_CONNECT_CLIENT_ID;
-      const redirectUri = process.env.ZOOM_CONNECT_REDIRECT_URI;
+      const redirectUri = process.env.ZOOM_CONNECT_REDIRECT_URL;
 
       if (!clientId || !redirectUri) {
         return res.status(500).json({
