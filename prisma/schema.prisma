@@ -74,6 +74,7 @@ enum GuestDistributionCampaignStatus {
 enum CourtStudyRequestStatus {
   PENDING
   APPROVED
+  ZOOM_CONNECTED
   AWAITING_MEETING_DETAILS
   MEETING_DETAILS_SUBMITTED 
   MEETING_APPROVED
