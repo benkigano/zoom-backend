@@ -5640,7 +5640,9 @@ const timezoneInput = cleanText(body.timezone);
 
       const normalizedHostMode = rawHostMode
   ? rawHostMode.toUpperCase().replace(/[\s-]+/g, "_")
-  : "";
+  : hostGroupType.toLowerCase() === "church"
+    ? "PASTOR_HOSTED"
+    : "COMMUNITY_HOSTED";
 
 const allowedHostModes = new Set([
   "PASTOR_HOSTED",
