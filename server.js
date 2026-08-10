@@ -5784,6 +5784,16 @@ if (
       const meetingFormat =
         legacyMeetingFormatMap[formatKey];
 
+      console.log("COURT STUDY HOST MODE DEBUG:", {
+  hostGroupType,
+  rawHostMode,
+  normalizedHostMode,
+  rawSessionFormat,
+  formatKey,
+  sessionFormat,
+  meetingFormat,
+});
+      
       if (!sessionFormat || !meetingFormat) {
         return res.status(400).json({
           success: false,
