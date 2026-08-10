@@ -346,11 +346,7 @@ model ChurchContactZoomConnection {
   updatedAt         DateTime             @updatedAt
   disconnectedAt    DateTime?
 
-  churchContact ChurchContact? @relation(
-    fields: [churchContactId],
-    references: [id],
-    onDelete: Cascade
-  )
+churchContact ChurchContact? @relation(fields: [churchContactId], references: [id], onDelete: Cascade)  
 }
 model ZoomOAuthInvitation {
   id              String   @id @default(cuid())
@@ -366,11 +362,7 @@ model ZoomOAuthInvitation {
   usedAt          DateTime?
   createdAt       DateTime @default(now())
 
-  churchContact ChurchContact? @relation(
-    fields: [churchContactId],
-    references: [id],
-    onDelete: Cascade
-  )
+  churchContact ChurchContact? @relation(fields: [churchContactId], references: [id], onDelete: Cascade)
 
   @@index([churchContactId])
   @@index([organizerEmail])
