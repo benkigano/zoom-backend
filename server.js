@@ -563,12 +563,13 @@ app.get(
       });
 
       const state = Buffer.from(
-        JSON.stringify({
-          organizerEmail,
-          invitationToken,
-        }),
-        "utf8"
-      ).toString("base64url");
+  JSON.stringify({
+    requestId,
+    organizerEmail,
+    invitationToken,
+  }),
+  "utf8"
+).toString("base64url");
 
       const authorizationUrl = new URL(
         "https://zoom.us/oauth/authorize"
@@ -639,7 +640,11 @@ app.get("/court-study/zoom/callback", async (req, res) => {
       );
     }
 
-    const churchContactId = String(
+  const requestId = String(
+  stateData?.requestId || ""
+).trim();
+
+const churchContactId = String(
   stateData?.churchContactId || ""
 ).trim();
 
@@ -654,13 +659,13 @@ const invitationToken = String(
 ).trim();
 
 if (
-  (!churchContactId && !organizerEmail) ||
+  (!churchContactId && (!requestId || !organizerEmail)) ||
   !invitationToken
 ) {
   return res.status(400).send(
     "Invalid Zoom connection request."
   );
-}
+}  
 
 if (churchContactId && organizerEmail) {
   return res.status(400).send(
