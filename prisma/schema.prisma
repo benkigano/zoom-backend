@@ -324,12 +324,17 @@ model DistributionLog {
   @@index([toEmail])
 }
 model ChurchContactZoomConnection {
-  id                    String               @id @default(cuid())
-  churchContactId       String               @unique
+  id                String               @id @default(cuid())
 
-  zoomUserId            String
-  zoomAccountId         String?
-  zoomEmail             String?
+  // Pastor/church host connection.
+  churchContactId   String?              @unique
+
+  // Inclusive non-church/community organizer connection.
+  organizerEmail    String?              @unique
+
+  zoomUserId        String
+  zoomAccountId     String?
+  zoomEmail         String?
 
   accessTokenEncrypted  String
   refreshTokenEncrypted String
@@ -337,23 +342,38 @@ model ChurchContactZoomConnection {
   authorizedScopes      String?
   status                ZoomConnectionStatus @default(CONNECTED)
 
-  connectedAt           DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
-  disconnectedAt        DateTime?
+  connectedAt       DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  disconnectedAt    DateTime?
 
- churchContact ChurchContact @relation(fields: [churchContactId], references: [id], onDelete: Cascade)  
+  churchContact ChurchContact? @relation(
+    fields: [churchContactId],
+    references: [id],
+    onDelete: Cascade
+  )
 }
 model ZoomOAuthInvitation {
   id              String   @id @default(cuid())
-  churchContactId String
+
+  // Pastor/church host authorization.
+  churchContactId String?
+
+  // Inclusive non-church/community organizer authorization.
+  organizerEmail  String?
+
   tokenHash       String   @unique
   expiresAt       DateTime
   usedAt          DateTime?
   createdAt       DateTime @default(now())
 
-  churchContact ChurchContact @relation(fields: [churchContactId], references: [id], onDelete: Cascade)
+  churchContact ChurchContact? @relation(
+    fields: [churchContactId],
+    references: [id],
+    onDelete: Cascade
+  )
 
   @@index([churchContactId])
+  @@index([organizerEmail])
   @@index([expiresAt])
 }
 
