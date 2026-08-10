@@ -206,43 +206,70 @@ function hashZoomOAuthToken(token) {
     .update(String(token), "utf8")
     .digest("hex");
 }
-async function getChurchContactZoomAccessToken(churchContactId) {
-  if (!churchContactId) {
-    throw new Error("A church contact ID is required");
+
+async function getCourtStudyHostZoomAccessToken({
+  churchContactId = null,
+  organizerEmail = null,
+} = {}) {
+  const normalizedChurchContactId = churchContactId
+    ? String(churchContactId).trim()
+    : "";
+
+  const normalizedOrganizerEmail = organizerEmail
+    ? String(organizerEmail).trim().toLowerCase()
+    : "";
+
+  if (!normalizedChurchContactId && !normalizedOrganizerEmail) {
+    throw new Error(
+      "A church contact ID or organizer email is required"
+    );
   }
+
+  if (normalizedChurchContactId && normalizedOrganizerEmail) {
+    throw new Error(
+      "Use either a church contact ID or organizer email, not both"
+    );
+  }
+
+  const connectionWhere = normalizedChurchContactId
+    ? {
+        churchContactId: normalizedChurchContactId,
+      }
+    : {
+        organizerEmail: normalizedOrganizerEmail,
+      };
 
   const connection =
     await prisma.churchContactZoomConnection.findUnique({
-      where: {
-        churchContactId: String(churchContactId),
-      },
+      where: connectionWhere,
     });
 
   if (!connection) {
     throw new Error(
-      "This church contact has not connected a Zoom account"
+      "This Court Study host has not connected a Zoom account"
     );
   }
 
   if (connection.status === "REVOKED") {
     throw new Error(
-      "This church contact's Zoom authorization has been revoked"
+      "This Court Study host's Zoom authorization has been revoked"
     );
   }
 
   if (connection.status === "DISCONNECTED") {
     throw new Error(
-      "This church contact's Zoom account is disconnected"
+      "This Court Study host's Zoom account is disconnected"
     );
   }
 
   const refreshThresholdMs = 60 * 1000;
+
   const tokenExpiresAtMs = new Date(
     connection.tokenExpiresAt
   ).getTime();
 
   /*
-   * Reuse the saved access token when it remains valid for
+   * Reuse the saved access token while it remains valid for
    * more than 60 seconds.
    */
   if (
@@ -263,7 +290,7 @@ async function getChurchContactZoomAccessToken(churchContactId) {
 
   if (!clientId || !clientSecret) {
     throw new Error(
-      "ZOOM_CLIENT_ID or ZOOM_CLIENT_SECRET is not configured"
+      "ZOOM_CONNECT_CLIENT_ID or ZOOM_CONNECT_CLIENT_SECRET is not configured"
     );
   }
 
@@ -293,16 +320,14 @@ async function getChurchContactZoomAccessToken(churchContactId) {
 
   if (!refreshResponse.ok) {
     await prisma.churchContactZoomConnection.update({
-      where: {
-        churchContactId: String(churchContactId),
-      },
+      where: connectionWhere,
       data: {
         status: "REAUTHORIZATION_REQUIRED",
       },
     });
 
     throw new Error(
-      `Pastor Zoom token refresh failed: ${
+      `Court Study host Zoom token refresh failed: ${
         refreshedTokens.reason ||
         refreshedTokens.message ||
         JSON.stringify(refreshedTokens)
@@ -328,9 +353,7 @@ async function getChurchContactZoomAccessToken(churchContactId) {
   );
 
   await prisma.churchContactZoomConnection.update({
-    where: {
-      churchContactId: String(churchContactId),
-    },
+    where: connectionWhere,
     data: {
       accessTokenEncrypted: encryptZoomToken(
         refreshedTokens.access_token
@@ -349,6 +372,18 @@ async function getChurchContactZoomAccessToken(churchContactId) {
 
   return refreshedTokens.access_token;
 }
+
+/*
+ * Backward-compatible wrapper for the existing pastor/church
+ * workflow while the remaining Court Study routes are migrated.
+ */
+async function getChurchContactZoomAccessToken(churchContactId) {
+  return getCourtStudyHostZoomAccessToken({
+    churchContactId,
+  });
+}
+
+
 // ============================================================
 // COURT STUDY MEETINGS — PASTOR ZOOM OAUTH
 // ============================================================
@@ -434,6 +469,149 @@ app.get("/court-study/zoom/connect/:churchContactId", async (req, res) => {
   }
 });
 
+// ========================================================
+// COURT STUDY ZOOM CONNECT — COMMUNITY ORGANIZER OAUTH
+// ========================================================
+
+app.get(
+  "/court-study/zoom/connect-organizer/:requestId",
+  async (req, res) => {
+    try {
+      const requestId = String(req.params.requestId || "").trim();
+
+      if (!requestId) {
+        return res.status(400).json({
+          success: false,
+          error: "A Court Study request ID is required.",
+        });
+      }
+
+      const courtStudyRequest =
+        await prisma.courtStudyRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+        });
+
+      if (!courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error: "Court Study request not found.",
+        });
+      }
+
+      if (courtStudyRequest.meetingFormat !== "COMMUNITY_HOSTED") {
+        return res.status(400).json({
+          success: false,
+          error:
+            "This Court Study request is not a community-hosted session.",
+        });
+      }
+
+      const blockedStatuses = new Set([
+        "PENDING",
+        "DECLINED",
+        "CANCELLED",
+      ]);
+
+      if (blockedStatuses.has(courtStudyRequest.status)) {
+        return res.status(403).json({
+          success: false,
+          error:
+            "This Court Study request is not currently authorized to connect a Zoom account.",
+        });
+      }
+
+      const organizerEmail = String(
+        courtStudyRequest.organizerEmail || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      if (!organizerEmail) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "This Court Study request does not have an organizer email.",
+        });
+      }
+
+      const clientId = process.env.ZOOM_CONNECT_CLIENT_ID;
+      const redirectUri = process.env.ZOOM_CONNECT_REDIRECT_URI;
+
+      if (!clientId || !redirectUri) {
+        return res.status(500).json({
+          success: false,
+          error: "Zoom OAuth is not fully configured.",
+        });
+      }
+
+      const invitationToken =
+        crypto.randomBytes(32).toString("hex");
+
+      const tokenHash =
+        hashZoomOAuthToken(invitationToken);
+
+      await prisma.zoomOAuthInvitation.create({
+        data: {
+          organizerEmail,
+          tokenHash,
+          expiresAt: new Date(
+            Date.now() + 15 * 60 * 1000
+          ),
+        },
+      });
+
+      const state = Buffer.from(
+        JSON.stringify({
+          organizerEmail,
+          invitationToken,
+        }),
+        "utf8"
+      ).toString("base64url");
+
+      const authorizationUrl = new URL(
+        "https://zoom.us/oauth/authorize"
+      );
+
+      authorizationUrl.searchParams.set(
+        "response_type",
+        "code"
+      );
+
+      authorizationUrl.searchParams.set(
+        "client_id",
+        clientId
+      );
+
+      authorizationUrl.searchParams.set(
+        "redirect_uri",
+        redirectUri
+      );
+
+      authorizationUrl.searchParams.set(
+        "state",
+        state
+      );
+
+      return res.redirect(
+        authorizationUrl.toString()
+      );
+    } catch (error) {
+      console.error(
+        "COURT STUDY ORGANIZER ZOOM CONNECT ERROR:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "Unable to begin organizer Zoom authorization.",
+      });
+    }
+  }
+);
+
 // =====================================================
 // COURT STUDY ZOOM CONNECT — OAUTH CALLBACK
 // =====================================================
@@ -462,29 +640,48 @@ app.get("/court-study/zoom/callback", async (req, res) => {
     }
 
     const churchContactId = String(
-      stateData?.churchContactId || ""
-    ).trim();
+  stateData?.churchContactId || ""
+).trim();
 
-    const invitationToken = String(
-      stateData?.invitationToken || ""
-    ).trim();
+const organizerEmail = String(
+  stateData?.organizerEmail || ""
+)
+  .trim()
+  .toLowerCase();
 
-    if (!churchContactId || !invitationToken) {
-      return res.status(400).send(
-        "Invalid Zoom connection request."
-      );
-    }
+const invitationToken = String(
+  stateData?.invitationToken || ""
+).trim();
 
-    // Verify that this is a valid, unused Court Study Zoom invitation.
-    const tokenHash = hashZoomOAuthToken(invitationToken);
+if (
+  (!churchContactId && !organizerEmail) ||
+  !invitationToken
+) {
+  return res.status(400).send(
+    "Invalid Zoom connection request."
+  );
+}
 
-    const invitation =
-      await prisma.zoomOAuthInvitation.findFirst({
-        where: {
-          churchContactId,
-          tokenHash,
-        },
-      });
+if (churchContactId && organizerEmail) {
+  return res.status(400).send(
+    "Invalid Zoom connection request."
+  );
+} 
+    
+   // Verify that this is a valid, unused Court Study Zoom invitation.
+const tokenHash = hashZoomOAuthToken(invitationToken);
+
+const invitationIdentityWhere = churchContactId
+  ? { churchContactId }
+  : { organizerEmail };
+
+const invitation =
+  await prisma.zoomOAuthInvitation.findFirst({
+    where: {
+      ...invitationIdentityWhere,
+      tokenHash,
+    },
+  }); 
 
     if (!invitation) {
       return res.status(400).send(
@@ -596,14 +793,27 @@ app.get("/court-study/zoom/callback", async (req, res) => {
     const now = new Date();
 
     // Save the connected Zoom account securely.
+    
+    const zoomConnectionWhere = churchContactId
+  ? { churchContactId }
+  : { organizerEmail };
+
+const zoomConnectionIdentity = churchContactId
+  ? {
+      churchContactId,
+      organizerEmail: null,
+    }
+  : {
+      churchContactId: null,
+      organizerEmail,
+    };
+    
     await prisma.$transaction([
       prisma.churchContactZoomConnection.upsert({
-        where: {
-          churchContactId,
-        },
+        where: zoomConnectionWhere,
 
         create: {
-          churchContactId,
+          ...zoomConnectionIdentity,
           zoomUserId: String(zoomUser.id),
           zoomAccountId: zoomUser.account_id
             ? String(zoomUser.account_id)
@@ -657,10 +867,10 @@ app.get("/court-study/zoom/callback", async (req, res) => {
     ]);
 
     console.log(
-      "✅ COURT STUDY ZOOM CONNECTED:",
-      churchContactId,
-      zoomUser.id
-    );
+  "✅ COURT STUDY ZOOM CONNECTED:",
+  churchContactId || organizerEmail,
+  zoomUser.id
+);
 
     return res.status(200).send(
       "✅ Zoom connected successfully. You may close this tab and return to Court of Compassion."
@@ -5565,10 +5775,10 @@ if (
       };
 
       const legacyMeetingFormatMap = {
-        ONLINE: normalizedHostMode || "PASTOR_HOSTED",
-        IN_PERSON: "IN_PERSON",
-        HYBRID: "HYBRID",
-      };
+  ONLINE: normalizedHostMode || "PASTOR_HOSTED",
+  IN_PERSON: "IN_PERSON",
+  HYBRID: normalizedHostMode || "PASTOR_HOSTED",
+};
 
       const sessionFormat = sessionFormatMap[formatKey];
       const meetingFormat =
@@ -6229,18 +6439,20 @@ app.post(
 
       const meetingFormat = courtStudyRequest.meetingFormat;
 
-      if (
-        meetingFormat !== "COURT_HOSTED" &&
-        meetingFormat !== "HYBRID"
-      ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            meetingFormat === "IN_PERSON"
-              ? "This is an in-person Court Study request and does not require a Zoom meeting"
-              : "Pastor-hosted Zoom sessions require the pastor to connect a Zoom account first",
-        });
-      }
+if (
+  meetingFormat !== "COURT_HOSTED" &&
+  meetingFormat !== "PASTOR_HOSTED" &&
+  meetingFormat !== "COMMUNITY_HOSTED" &&
+  meetingFormat !== "HYBRID"
+) {
+  return res.status(400).json({
+    success: false,
+    error:
+      meetingFormat === "IN_PERSON"
+        ? "This is an in-person Court Study request and does not require a Zoom meeting"
+        : "This Court Study hosting mode is not supported for Zoom creation",
+  });
+}
 
       const scheduledStart = new Date(meeting.scheduledStart);
       const scheduledEnd = new Date(meeting.scheduledEnd);
