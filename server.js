@@ -1044,6 +1044,186 @@ const startTime =
   }
 );
 
+// ============================================================
+// COURT STUDY ZOOM CONNECT — COMMUNITY ORGANIZER TEST MEETING
+// ============================================================
+
+app.post(
+  "/court-study/zoom/test-create-organizer-meeting/:requestId",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const requestId = String(
+        req.params.requestId || ""
+      ).trim();
+
+      if (!requestId) {
+        return res.status(400).json({
+          success: false,
+          error: "A Court Study request ID is required.",
+        });
+      }
+
+      const courtStudyRequest =
+        await prisma.courtStudyRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+        });
+
+      if (!courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error: "Court Study request not found.",
+        });
+      }
+
+      if (
+        courtStudyRequest.meetingFormat !==
+        "COMMUNITY_HOSTED"
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "This test route is only for a community-hosted Court Study.",
+        });
+      }
+
+      if (
+        courtStudyRequest.status !==
+        "ZOOM_CONNECTED"
+      ) {
+        return res.status(409).json({
+          success: false,
+          error:
+            "This Court Study request has not reached ZOOM_CONNECTED status.",
+        });
+      }
+
+      const organizerEmail = String(
+        courtStudyRequest.organizerEmail || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      if (!organizerEmail) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "This Court Study request does not have an organizer email.",
+        });
+      }
+
+      const accessToken =
+        await getCourtStudyHostZoomAccessToken({
+          organizerEmail,
+        });
+
+      const testTimeZone =
+        courtStudyRequest.timezone ||
+        "America/Los_Angeles";
+
+      const testStartDate =
+        new Date(Date.now() + 30 * 60 * 1000);
+
+      const testTimeParts = Object.fromEntries(
+        new Intl.DateTimeFormat("en-US", {
+          timeZone: testTimeZone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hourCycle: "h23",
+        })
+          .formatToParts(testStartDate)
+          .filter((part) => part.type !== "literal")
+          .map((part) => [part.type, part.value])
+      );
+
+      const startTime =
+        `${testTimeParts.year}-${testTimeParts.month}-${testTimeParts.day}` +
+        `T${testTimeParts.hour}:${testTimeParts.minute}:${testTimeParts.second}`;
+
+      const zoomResponse = await fetch(
+        "https://api.zoom.us/v2/users/me/meetings",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            topic:
+              "Court of Compassion — Community Zoom Connect Test",
+            type: 2,
+            start_time: startTime,
+            duration: 30,
+            timezone: testTimeZone,
+            agenda:
+              "Temporary test meeting created through Court of Compassion Connect Zoom.",
+            settings: {
+              join_before_host: false,
+              waiting_room: true,
+            },
+          }),
+        }
+      );
+
+      const zoomMeeting =
+        await zoomResponse
+          .json()
+          .catch(() => ({}));
+
+      if (!zoomResponse.ok) {
+        throw new Error(
+          `Zoom create meeting failed: ${
+            zoomMeeting.reason ||
+            zoomMeeting.message ||
+            JSON.stringify(zoomMeeting)
+          }`
+        );
+      }
+
+      console.log(
+        "✅ COMMUNITY ORGANIZER ZOOM TEST MEETING CREATED:",
+        requestId,
+        organizerEmail,
+        zoomMeeting.id,
+        zoomMeeting.host_email
+      );
+
+      return res.status(201).json({
+        success: true,
+        message:
+          "Community organizer Zoom test meeting created successfully.",
+        requestId,
+        organizerEmail,
+        meeting: {
+          id: zoomMeeting.id,
+          topic: zoomMeeting.topic,
+          startTime: zoomMeeting.start_time,
+          timezone: zoomMeeting.timezone,
+          duration: zoomMeeting.duration,
+          hostEmail: zoomMeeting.host_email,
+          joinUrl: zoomMeeting.join_url,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "❌ COMMUNITY ORGANIZER ZOOM TEST MEETING ERROR:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(error?.message || error),
+      });
+    }
+  }
+);
+
 async function sendEmail(to, subject, body, htmlBody = null) {
   const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
