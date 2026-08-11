@@ -6460,8 +6460,15 @@ app.post(
         });
       }
 
-      const parsedStart = new Date(String(scheduledStart));
-      const parsedEnd = new Date(String(scheduledEnd));
+      const parsedStart = parseDateTimeInTimeZone(
+  scheduledStart,
+  timezone
+);
+
+const parsedEnd = parseDateTimeInTimeZone(
+  scheduledEnd,
+  timezone
+);
 
       if (Number.isNaN(parsedStart.getTime())) {
         return res.status(400).json({
