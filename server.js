@@ -6503,13 +6503,20 @@ app.post(
         });
       }
 
-      if (courtStudyRequest.status !== "APPROVED") {
-        return res.status(400).json({
-          success: false,
-          error:
-            "The Court Study request must be APPROVED before it can be scheduled",
-        });
-      }
+      const canScheduleCourtStudy =
+  courtStudyRequest.status === "APPROVED" ||
+  (
+    courtStudyRequest.meetingFormat === "COMMUNITY_HOSTED" &&
+    courtStudyRequest.status === "ZOOM_CONNECTED"
+  );
+
+if (!canScheduleCourtStudy) {
+  return res.status(400).json({
+    success: false,
+    error:
+      "The Court Study request must be APPROVED, or have Zoom connected for a community-hosted session, before it can be scheduled",
+  });
+}
 
       if (courtStudyRequest.courtStudyMeeting) {
         return res.status(409).json({
@@ -6520,23 +6527,35 @@ app.post(
         });
       }
 
-      const meetingTitle =
-        title && String(title).trim()
-          ? String(title).trim()
-          : `Court Study — ${
-              courtStudyRequest.recording.title ||
-              courtStudyRequest.pastorName
-            }`;
+      const isRulesStudy =
+  courtStudyRequest.studyFocusType === "RULES_OF_PROCEDURE";
 
-      const meetingDescription =
-        description && String(description).trim()
-          ? String(description).trim()
-          : `Court Study session requested by ${
-              courtStudyRequest.pastorName
-            } of ${courtStudyRequest.churchName}, based on the recorded interview "${
-              courtStudyRequest.recording.title ||
-              "Court of Compassion Interview"
-            }".`;
+const organizerDisplayName =
+  courtStudyRequest.organizerName ||
+  courtStudyRequest.pastorName ||
+  "Court Study organizer";
+
+const hostDisplayName =
+  courtStudyRequest.hostGroupName ||
+  courtStudyRequest.churchName ||
+  "host group";
+
+const studyMaterialTitle = isRulesStudy
+  ? "Rules of Court Procedure"
+  : courtStudyRequest.recording?.title ||
+    "Court of Compassion Interview";
+
+const meetingTitle =
+  title && String(title).trim()
+    ? String(title).trim()
+    : `Court Study - ${studyMaterialTitle}`;
+
+const meetingDescription =
+  description && String(description).trim()
+    ? String(description).trim()
+    : isRulesStudy
+      ? `Court Study session requested by ${organizerDisplayName} of ${hostDisplayName}, based on the Rules of Court Procedure.`
+      : `Court Study session requested by ${organizerDisplayName} of ${hostDisplayName}, based on the recorded interview "${studyMaterialTitle}".`;
 
       const result = await prisma.$transaction(async (tx) => {
         const meeting = await tx.courtStudyMeeting.create({
@@ -6547,10 +6566,14 @@ app.post(
 
             title: meetingTitle,
             description: meetingDescription,
-            discussionType: "INTERVIEW_RECORDING",
-            selectedChapter: null,
-            selectedSection: null,
-            selectedRecordingId: courtStudyRequest.recordingId,
+            discussionType: isRulesStudy
+  ? "RULES_OF_PROCEDURE"
+  : "INTERVIEW_RECORDING",
+selectedChapter: null,
+selectedSection: null,
+selectedRecordingId: isRulesStudy
+  ? null
+  : courtStudyRequest.recordingId,
 
             scheduledStart: parsedStart,
             scheduledEnd: parsedEnd,
