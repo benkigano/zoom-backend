@@ -6693,7 +6693,19 @@ if (
         )
       );
 
-      const accessToken = await getS2SAccessToken();
+      let accessToken;
+
+if (courtStudyRequest.meetingFormat === "COMMUNITY_HOSTED") {
+  accessToken = await getCourtStudyHostZoomAccessToken({
+    organizerEmail: String(
+      courtStudyRequest.organizerEmail || ""
+    )
+      .trim()
+      .toLowerCase(),
+  });
+} else {
+  accessToken = await getS2SAccessToken();
+}
 
       const zoomPayload = {
         topic: meeting.title,
