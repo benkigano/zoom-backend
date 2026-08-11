@@ -871,6 +871,36 @@ const zoomConnectionIdentity = churchContactId
       }),
     ]);
 
+    if (requestId) {
+  const courtStudyRequest =
+    await prisma.courtStudyRequest.findUnique({
+      where: {
+        id: requestId,
+      },
+    });
+
+  if (
+    !courtStudyRequest ||
+    courtStudyRequest.meetingFormat !== "COMMUNITY_HOSTED" ||
+    String(courtStudyRequest.organizerEmail || "")
+      .trim()
+      .toLowerCase() !== organizerEmail
+  ) {
+    throw new Error(
+      "Unable to match the connected Zoom account to the Court Study request."
+    );
+  }
+
+  await prisma.courtStudyRequest.update({
+    where: {
+      id: requestId,
+    },
+    data: {
+      status: "ZOOM_CONNECTED",
+    },
+  });
+}
+    
     console.log(
   "✅ COURT STUDY ZOOM CONNECTED:",
   churchContactId || organizerEmail,
