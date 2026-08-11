@@ -6730,12 +6730,35 @@ if (courtStudyRequest.meetingFormat === "COMMUNITY_HOSTED") {
   accessToken = await getS2SAccessToken();
 }
 
+      const zoomTimeZone =
+  meeting.timezone || "America/Los_Angeles";
+
+const zoomTimeParts = Object.fromEntries(
+  new Intl.DateTimeFormat("en-US", {
+    timeZone: zoomTimeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  })
+    .formatToParts(scheduledStart)
+    .filter((part) => part.type !== "literal")
+    .map((part) => [part.type, part.value])
+);
+
+const zoomStartTime =
+  `${zoomTimeParts.year}-${zoomTimeParts.month}-${zoomTimeParts.day}` +
+  `T${zoomTimeParts.hour}:${zoomTimeParts.minute}:${zoomTimeParts.second}`;
+      
       const zoomPayload = {
         topic: meeting.title,
         type: 2,
-        start_time: scheduledStart.toISOString(),
+        start_time: zoomStartTime,
         duration: durationMinutes,
-        timezone: meeting.timezone,
+        timezone: zoomTimeZone,
         agenda:
           meeting.description ||
           `Court Study session based on the recorded interview "${
