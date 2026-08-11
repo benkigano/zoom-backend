@@ -6829,6 +6829,7 @@ const zoomStartTime =
             zoomRegistrationUrl:
               zoomData.registration_url || null,
             zoomJoinUrl: zoomData.join_url,
+            zoomPasscode: zoomData.password || null,
             scheduledStart: zoomData.start_time
               ? new Date(zoomData.start_time)
               : meeting.scheduledStart,
