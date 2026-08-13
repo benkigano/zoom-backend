@@ -4,7 +4,93 @@ import cors from "cors";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
 import { prisma } from "./prisma/client.js";
+
+const ADMIN_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+function createAdminSessionToken() {
+  const sessionSecret = process.env.ADMIN_SESSION_SECRET;
+
+  if (!sessionSecret) {
+    throw new Error("ADMIN_SESSION_SECRET is not configured");
+  }
+
+  const payload = Buffer.from(
+    JSON.stringify({
+      exp: Date.now() + ADMIN_SESSION_TTL_MS,
+      nonce: crypto.randomBytes(16).toString("hex"),
+    })
+  ).toString("base64url");
+
+  const signature = crypto
+    .createHmac("sha256", sessionSecret)
+    .update(payload)
+    .digest("hex");
+
+  return `${payload}.${signature}`;
+}
+
+function verifyAdminSessionToken(token) {
+  const sessionSecret = process.env.ADMIN_SESSION_SECRET;
+
+  if (!sessionSecret || !token) {
+    return false;
+  }
+
+  try {
+    const [payload, providedSignature] = String(token).split(".");
+
+    if (!payload || !providedSignature) {
+      return false;
+    }
+
+    const expectedSignature = crypto
+      .createHmac("sha256", sessionSecret)
+      .update(payload)
+      .digest("hex");
+
+    const providedBuffer = Buffer.from(providedSignature, "hex");
+    const expectedBuffer = Buffer.from(expectedSignature, "hex");
+
+    if (
+      providedBuffer.length !== expectedBuffer.length ||
+      !crypto.timingSafeEqual(providedBuffer, expectedBuffer)
+    ) {
+      return false;
+    }
+
+    const sessionData = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8")
+    );
+
+    return (
+      Number.isFinite(sessionData.exp) &&
+      sessionData.exp > Date.now()
+    );
+  } catch {
+    return false;
+  }
+}
+
 function requireAdminToken(req, res, next) {
+  const cookieHeader = String(req.headers.cookie || "");
+
+  const sessionCookie = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith("court_admin_session="));
+
+  const sessionToken = sessionCookie
+    ? decodeURIComponent(
+        sessionCookie.slice("court_admin_session=".length)
+      )
+    : "";
+
+  // Preferred method: short-lived HttpOnly admin session cookie
+  if (sessionToken && verifyAdminSessionToken(sessionToken)) {
+    return next();
+  }
+
+  // Backward-compatible fallback: existing permanent x-admin-token header
   const providedToken = req.headers["x-admin-token"];
   const expectedToken = process.env.ADMIN_API_TOKEN;
 
@@ -25,6 +111,7 @@ function requireAdminToken(req, res, next) {
 
   next();
 }
+
 const app = express();
 
 function parseDateTimeInTimeZone(value, timeZone) {
@@ -1276,12 +1363,83 @@ const safeEmailWebUrl = (value) => {
 };
 app.use(express.json());
 
-app.use(cors());
+const allowedCorsOrigins = [
+  "https://courtofcompassion.com",
+  "https://www.courtofcompassion.com",
+];
+
+app.use(cors({
+  origin(origin, callback) {
+    const isCourtOfCompassionPreview =
+      typeof origin === "string" &&
+      /^https:\/\/[a-z0-9-]+-my-site-j8d3dejp-benkigano\.wix-vibe\.com$/i.test(origin);
+
+    if (!origin || allowedCorsOrigins.includes(origin) || isCourtOfCompassionPreview) {
+      return callback(null, true);
+    }
+
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+}));
+
 app.use((req, res, next) => {
   console.log("➡️", req.method, req.originalUrl);
   next();
 });
 
+// Exchange the permanent admin credential for a short-lived admin session token
+app.post("/api/admin/session", (req, res) => {
+  res.set("Cache-Control", "no-store");
+
+  const providedToken = String(req.body?.token || "");
+  const expectedToken = process.env.ADMIN_API_TOKEN;
+
+  if (!expectedToken) {
+    console.error("❌ ADMIN_API_TOKEN is not configured");
+    return res.status(500).json({
+      success: false,
+      error: "Admin security token is not configured",
+    });
+  }
+
+  const providedBuffer = Buffer.from(providedToken);
+  const expectedBuffer = Buffer.from(expectedToken);
+
+  const tokenMatches =
+    providedBuffer.length === expectedBuffer.length &&
+    crypto.timingSafeEqual(providedBuffer, expectedBuffer);
+
+  if (!tokenMatches) {
+    return res.status(401).json({
+      success: false,
+      error: "Unauthorized",
+    });
+  }
+
+  try {
+    const sessionToken = createAdminSessionToken();
+
+   res.cookie("court_admin_session", sessionToken, {
+  httpOnly: true,
+  secure: true,
+  sameSite: "lax",
+  maxAge: ADMIN_SESSION_TTL_MS,
+  path: "/",
+});
+
+return res.json({
+  success: true,
+  expiresInSeconds: ADMIN_SESSION_TTL_MS / 1000,
+}); 
+  } catch (err) {
+    console.error("❌ Failed to create admin session:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Unable to create admin session",
+    });
+  }
+});
 
 app.use((req, res, next) => {
   if (req.originalUrl === "/zoom/webhook") {
