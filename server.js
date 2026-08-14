@@ -8248,13 +8248,22 @@ app.post(
         zoomRegistrationUrl,
       } = req.body || {};
 
-      if (!zoomMeetingId || !zoomJoinUrl) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "zoomMeetingId and zoomJoinUrl are required",
-        });
-      }
+     if (!zoomMeetingId) {
+  return res.status(400).json({
+    success: false,
+    error: "zoomMeetingId is required",
+  });
+}
+
+if (
+  (!zoomJoinUrl || !String(zoomJoinUrl).trim()) &&
+  (!zoomRegistrationUrl || !String(zoomRegistrationUrl).trim())
+) {
+  return res.status(400).json({
+    success: false,
+    error: "Either zoomJoinUrl or zoomRegistrationUrl is required",
+  });
+} 
 
       const normalizedMeetingId = String(zoomMeetingId)
         .trim()
@@ -8286,19 +8295,21 @@ app.post(
         }
       };
 
-      let normalizedJoinUrl;
+      let normalizedJoinUrl = null;
 
-      try {
-        normalizedJoinUrl = validateHttpUrl(
-          zoomJoinUrl,
-          "Zoom join URL"
-        );
-      } catch (validationError) {
-        return res.status(400).json({
-          success: false,
-          error: validationError.message,
-        });
-      }
+if (zoomJoinUrl && String(zoomJoinUrl).trim()) {
+  try {
+    normalizedJoinUrl = validateHttpUrl(
+      zoomJoinUrl,
+      "Zoom join URL"
+    );
+  } catch (validationError) {
+    return res.status(400).json({
+      success: false,
+      error: validationError.message,
+    });
+  }
+}
 
       let normalizedRegistrationUrl = null;
 
