@@ -8349,13 +8349,16 @@ if (zoomJoinUrl && String(zoomJoinUrl).trim()) {
         });
       }
 
-      if (courtStudyRequest.status !== "SCHEDULED") {
-        return res.status(400).json({
-          success: false,
-          error:
-            "The Court Study request must be SCHEDULED before Zoom details can be saved",
-        });
-      }
+      if (
+  courtStudyRequest.status !== "MEETING_APPROVED" &&
+  courtStudyRequest.status !== "SCHEDULED"
+) {
+  return res.status(400).json({
+    success: false,
+    error:
+      "The Court Study request must be MEETING_APPROVED or SCHEDULED before Zoom details can be saved",
+  });
+}
 
       if (
         courtStudyRequest.meetingFormat === "IN_PERSON"
@@ -8399,6 +8402,15 @@ if (zoomJoinUrl && String(zoomJoinUrl).trim()) {
             status: "SCHEDULED",
           },
         });
+
+      await prisma.courtStudyRequest.update({
+  where: {
+    id: requestId,
+  },
+  data: {
+    status: "SCHEDULED",
+  },
+});
 
       return res.status(200).json({
         success: true,
