@@ -986,6 +986,103 @@ const zoomConnectionIdentity = churchContactId
       status: "ZOOM_CONNECTED",
     },
   });
+
+// ==========================================================
+// COMMUNITY-HOSTED COURT STUDY:
+// automatically schedule and create Zoom after OAuth success
+// ==========================================================
+if (
+  courtStudyRequest.meetingFormat === "COMMUNITY_HOSTED" &&
+  requestId
+) {
+  if (!courtStudyRequest.preferredStart) {
+    throw new Error(
+      "Cannot automatically schedule this Court Study because preferredStart is missing."
+    );
+  }
+
+  const requestTimeZone =
+    courtStudyRequest.timezone || "America/Los_Angeles";
+
+  const preferredStart =
+    new Date(courtStudyRequest.preferredStart);
+
+  if (Number.isNaN(preferredStart.getTime())) {
+    throw new Error(
+      "Cannot automatically schedule this Court Study because preferredStart is invalid."
+    );
+  }
+
+  // Match the present Court Study scheduling default: 60 minutes.
+  const preferredEnd =
+    new Date(preferredStart.getTime() + 60 * 60 * 1000);
+
+  const formatLocalDateTime = (date, timeZone) => {
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      })
+        .formatToParts(date)
+        .filter((part) => part.type !== "literal")
+        .map((part) => [part.type, part.value])
+    );
+
+    return (
+      `${parts.year}-${parts.month}-${parts.day}` +
+      `T${parts.hour}:${parts.minute}`
+    );
+  };
+
+  const scheduleResult =
+    await scheduleCourtStudyInternal({
+      requestId,
+      scheduledStart: formatLocalDateTime(
+        preferredStart,
+        requestTimeZone
+      ),
+      scheduledEnd: formatLocalDateTime(
+        preferredEnd,
+        requestTimeZone
+      ),
+      timezone: requestTimeZone,
+    });
+
+  if (!scheduleResult.success) {
+    throw new Error(
+      scheduleResult.responseBody?.error ||
+        "Automatic Court Study scheduling failed."
+    );
+  }
+
+  const zoomResult =
+    await createCourtStudyZoomInternal({
+      requestId,
+    });
+
+  if (!zoomResult.success) {
+    throw new Error(
+      zoomResult.responseBody?.error ||
+        "Automatic organizer Zoom meeting creation failed."
+    );
+  }
+
+  console.log(
+    "✅ COMMUNITY-HOSTED COURT STUDY AUTOMATED:",
+    {
+      requestId,
+      organizerEmail,
+      scheduled: true,
+      zoomCreated: true,
+    }
+  );
+}
+      
 }
     
     console.log(
@@ -6680,19 +6777,207 @@ app.patch(
 // =====================================================
 // Admin: schedule an approved Court Study request
 // =====================================================
+async function scheduleCourtStudyInternal({
+  requestId,
+  scheduledStart,
+  scheduledEnd,
+  timezone,
+  title,
+  description,
+}) {
+  if (!requestId) {
+    return {
+      success: false,
+      statusCode: 400,
+      error: "Court Study request ID is required",
+    };
+  }
+
+  if (!scheduledStart || !scheduledEnd || !timezone) {
+    return {
+      success: false,
+      statusCode: 400,
+      error:
+        "scheduledStart, scheduledEnd, and timezone are required",
+    };
+  }
+
+  const parsedStart = parseDateTimeInTimeZone(
+    scheduledStart,
+    timezone
+  );
+
+  const parsedEnd = parseDateTimeInTimeZone(
+    scheduledEnd,
+    timezone
+  );
+
+  if (Number.isNaN(parsedStart.getTime())) {
+    return {
+      success: false,
+      statusCode: 400,
+      error: "scheduledStart is not a valid date and time",
+    };
+  }
+
+  if (Number.isNaN(parsedEnd.getTime())) {
+    return {
+      success: false,
+      statusCode: 400,
+      error: "scheduledEnd is not a valid date and time",
+    };
+  }
+
+  if (parsedEnd.getTime() <= parsedStart.getTime()) {
+    return {
+      success: false,
+      statusCode: 400,
+      error: "scheduledEnd must be later than scheduledStart",
+    };
+  }
+
+  const courtStudyRequest =
+    await prisma.courtStudyRequest.findUnique({
+      where: {
+        id: requestId,
+      },
+      include: {
+        recording: true,
+        campaign: true,
+        courtStudyMeeting: true,
+      },
+    });
+
+  if (!courtStudyRequest) {
+    return {
+      success: false,
+      statusCode: 404,
+      error: "Court Study request not found",
+    };
+  }
+
+  const canScheduleCourtStudy =
+    courtStudyRequest.status === "APPROVED" ||
+    (
+      courtStudyRequest.meetingFormat === "COMMUNITY_HOSTED" &&
+      courtStudyRequest.status === "ZOOM_CONNECTED"
+    );
+
+  if (!canScheduleCourtStudy) {
+    return {
+      success: false,
+      statusCode: 400,
+      error:
+        "The Court Study request must be APPROVED, or have Zoom connected for a community-hosted session, before it can be scheduled",
+    };
+  }
+
+  if (courtStudyRequest.courtStudyMeeting) {
+    return {
+      success: false,
+      statusCode: 409,
+      error:
+        "A Court Study meeting has already been created for this request",
+      meeting: courtStudyRequest.courtStudyMeeting,
+    };
+  }
+
+  const isRulesStudy =
+    courtStudyRequest.studyFocusType === "RULES_OF_PROCEDURE";
+
+  const organizerDisplayName =
+    courtStudyRequest.organizerName ||
+    courtStudyRequest.pastorName ||
+    "Court Study organizer";
+
+  const hostDisplayName =
+    courtStudyRequest.hostGroupName ||
+    courtStudyRequest.churchName ||
+    "host group";
+
+  const studyMaterialTitle = isRulesStudy
+    ? "Rules of Court Procedure"
+    : courtStudyRequest.recording?.title ||
+      "Court of Compassion Interview";
+
+  const meetingTitle =
+    title && String(title).trim()
+      ? String(title).trim()
+      : `Court Study - ${studyMaterialTitle}`;
+
+  const meetingDescription =
+    description && String(description).trim()
+      ? String(description).trim()
+      : isRulesStudy
+        ? `Court Study session requested by ${organizerDisplayName} of ${hostDisplayName}, based on the Rules of Court Procedure.`
+        : `Court Study session requested by ${organizerDisplayName} of ${hostDisplayName}, based on the recorded interview "${studyMaterialTitle}".`;
+
+  const result = await prisma.$transaction(async (tx) => {
+    const meeting = await tx.courtStudyMeeting.create({
+      data: {
+        courtStudyRequestId: courtStudyRequest.id,
+        churchContactId: null,
+        timeSlotId: null,
+
+        title: meetingTitle,
+        description: meetingDescription,
+
+        discussionType: isRulesStudy
+          ? "RULES_OF_PROCEDURE"
+          : "INTERVIEW_RECORDING",
+
+        selectedChapter: null,
+        selectedSection: null,
+
+        selectedRecordingId: isRulesStudy
+          ? null
+          : courtStudyRequest.recordingId,
+
+        scheduledStart: parsedStart,
+        scheduledEnd: parsedEnd,
+        timezone: String(timezone).trim(),
+
+        zoomMeetingId: null,
+        zoomRegistrationUrl: null,
+        zoomJoinUrl: null,
+
+        status: "SCHEDULED",
+      },
+    });
+
+    const updatedRequest =
+      await tx.courtStudyRequest.update({
+        where: {
+          id: courtStudyRequest.id,
+        },
+        data: {
+          status: "SCHEDULED",
+        },
+      });
+
+    return {
+      meeting,
+      request: updatedRequest,
+    };
+  });
+
+  return {
+    success: true,
+    statusCode: 201,
+    message: "Court Study session scheduled successfully",
+    meeting: result.meeting,
+    request: result.request,
+  };
+}
+
 app.post(
   "/api/court-study-requests/:id/schedule",
   requireAdminToken,
   async (req, res) => {
     try {
-      const requestId = String(req.params.id || "").trim();
-
-      if (!requestId) {
-        return res.status(400).json({
-          success: false,
-          error: "Court Study request ID is required",
-        });
-      }
+      const requestId = String(
+        req.params.id || ""
+      ).trim();
 
       const {
         scheduledStart,
@@ -6702,170 +6987,24 @@ app.post(
         description,
       } = req.body || {};
 
-      if (!scheduledStart || !scheduledEnd || !timezone) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "scheduledStart, scheduledEnd, and timezone are required",
-        });
-      }
-
-      const parsedStart = parseDateTimeInTimeZone(
-  scheduledStart,
-  timezone
-);
-
-const parsedEnd = parseDateTimeInTimeZone(
-  scheduledEnd,
-  timezone
-);
-
-      if (Number.isNaN(parsedStart.getTime())) {
-        return res.status(400).json({
-          success: false,
-          error: "scheduledStart is not a valid date and time",
-        });
-      }
-
-      if (Number.isNaN(parsedEnd.getTime())) {
-        return res.status(400).json({
-          success: false,
-          error: "scheduledEnd is not a valid date and time",
-        });
-      }
-
-      if (parsedEnd.getTime() <= parsedStart.getTime()) {
-        return res.status(400).json({
-          success: false,
-          error: "scheduledEnd must be later than scheduledStart",
-        });
-      }
-
-      const courtStudyRequest =
-        await prisma.courtStudyRequest.findUnique({
-          where: {
-            id: requestId,
-          },
-          include: {
-            recording: true,
-            campaign: true,
-            courtStudyMeeting: true,
-          },
+      const result =
+        await scheduleCourtStudyInternal({
+          requestId,
+          scheduledStart,
+          scheduledEnd,
+          timezone,
+          title,
+          description,
         });
 
-      if (!courtStudyRequest) {
-        return res.status(404).json({
-          success: false,
-          error: "Court Study request not found",
-        });
-      }
+      const {
+        statusCode,
+        ...responseBody
+      } = result;
 
-      const canScheduleCourtStudy =
-  courtStudyRequest.status === "APPROVED" ||
-  (
-    courtStudyRequest.meetingFormat === "COMMUNITY_HOSTED" &&
-    courtStudyRequest.status === "ZOOM_CONNECTED"
-  );
-
-if (!canScheduleCourtStudy) {
-  return res.status(400).json({
-    success: false,
-    error:
-      "The Court Study request must be APPROVED, or have Zoom connected for a community-hosted session, before it can be scheduled",
-  });
-}
-
-      if (courtStudyRequest.courtStudyMeeting) {
-        return res.status(409).json({
-          success: false,
-          error:
-            "A Court Study meeting has already been created for this request",
-          meeting: courtStudyRequest.courtStudyMeeting,
-        });
-      }
-
-      const isRulesStudy =
-  courtStudyRequest.studyFocusType === "RULES_OF_PROCEDURE";
-
-const organizerDisplayName =
-  courtStudyRequest.organizerName ||
-  courtStudyRequest.pastorName ||
-  "Court Study organizer";
-
-const hostDisplayName =
-  courtStudyRequest.hostGroupName ||
-  courtStudyRequest.churchName ||
-  "host group";
-
-const studyMaterialTitle = isRulesStudy
-  ? "Rules of Court Procedure"
-  : courtStudyRequest.recording?.title ||
-    "Court of Compassion Interview";
-
-const meetingTitle =
-  title && String(title).trim()
-    ? String(title).trim()
-    : `Court Study - ${studyMaterialTitle}`;
-
-const meetingDescription =
-  description && String(description).trim()
-    ? String(description).trim()
-    : isRulesStudy
-      ? `Court Study session requested by ${organizerDisplayName} of ${hostDisplayName}, based on the Rules of Court Procedure.`
-      : `Court Study session requested by ${organizerDisplayName} of ${hostDisplayName}, based on the recorded interview "${studyMaterialTitle}".`;
-
-      const result = await prisma.$transaction(async (tx) => {
-        const meeting = await tx.courtStudyMeeting.create({
-          data: {
-            courtStudyRequestId: courtStudyRequest.id,
-            churchContactId: null,
-            timeSlotId: null,
-
-            title: meetingTitle,
-            description: meetingDescription,
-            discussionType: isRulesStudy
-  ? "RULES_OF_PROCEDURE"
-  : "INTERVIEW_RECORDING",
-selectedChapter: null,
-selectedSection: null,
-selectedRecordingId: isRulesStudy
-  ? null
-  : courtStudyRequest.recordingId,
-
-            scheduledStart: parsedStart,
-            scheduledEnd: parsedEnd,
-            timezone: String(timezone).trim(),
-
-            zoomMeetingId: null,
-            zoomRegistrationUrl: null,
-            zoomJoinUrl: null,
-
-            status: "SCHEDULED",
-          },
-        });
-
-        const updatedRequest =
-          await tx.courtStudyRequest.update({
-            where: {
-              id: courtStudyRequest.id,
-            },
-            data: {
-              status: "SCHEDULED",
-            },
-          });
-
-        return {
-          meeting,
-          request: updatedRequest,
-        };
-      });
-
-      return res.status(201).json({
-        success: true,
-        message: "Court Study session scheduled successfully",
-        meeting: result.meeting,
-        request: result.request,
-      });
+      return res
+        .status(statusCode)
+        .json(responseBody);
     } catch (err) {
       console.error(
         "❌ POST /api/court-study-requests/:id/schedule error:",
@@ -6880,221 +7019,263 @@ selectedRecordingId: isRulesStudy
   }
 );
 
-// =====================================================
-// Admin: create a Court-hosted Zoom meeting
-// for a scheduled Court Study request
-// =====================================================
-app.post(
-  "/api/court-study-requests/:id/create-zoom",
-  requireAdminToken,
-  async (req, res) => {
-    try {
-      const requestId = String(req.params.id || "").trim();
 
-      if (!requestId) {
-        return res.status(400).json({
+// ==========================================================
+// Create the Court Study Zoom meeting using the appropriate
+// host Zoom account
+// ==========================================================
+async function createCourtStudyZoomInternal({
+  requestId,
+}) {
+  try {
+    requestId = String(requestId || "").trim();
+
+    if (!requestId) {
+      return {
+        statusCode: 400,
+        responseBody: {
           success: false,
           error: "Court Study request ID is required",
-        });
-      }
+        },
+      };
+    }
 
-      const courtStudyRequest =
-        await prisma.courtStudyRequest.findUnique({
-          where: {
-            id: requestId,
-          },
-          include: {
-            recording: true,
-            campaign: true,
-            courtStudyMeeting: true,
-          },
-        });
+    const courtStudyRequest =
+      await prisma.courtStudyRequest.findUnique({
+        where: {
+          id: requestId,
+        },
+        include: {
+          recording: true,
+          campaign: true,
+          courtStudyMeeting: true,
+        },
+      });
 
-      if (!courtStudyRequest) {
-        return res.status(404).json({
+    if (!courtStudyRequest) {
+      return {
+        statusCode: 404,
+        responseBody: {
           success: false,
           error: "Court Study request not found",
-        });
-      }
+        },
+      };
+    }
 
-      if (courtStudyRequest.status !== "SCHEDULED") {
-        return res.status(400).json({
+    if (courtStudyRequest.status !== "SCHEDULED") {
+      return {
+        statusCode: 400,
+        responseBody: {
           success: false,
           error:
             "The Court Study request must be SCHEDULED before creating its Zoom meeting",
-        });
-      }
+        },
+      };
+    }
 
-      const meeting = courtStudyRequest.courtStudyMeeting;
+    const meeting = courtStudyRequest.courtStudyMeeting;
 
-      if (!meeting) {
-        return res.status(404).json({
+    if (!meeting) {
+      return {
+        statusCode: 404,
+        responseBody: {
           success: false,
           error:
             "No scheduled Court Study meeting was found for this request",
-        });
-      }
+        },
+      };
+    }
 
-      if (meeting.zoomMeetingId) {
-        return res.status(409).json({
+    if (meeting.zoomMeetingId) {
+      return {
+        statusCode: 409,
+        responseBody: {
           success: false,
           error:
             "A Zoom meeting has already been created for this Court Study session",
           meeting,
-        });
-      }
-
-      const meetingFormat = courtStudyRequest.meetingFormat;
-
-if (
-  meetingFormat !== "COURT_HOSTED" &&
-  meetingFormat !== "PASTOR_HOSTED" &&
-  meetingFormat !== "COMMUNITY_HOSTED" &&
-  meetingFormat !== "HYBRID"
-) {
-  return res.status(400).json({
-    success: false,
-    error:
-      meetingFormat === "IN_PERSON"
-        ? "This is an in-person Court Study request and does not require a Zoom meeting"
-        : "This Court Study hosting mode is not supported for Zoom creation",
-  });
-}
-
-      const scheduledStart = new Date(meeting.scheduledStart);
-      const scheduledEnd = new Date(meeting.scheduledEnd);
-
-      const durationMinutes = Math.max(
-        1,
-        Math.ceil(
-          (scheduledEnd.getTime() -
-            scheduledStart.getTime()) /
-            60000
-        )
-      );
-
-      let accessToken;
-
-if (courtStudyRequest.meetingFormat === "COMMUNITY_HOSTED") {
-  accessToken = await getCourtStudyHostZoomAccessToken({
-    organizerEmail: String(
-      courtStudyRequest.organizerEmail || ""
-    )
-      .trim()
-      .toLowerCase(),
-  });
-} else {
-  accessToken = await getS2SAccessToken();
-}
-
-      const zoomTimeZone =
-  meeting.timezone || "America/Los_Angeles";
-
-const zoomTimeParts = Object.fromEntries(
-  new Intl.DateTimeFormat("en-US", {
-    timeZone: zoomTimeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  })
-    .formatToParts(scheduledStart)
-    .filter((part) => part.type !== "literal")
-    .map((part) => [part.type, part.value])
-);
-
-const zoomStartTime =
-  `${zoomTimeParts.year}-${zoomTimeParts.month}-${zoomTimeParts.day}` +
-  `T${zoomTimeParts.hour}:${zoomTimeParts.minute}:${zoomTimeParts.second}`;
-      
-      const zoomPayload = {
-        topic: meeting.title,
-        type: 2,
-        start_time: zoomStartTime,
-        duration: durationMinutes,
-        timezone: zoomTimeZone,
-        agenda:
-          meeting.description ||
-          `Court Study session based on the recorded interview "${
-            courtStudyRequest.recording.title ||
-            "Court of Compassion Interview"
-          }".`,
-
-        settings: {
-          join_before_host: false,
-          waiting_room: true,
-          approval_type: 0,
-          meeting_authentication: false,
-          mute_upon_entry: true,
-          participant_video: true,
-          host_video: true,
-          auto_recording: "cloud",
         },
       };
+    }
 
-      const zoomResponse = await fetch(
-        "https://api.zoom.us/v2/users/me/meetings",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(zoomPayload),
-        }
+    const meetingFormat = courtStudyRequest.meetingFormat;
+
+    if (
+      meetingFormat !== "COURT_HOSTED" &&
+      meetingFormat !== "PASTOR_HOSTED" &&
+      meetingFormat !== "COMMUNITY_HOSTED" &&
+      meetingFormat !== "HYBRID"
+    ) {
+      return {
+        statusCode: 400,
+        responseBody: {
+          success: false,
+          error:
+            meetingFormat === "IN_PERSON"
+              ? "This is an in-person Court Study request and does not require a Zoom meeting"
+              : "This Court Study hosting mode is not supported for Zoom creation",
+        },
+      };
+    }
+
+    const scheduledStart = new Date(
+      meeting.scheduledStart
+    );
+
+    const scheduledEnd = new Date(
+      meeting.scheduledEnd
+    );
+
+    const durationMinutes = Math.max(
+      1,
+      Math.ceil(
+        (scheduledEnd.getTime() -
+          scheduledStart.getTime()) /
+          60000
+      )
+    );
+
+    let accessToken;
+
+    if (
+      courtStudyRequest.meetingFormat ===
+      "COMMUNITY_HOSTED"
+    ) {
+      accessToken =
+        await getCourtStudyHostZoomAccessToken({
+          organizerEmail: String(
+            courtStudyRequest.organizerEmail || ""
+          )
+            .trim()
+            .toLowerCase(),
+        });
+    } else {
+      accessToken = await getS2SAccessToken();
+    }
+
+    const zoomTimeZone =
+      meeting.timezone || "America/Los_Angeles";
+
+    const zoomTimeParts = Object.fromEntries(
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: zoomTimeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      })
+        .formatToParts(scheduledStart)
+        .filter(
+          (part) => part.type !== "literal"
+        )
+        .map((part) => [
+          part.type,
+          part.value,
+        ])
+    );
+
+    const zoomStartTime =
+      `${zoomTimeParts.year}-${zoomTimeParts.month}-${zoomTimeParts.day}` +
+      `T${zoomTimeParts.hour}:${zoomTimeParts.minute}:${zoomTimeParts.second}`;
+
+    const zoomPayload = {
+      topic: meeting.title,
+      type: 2,
+      start_time: zoomStartTime,
+      duration: durationMinutes,
+      timezone: zoomTimeZone,
+      agenda:
+        meeting.description ||
+        `Court Study session based on the recorded interview "${
+          courtStudyRequest.recording?.title ||
+          "Court of Compassion Interview"
+        }".`,
+
+      settings: {
+        join_before_host: false,
+        waiting_room: true,
+        approval_type: 0,
+        meeting_authentication: false,
+        mute_upon_entry: true,
+        participant_video: true,
+        host_video: true,
+        auto_recording: "cloud",
+      },
+    };
+
+    const zoomResponse = await fetch(
+      "https://api.zoom.us/v2/users/me/meetings",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify(zoomPayload),
+      }
+    );
+
+    const zoomData = await zoomResponse
+      .json()
+      .catch(() => ({}));
+
+    if (!zoomResponse.ok) {
+      console.error(
+        "❌ Zoom Court Study meeting creation failed:",
+        zoomData
       );
 
-      const zoomData = await zoomResponse
-        .json()
-        .catch(() => ({}));
-
-      if (!zoomResponse.ok) {
-        console.error(
-          "❌ Zoom Court Study meeting creation failed:",
-          zoomData
-        );
-
-        return res.status(zoomResponse.status).json({
+      return {
+        statusCode: zoomResponse.status,
+        responseBody: {
           success: false,
           error:
             zoomData.message ||
             zoomData.reason ||
             "Zoom could not create the Court Study meeting",
           zoom: zoomData,
-        });
-      }
+        },
+      };
+    }
 
-      if (!zoomData.id || !zoomData.join_url) {
-        return res.status(502).json({
+    if (!zoomData.id || !zoomData.join_url) {
+      return {
+        statusCode: 502,
+        responseBody: {
           success: false,
           error:
             "Zoom created an incomplete meeting response",
           zoom: zoomData,
-        });
-      }
+        },
+      };
+    }
 
-      const updatedMeeting =
-        await prisma.courtStudyMeeting.update({
-          where: {
-            id: meeting.id,
-          },
-          data: {
-            zoomMeetingId: String(zoomData.id),
-            zoomRegistrationUrl:
-              zoomData.registration_url || null,
-            zoomJoinUrl: zoomData.join_url,
-            zoomPasscode: zoomData.password || null,
-            scheduledStart: zoomData.start_time
-              ? new Date(zoomData.start_time)
-              : meeting.scheduledStart,
-            status: "SCHEDULED",
-          },
-        });
+    const updatedMeeting =
+      await prisma.courtStudyMeeting.update({
+        where: {
+          id: meeting.id,
+        },
+        data: {
+          zoomMeetingId: String(zoomData.id),
+          zoomRegistrationUrl:
+            zoomData.registration_url || null,
+          zoomJoinUrl: zoomData.join_url,
+          zoomPasscode:
+            zoomData.password || null,
+          scheduledStart: zoomData.start_time
+            ? new Date(zoomData.start_time)
+            : meeting.scheduledStart,
+          status: "SCHEDULED",
+        },
+      });
 
-      return res.status(201).json({
+    return {
+      statusCode: 201,
+      responseBody: {
         success: true,
         message:
           "Court Study Zoom meeting created successfully",
@@ -7107,22 +7288,52 @@ const zoomStartTime =
           startTime:
             zoomData.start_time ||
             scheduledStart.toISOString(),
-          duration: zoomData.duration || durationMinutes,
+          duration:
+            zoomData.duration ||
+            durationMinutes,
           timezone:
-            zoomData.timezone || meeting.timezone,
+            zoomData.timezone ||
+            meeting.timezone,
         },
-      });
-    } catch (err) {
-      console.error(
-        "❌ POST /api/court-study-requests/:id/create-zoom error:",
-        err
-      );
+      },
+    };
+  } catch (err) {
+    console.error(
+      "❌ createCourtStudyZoomInternal error:",
+      err
+    );
 
-      return res.status(500).json({
+    return {
+      statusCode: 500,
+      responseBody: {
         success: false,
         error: String(err),
+      },
+    };
+  }
+}
+
+
+// ==========================================================
+// Admin route: manually create the Zoom meeting
+// ==========================================================
+app.post(
+  "/api/court-study-requests/:id/create-zoom",
+  requireAdminToken,
+  async (req, res) => {
+    const result =
+      await createCourtStudyZoomInternal({
+        requestId: req.params.id,
       });
-    }
+
+    const {
+      statusCode,
+      responseBody,
+    } = result;
+
+    return res
+      .status(statusCode)
+      .json(responseBody);
   }
 );
 // ==================================================
