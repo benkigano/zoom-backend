@@ -1065,7 +1065,7 @@ if (
       requestId,
     });
 
-  if (!zoomResult.success) {
+  if (!zoomResult.responseBody?.success) {
     throw new Error(
       zoomResult.responseBody?.error ||
         "Automatic organizer Zoom meeting creation failed."
