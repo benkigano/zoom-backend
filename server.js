@@ -8054,7 +8054,7 @@ const memberMailtoUrl =
 const safeMemberMailtoUrl =
   safeEmailHtml(memberMailtoUrl);
       
-      const htmlBody = `
+         const htmlBody = `
         <!doctype html>
         <html lang="en">
           <head>
@@ -8064,181 +8064,349 @@ const safeMemberMailtoUrl =
               content="width=device-width, initial-scale=1"
             >
           </head>
+
           <body
             style="
               margin:0;
-              padding:24px;
-              background:#f5f7fb;
-              font-family:Arial,sans-serif;
-              color:#222;
+              padding:0;
+              background:#f7f2e9;
+              font-family:Arial,Helvetica,sans-serif;
+              color:#172554;
             "
           >
-            <div
+            <table
+              role="presentation"
+              width="100%"
+              cellspacing="0"
+              cellpadding="0"
+              border="0"
               style="
-                max-width:680px;
-                margin:0 auto;
-                background:#ffffff;
-                border:1px solid #d9e1ef;
-                border-radius:8px;
-                padding:28px;
+                width:100%;
+                background:#f7f2e9;
+                padding:32px 12px;
               "
             >
-              <h2
-                style="
-                  margin-top:0;
-                  color:#0B1E5B;
-                "
-              >
-                Court Study Session Ready
-              </h2>
+              <tr>
+                <td align="center">
 
-              <p>
-                Dear ${safeEmailHtml(recipientName)},
-              </p>
+                  <table
+                    role="presentation"
+                    width="100%"
+                    cellspacing="0"
+                    cellpadding="0"
+                    border="0"
+                    style="
+                      max-width:640px;
+                      background:#ffffff;
+                      border:1px solid #e5e7eb;
+                      border-radius:14px;
+                      overflow:hidden;
+                    "
+                  >
 
-              <p>
-                Your Court of Compassion Court Study
-                session is ready.
-              </p>
-
-              <p>
-                <strong>${safeEmailHtml(hostLabel)}:</strong>
-                ${safeEmailHtml(hostDisplayName)}
-                <br>
-                <strong>${isRulesStudy ? "Study Material" : "Interview"}:</strong>
-                ${safeEmailHtml(interviewTitle)}
-                <br>
-                <strong>Session:</strong>
-                ${safeEmailHtml(readableSessionTime)}
-              </p>
-
-              <p>
-                <a
-                  href="${safeRecordingUrl}"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style="
-                    display:inline-block;
-                    padding:10px 16px;
-                    margin:4px 8px 4px 0;
-                    background:#0B1E5B;
-                    color:#ffffff;
-                    text-decoration:none;
-                    border-radius:4px;
-                  "
-                >
-                 ${isRulesStudy ? "Watch Selected Court Study Video" : "Watch Interview Recording"} 
-                </a>
-
-                ${
-                  podcastUrl
-                    ? `
-                      <a
-                        href="${safePodcastUrl}"
-                        target="_blank"
-                        rel="noopener noreferrer"
+                    <!-- BRANDED HEADER -->
+                    <tr>
+                      <td
+                        align="center"
                         style="
-                          display:inline-block;
-                          padding:10px 16px;
-                          margin:4px 8px 4px 0;
-                          background:#1976D2;
-                          color:#ffffff;
-                          text-decoration:none;
-                          border-radius:4px;
+                          background:#0b2a68;
+                          padding:24px 32px 22px 32px;
+                          text-align:center;
                         "
                       >
-                        Listen to Podcast
-                      </a>
-                    `
-                    : ""
-                }
-              </p>
+                        <img
+                          src="https://static.wixstatic.com/media/2ccb97_745227d9536b452b83a82556e6c5a430~mv2.png"
+                          alt="Court of Compassion Seal"
+                          width="96"
+                          height="96"
+                          style="
+                            display:block;
+                            width:96px;
+                            height:96px;
+                            margin:0 auto 14px auto;
+                            border-radius:50%;
+                            border:2px solid #d8b24c;
+                            background:#ffffff;
+                          "
+                        >
 
-              <h3 style="color:#0B1E5B;">
-                Public Zoom Registration
-              </h3>
+                        <div
+                          style="
+                            font-size:12px;
+                            letter-spacing:2px;
+                            color:#d8b24c;
+                            font-weight:700;
+                            margin-bottom:8px;
+                          "
+                        >
+                          COURT OF COMPASSION
+                        </div>
 
-              <p>
-               Share this registration link with participants: 
-               
-              </p>
+                        <div
+                          style="
+                            font-size:26px;
+                            line-height:34px;
+                            color:#ffffff;
+                            font-weight:700;
+                          "
+                        >
+                          Court Study Session Ready
+                        </div>
+                      </td>
+                    </tr>
 
-              <p>
-                <a
-                  href="${safeRegistrationUrl}"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style="
-                    display:inline-block;
-                    padding:12px 18px;
-                    background:#8a6500;
-                    color:#ffffff;
-                    text-decoration:none;
-                    border-radius:4px;
-                    font-weight:bold;
-                  "
-                >
-                  Register for the Court Study Session
-                </a>
-              </p>
+                    <!-- GOLD DIVIDER -->
+                    <tr>
+                      <td style="padding:0 32px;">
+                        <div
+                          style="
+                            height:4px;
+                            background:#d8b24c;
+                          "
+                        ></div>
+                      </td>
+                    </tr>
 
-              <p
-                style="
-                  padding:12px;
-                  background:#fff7dd;
-                  border-left:4px solid #8a6500;
-                "
-              >
-              <strong>${isCommunityHosted ? "For the organizer and participants:" : "For the Court Study organizer and participants:"}</strong>
-              ${isCommunityHosted
-  ? "Each person—including the organizer—must register separately using the gold Register for the Court Study Session button. After registration, Zoom will email that person a unique personal join link."
-  : "Each person—including the Court Study organizer—must register separately using the gold Register for the Court Study Session button. After registration, Zoom will email that person a unique personal join link."}
-              </p>
+                    <!-- EMAIL BODY -->
+                    <tr>
+                      <td
+                        style="
+                          padding:28px 32px 12px 32px;
+                          font-size:14px;
+                          line-height:21px;
+                          color:#172554;
+                        "
+                      >
 
-              <h3 style="color:#0B1E5B;">
-  ${isCommunityHosted ? "Invite Court Study Participants" : "Invite Court Study Participants"}
-</h3>
+                        <p style="margin:0 0 16px 0;">
+                          Dear ${safeEmailHtml(recipientName)},
+                        </p>
 
-<p>
-  ${isCommunityHosted
-  ? "Use the button below to open a ready-to-send invitation in your normal email application. Add the participants’ addresses in the Bcc field, review the message, and send it."
-  : "Use the button below to open a ready-to-send invitation in your normal email application. Add the participants’ addresses in the Bcc field, review the message, and send it."}
-</p>
+                        <p style="margin:0 0 18px 0;">
+                          Your Court of Compassion Court Study session is ready.
+                        </p>
 
-<p style="margin:18px 0;">
-  <a
-    href="${safeMemberMailtoUrl}"
-    style="
-      display:inline-block;
-      padding:12px 18px;
-      background:#0B1E5B;
-      color:#ffffff;
-      text-decoration:none;
-      border-radius:4px;
-      font-weight:bold;
-    "
-  >
-    ${isCommunityHosted
-  ? "Email Invitation to Participants"
-  : "Email Invitation to Participants"}
-  </a>
-</p>
+                        <p style="margin:0 0 20px 0;">
+                          <strong>${safeEmailHtml(hostLabel)}:</strong>
+                          ${safeEmailHtml(hostDisplayName)}
+                          <br>
 
-<p style="font-size:13px;color:#555555;">
-  ${isCommunityHosted
-  ? "For privacy, the Court of Compassion does not receive or store participants’ email addresses."
-  : "For privacy, the Court of Compassion does not receive or store participants’ email addresses."}
-</p>
+                          <strong>${isRulesStudy ? "Study Material" : "Interview"}:</strong>
+                          ${safeEmailHtml(interviewTitle)}
+                          <br>
 
-              
+                          <strong>Session:</strong>
+                          ${safeEmailHtml(readableSessionTime)}
+                        </p>
 
-              <p style="margin-bottom:0;">
-                Court of Compassion
-              </p>
-            </div>
+                        <!-- MEDIA BUTTONS -->
+                        <p style="margin:0 0 22px 0;">
+                          <a
+                            href="${safeRecordingUrl}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style="
+                              display:inline-block;
+                              padding:11px 17px;
+                              margin:4px 8px 4px 0;
+                              background:#0b2a68;
+                              color:#ffffff;
+                              text-decoration:none;
+                              border-radius:4px;
+                              font-weight:bold;
+                            "
+                          >
+                            ${isRulesStudy
+                              ? "Watch Selected Court Study Video"
+                              : "Watch Interview Recording"}
+                          </a>
+
+                          ${
+                            podcastUrl
+                              ? `
+                                <a
+                                  href="${safePodcastUrl}"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style="
+                                    display:inline-block;
+                                    padding:11px 17px;
+                                    margin:4px 8px 4px 0;
+                                    background:#1976D2;
+                                    color:#ffffff;
+                                    text-decoration:none;
+                                    border-radius:4px;
+                                    font-weight:bold;
+                                  "
+                                >
+                                  Listen to Podcast
+                                </a>
+                              `
+                              : ""
+                          }
+                        </p>
+
+                        <!-- REGISTRATION SECTION -->
+                        <h3
+                          style="
+                            margin:0 0 10px 0;
+                            color:#0b2a68;
+                            font-size:18px;
+                            line-height:24px;
+                          "
+                        >
+                          Public Zoom Registration
+                        </h3>
+
+                        <p style="margin:0 0 12px 0;">
+                          Share this registration link with participants:
+                        </p>
+
+                        <p style="margin:0 0 18px 0;">
+                          <a
+                            href="${safeRegistrationUrl}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style="
+                              display:inline-block;
+                              padding:12px 18px;
+                              background:#8a6500;
+                              color:#ffffff;
+                              text-decoration:none;
+                              border-radius:4px;
+                              font-weight:bold;
+                            "
+                          >
+                            Register for the Court Study Session
+                          </a>
+                        </p>
+
+                        <div
+                          style="
+                            margin:0 0 22px 0;
+                            padding:13px 14px;
+                            background:#fff7dd;
+                            border-left:4px solid #8a6500;
+                            color:#172554;
+                          "
+                        >
+                          <strong>
+                            ${isCommunityHosted
+                              ? "For the organizer and participants:"
+                              : "For the Court Study organizer and participants:"}
+                          </strong>
+
+                          ${
+                            isCommunityHosted
+                              ? "Each person—including the organizer—must register separately using the gold Register for the Court Study Session button. After registration, Zoom will email that person a unique personal join link."
+                              : "Each person—including the Court Study organizer—must register separately using the gold Register for the Court Study Session button. After registration, Zoom will email that person a unique personal join link."
+                          }
+                        </div>
+
+                        <!-- PARTICIPANT INVITATION -->
+                        <h3
+                          style="
+                            margin:0 0 10px 0;
+                            color:#0b2a68;
+                            font-size:18px;
+                            line-height:24px;
+                          "
+                        >
+                          Invite Court Study Participants
+                        </h3>
+
+                        <p style="margin:0 0 14px 0;">
+                          Use the button below to open a ready-to-send invitation
+                          in your normal email application. Add the participants’
+                          addresses in the Bcc field, review the message, and send it.
+                        </p>
+
+                        <p style="margin:0 0 18px 0;">
+                          <a
+                            href="${safeMemberMailtoUrl}"
+                            style="
+                              display:inline-block;
+                              padding:12px 18px;
+                              background:#0b2a68;
+                              color:#ffffff;
+                              text-decoration:none;
+                              border-radius:4px;
+                              font-weight:bold;
+                            "
+                          >
+                            Email Invitation to Participants
+                          </a>
+                        </p>
+
+                        <p
+                          style="
+                            margin:0;
+                            font-size:13px;
+                            line-height:19px;
+                            color:#555555;
+                          "
+                        >
+                          For privacy, the Court of Compassion does not receive
+                          or store participants’ email addresses.
+                        </p>
+
+                      </td>
+                    </tr>
+
+                    <!-- FOOTER -->
+                    <tr>
+                      <td style="padding:8px 32px 28px 32px;">
+                        <div
+                          style="
+                            border-top:1px solid #e5e7eb;
+                            padding-top:18px;
+                            text-align:center;
+                          "
+                        >
+                          <div
+                            style="
+                              font-size:13px;
+                              font-weight:700;
+                              color:#0b2a68;
+                              margin-bottom:5px;
+                            "
+                          >
+                            Court of Compassion
+                          </div>
+
+                          <div
+                            style="
+                              font-size:12px;
+                              line-height:18px;
+                              color:#6b7280;
+                            "
+                          >
+                            Justice • Truth • Social Relevance
+                          </div>
+
+                          <div
+                            style="
+                              font-size:11px;
+                              line-height:17px;
+                              color:#9ca3af;
+                              margin-top:10px;
+                            "
+                          >
+                            This is the finalized Court Study session package
+                            prepared for the Court Study organizer.
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+
+                  </table>
+
+                </td>
+              </tr>
+            </table>
           </body>
         </html>
-      `;
+      `;   
 
       await sendEmail(
         organizerEmail,
