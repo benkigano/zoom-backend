@@ -6363,13 +6363,13 @@ const confirmationHtml = `
 
             <tr>
               <td style="background:#0b2a68;padding:28px 32px;text-align:center;">
-                <img
-  src="https://static.wixstatic.com/media/2ccb97_db8bfcc60f4548ea80011489091974fd~mv2.png"
+               <img
+  src="https://static.wixstatic.com/media/2ccb97_745227d9536b452b83a82556e6c5a430~mv2.png"
   alt="Court of Compassion Seal"
-  width="84"
-  height="84"
-  style="display:block;width:84px;height:84px;margin:0 auto 14px auto;border-radius:50%;border:2px solid #d8b24c;background:#ffffff;"
-/>
+  width="96"
+  height="96"
+  style="display:block;width:96px;height:96px;margin:0 auto 14px auto;border-radius:50%;border:2px solid #d8b24c;background:#ffffff;"
+/> 
                 <div style="font-size:12px;letter-spacing:2px;color:#d8b24c;font-weight:700;margin-bottom:8px;">
                   COURT OF COMPASSION
                 </div>
