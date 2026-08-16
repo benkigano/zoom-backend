@@ -1072,6 +1072,21 @@ if (
     );
   }
 
+  const invitationResult =
+  await sendCourtStudyInvitationInternal({
+    requestId,
+  });
+
+if (
+  !invitationResult.success ||
+  !invitationResult.responseBody?.success
+) {
+  throw new Error(
+    invitationResult.responseBody?.error ||
+      "Automatic Court Study invitation sending failed."
+  );
+}
+  
   console.log(
     "✅ COMMUNITY-HOSTED COURT STUDY AUTOMATED:",
     {
@@ -1079,6 +1094,7 @@ if (
       organizerEmail,
       scheduled: true,
       zoomCreated: true,
+      invitationSent: true,
     }
   );
 }
@@ -7880,18 +7896,21 @@ app.get(
 // Admin: send the Court Study invitation package
 // to the pastor
 // ==================================================
-app.post(
-  "/api/court-study-requests/:id/send-invitation",
-  requireAdminToken,
-  async (req, res) => {
-    const requestId = String(req.params.id || "").trim();
+async function sendCourtStudyInvitationInternal({
+  requestId,
+}) {
+  requestId = String(requestId || "").trim();
 
-    if (!requestId) {
-      return res.status(400).json({
-        success: false,
-        error: "Court Study request ID is required",
-      });
-    }
+  if (!requestId) {
+  return {
+    success: false,
+    statusCode: 400,
+    responseBody: {
+      success: false,
+      error: "Court Study request ID is required",
+    },
+  };
+}  
 
     let meetingId = null;
     let pastorEmailForAudit = null;
@@ -7909,22 +7928,30 @@ app.post(
         });
 
       if (!courtStudyRequest) {
-        return res.status(404).json({
-          success: false,
-          error: "Court Study request not found",
-        });
-      }
+  return {
+    success: false,
+    statusCode: 404,
+    responseBody: {
+      success: false,
+      error: "Court Study request not found",
+    },
+  };
+}
 
       const meeting = courtStudyRequest.courtStudyMeeting;
       const recording = courtStudyRequest.recording;
 
       if (!meeting) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "This Court Study request does not have a scheduled meeting",
-        });
-      }
+  return {
+    success: false,
+    statusCode: 400,
+    responseBody: {
+      success: false,
+      error:
+        "This Court Study request does not have a scheduled meeting",
+    },
+  };
+}
 
       meetingId = meeting.id;
 
@@ -8024,13 +8051,17 @@ const podcastUrl = isRulesStudy
       }
 
       if (missingFields.length > 0) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "The pastor invitation cannot be sent because required information is missing",
-          missingFields,
-        });
-      }
+  return {
+    success: false,
+    statusCode: 400,
+    responseBody: {
+      success: false,
+      error:
+        "The pastor invitation cannot be sent because required information is missing",
+      missingFields,
+    },
+  };
+}
 
       const timezone =
         meeting.timezone ||
@@ -8650,17 +8681,22 @@ const safeMemberMailtoUrl =
   },
 });
 
-      return res.status(200).json({
-        success: true,
-        message: isCommunityHosted
-  ? "Court Study invitation package sent to the organizer"
-  : "Court Study invitation package sent to the Court Study organizer",
-        sentTo: organizerEmail,
-        invitationSentAt:
-          updatedMeeting.invitationSentAt,
-        invitationSendCount:
-          updatedMeeting.invitationSendCount,
-      });
+  return {
+  success: true,
+  statusCode: 200,
+  responseBody: {
+    success: true,
+    message: isCommunityHosted
+      ? "Court Study invitation package sent to the organizer"
+      : "Court Study invitation package sent to the Court Study organizer",
+    sentTo: organizerEmail,
+    invitationSentAt:
+      updatedMeeting.invitationSentAt,
+    invitationSendCount:
+      updatedMeeting.invitationSendCount,
+  },
+}; 
+      
     } catch (err) {
       console.error(
         "❌ POST /api/court-study-requests/:id/send-invitation error:",
@@ -8686,6 +8722,39 @@ const safeMemberMailtoUrl =
           );
         }
       }
+
+     return {
+  success: false,
+  statusCode: 500,
+  responseBody: {
+    success: false,
+    error: String(err),
+  },
+}; 
+    }
+  }
+
+// =====================================================
+// Admin route: manually send/resend Court Study invitation
+// =====================================================
+app.post(
+  "/api/court-study-requests/:id/send-invitation",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const result =
+        await sendCourtStudyInvitationInternal({
+          requestId: req.params.id,
+        });
+
+      return res
+        .status(result.statusCode)
+        .json(result.responseBody);
+    } catch (err) {
+      console.error(
+        "❌ POST /api/court-study-requests/:id/send-invitation wrapper error:",
+        err
+      );
 
       return res.status(500).json({
         success: false,
