@@ -8497,9 +8497,24 @@ const memberMailtoUrl =
 
 const safeMemberMailtoUrl =
   safeEmailHtml(memberMailtoUrl);
-const publicInvitationToken = String(
+let publicInvitationToken = String(
   meeting.publicInvitationToken || ""
 ).trim();
+
+if (!publicInvitationToken) {
+  publicInvitationToken = crypto.randomBytes(32).toString("hex");
+
+  await prisma.courtStudyMeeting.update({
+    where: {
+      id: meeting.id,
+    },
+    data: {
+      publicInvitationToken,
+    },
+  });
+
+  meeting.publicInvitationToken = publicInvitationToken;
+}
 
 const participantInviteComposerUrl = publicInvitationToken
   ? `https://www.courtofcompassion.com/court-study-participant-invitation?token=${encodeURIComponent(publicInvitationToken)}`
