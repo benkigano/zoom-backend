@@ -7625,6 +7625,208 @@ const interviewTitle = isRulesStudy
   }
 );
 
+// =====================================================
+// Public: get Court Study participant invitation by token
+// =====================================================
+app.get(
+  "/api/court-study/public-invitation/:token",
+  async (req, res) => {
+    try {
+      const token = String(req.params.token || "").trim();
+
+      if (!token) {
+        return res.status(400).json({
+          success: false,
+          error: "Invitation token is required",
+        });
+      }
+
+      const meeting = await prisma.courtStudyMeeting.findUnique({
+        where: {
+          publicInvitationToken: token,
+        },
+        include: {
+          courtStudyRequest: {
+            include: {
+              recording: true,
+            },
+          },
+        },
+      });
+
+      if (!meeting || !meeting.courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error: "Court Study invitation not found",
+        });
+      }
+
+      const courtStudyRequest = meeting.courtStudyRequest;
+      const recording = courtStudyRequest.recording;
+
+      let selectedRulesSections = [];
+
+      try {
+        const rawSelectedRulesSections =
+          courtStudyRequest.selectedRulesSections;
+
+        if (Array.isArray(rawSelectedRulesSections)) {
+          selectedRulesSections = rawSelectedRulesSections;
+        } else if (
+          typeof rawSelectedRulesSections === "string" &&
+          rawSelectedRulesSections.trim()
+        ) {
+          const parsedSelectedRulesSections =
+            JSON.parse(rawSelectedRulesSections);
+
+          selectedRulesSections = Array.isArray(
+            parsedSelectedRulesSections
+          )
+            ? parsedSelectedRulesSections
+            : [parsedSelectedRulesSections];
+        }
+      } catch (parseError) {
+        console.warn(
+          "Could not parse selectedRulesSections for public invitation:",
+          parseError
+        );
+      }
+
+      const selectedRulesSection =
+        selectedRulesSections.find((section) =>
+          String(section?.videoUrl || "").trim()
+        ) ||
+        selectedRulesSections[0] ||
+        null;
+
+      const isRulesStudy = Boolean(selectedRulesSection);
+
+      const recordingUrl = isRulesStudy
+        ? String(selectedRulesSection?.videoUrl || "").trim()
+        : String(recording?.recordingUrl || "").trim();
+
+      const podcastUrl = isRulesStudy
+        ? ""
+        : String(recording?.podcastUrl || "").trim();
+
+      const registrationUrl = String(
+        meeting.zoomRegistrationUrl || ""
+      ).trim();
+
+      const timezone =
+        meeting.timezone ||
+        courtStudyRequest.timezone ||
+        "America/Los_Angeles";
+
+      const scheduledStart = new Date(meeting.scheduledStart);
+
+      const formattedDateTime =
+        new Intl.DateTimeFormat("en-US", {
+          timeZone: timezone,
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        }).format(scheduledStart);
+
+      const timezoneLabel =
+        timezone === "America/Los_Angeles"
+          ? "Pacific Time"
+          : timezone;
+
+      const readableSessionTime =
+        `${formattedDateTime} (${timezoneLabel})`;
+
+      const hostGroupName = String(
+        courtStudyRequest.hostGroupName ||
+        courtStudyRequest.churchName ||
+        ""
+      ).trim();
+
+      const materialTitle = isRulesStudy
+        ? [
+            selectedRulesSection?.chapterTitle,
+            selectedRulesSection?.sectionTitle,
+          ]
+            .filter(Boolean)
+            .join(" — ") ||
+          meeting.title ||
+          "Court Study"
+        : recording?.title ||
+          meeting.title ||
+          "Court of Compassion Interview";
+
+      const memberInvitationText = isRulesStudy
+        ? [
+            `You are invited to participate in a Court of Compassion Court Study session hosted by ${hostGroupName}.`,
+            "",
+            `Study Material: ${materialTitle}`,
+            ...(recordingUrl
+              ? [
+                  "",
+                  "Watch the Selected Court Study Video:",
+                  recordingUrl,
+                ]
+              : []),
+            "",
+            `Session: ${readableSessionTime}`,
+            "",
+            "Register for the Zoom Court Study Session:",
+            registrationUrl,
+            "",
+            "Important: Each participant must register separately. Zoom will send each registered participant a personal confirmation email and unique join link.",
+          ].join("\n")
+        : [
+            `You are invited to participate in a Court of Compassion Court Study session hosted by ${hostGroupName}.`,
+            "",
+            `Interview: ${materialTitle}`,
+            `Session: ${readableSessionTime}`,
+            "",
+            "Watch the Interview Recording:",
+            recordingUrl,
+            "",
+            ...(podcastUrl
+              ? [
+                  "Listen to the Podcast:",
+                  podcastUrl,
+                  "",
+                ]
+              : []),
+            "Register for the Zoom Court Study Session:",
+            registrationUrl,
+            "",
+            "Important: Each participant must register separately. Zoom will send each registered participant a personal confirmation email and unique join link.",
+          ].join("\n");
+
+      return res.status(200).json({
+        success: true,
+        invitation: {
+          hostGroupName,
+          materialTitle,
+          studyType: isRulesStudy ? "RULES" : "INTERVIEW",
+          readableSessionTime,
+          recordingUrl,
+          podcastUrl: podcastUrl || null,
+          registrationUrl,
+          memberInvitationText,
+        },
+      });
+    } catch (err) {
+      console.error(
+        "❌ GET /api/court-study/public-invitation/:token error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
 // ================================================
 // Admin: view Zoom registrants for a Court Study
 // ================================================
