@@ -8295,7 +8295,16 @@ const memberMailtoUrl =
 
 const safeMemberMailtoUrl =
   safeEmailHtml(memberMailtoUrl);
-      
+const publicInvitationToken = String(
+  meeting.publicInvitationToken || ""
+).trim();
+
+const participantInviteComposerUrl = publicInvitationToken
+  ? `https://www.courtofcompassion.com/court-study-participant-invitation?token=${encodeURIComponent(publicInvitationToken)}`
+  : "";
+
+const safeParticipantInviteComposerUrl =
+  safeEmailHtml(participantInviteComposerUrl);      
          const htmlBody = `
         <!doctype html>
         <html lang="en">
@@ -8557,11 +8566,37 @@ const safeMemberMailtoUrl =
                           Invite Court Study Participants
                         </h3>
 
-                        <p style="margin:0 0 14px 0;">
-                          Use the button below to open a ready-to-send invitation
-                          in your normal email application. Add the participants’
-                          addresses in the Bcc field, review the message, and send it.
-                        </p>
+                     <p style="margin:0 0 14px 0;">
+  Create a branded Court of Compassion invitation for your participants.
+  If you prefer to use your normal email application, you may instead
+  open the plain invitation below and add participants’ addresses in the
+  Bcc field.
+</p>
+
+                        ${participantInviteComposerUrl
+  ? `
+    <p style="margin:0 0 12px 0;">
+      <a
+        href="${safeParticipantInviteComposerUrl}"
+        target="_blank"
+        rel="noopener noreferrer"
+        style="
+          display:inline-block;
+          padding:12px 18px;
+          background:#8a6500;
+          color:#ffffff;
+          text-decoration:none;
+          border-radius:4px;
+          font-weight:bold;
+        "
+      >
+        Create Branded Participant Invitation
+      </a>
+    </p>
+  `
+  : ""}
+
+                        
 
                         <p style="margin:0 0 18px 0;">
                           <a
@@ -8576,8 +8611,10 @@ const safeMemberMailtoUrl =
                               font-weight:bold;
                             "
                           >
-                            Email Invitation to Participants
-                          </a>
+                            >
+  Open Plain Invitation in My Email
+</a>
+                          
                         </p>
 
                         <p
