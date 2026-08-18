@@ -7827,6 +7827,473 @@ app.get(
   }
 );
 
+// =====================================================
+// Public: send branded Court Study participant invitations
+// =====================================================
+app.post(
+  "/api/court-study/public-invitation/:token/send",
+  async (req, res) => {
+    try {
+      const token = String(req.params.token || "").trim();
+
+      if (!token) {
+        return res.status(400).json({
+          success: false,
+          error: "Invitation token is required",
+        });
+      }
+
+      const rawEmails = Array.isArray(req.body?.emails)
+        ? req.body.emails
+        : typeof req.body?.emails === "string"
+          ? req.body.emails.split(/[\s,;]+/)
+          : [];
+
+      const emails = [
+        ...new Set(
+          rawEmails
+            .map((value) => String(value || "").trim().toLowerCase())
+            .filter(Boolean)
+        ),
+      ];
+
+      if (emails.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: "At least one participant email address is required",
+        });
+      }
+
+      if (emails.length > 50) {
+        return res.status(400).json({
+          success: false,
+          error: "A maximum of 50 participant email addresses may be sent at one time",
+        });
+      }
+
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      const invalidEmails = emails.filter(
+        (email) => !emailPattern.test(email)
+      );
+
+      if (invalidEmails.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error: "One or more participant email addresses are invalid",
+          invalidEmails,
+        });
+      }
+
+      const meeting = await prisma.courtStudyMeeting.findUnique({
+        where: {
+          publicInvitationToken: token,
+        },
+        include: {
+          courtStudyRequest: {
+            include: {
+              recording: true,
+            },
+          },
+        },
+      });
+
+      if (!meeting || !meeting.courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error: "Court Study invitation not found",
+        });
+      }
+
+      const courtStudyRequest = meeting.courtStudyRequest;
+      const recording = courtStudyRequest.recording;
+
+      let selectedRulesSections = [];
+
+      try {
+        const rawSelectedRulesSections =
+          courtStudyRequest.selectedRulesSections;
+
+        if (Array.isArray(rawSelectedRulesSections)) {
+          selectedRulesSections = rawSelectedRulesSections;
+        } else if (
+          typeof rawSelectedRulesSections === "string" &&
+          rawSelectedRulesSections.trim()
+        ) {
+          const parsedSelectedRulesSections =
+            JSON.parse(rawSelectedRulesSections);
+
+          selectedRulesSections = Array.isArray(
+            parsedSelectedRulesSections
+          )
+            ? parsedSelectedRulesSections
+            : [parsedSelectedRulesSections];
+        }
+      } catch (parseError) {
+        console.warn(
+          "Could not parse selectedRulesSections for participant send:",
+          parseError
+        );
+      }
+
+      const selectedRulesSection =
+        selectedRulesSections.find((section) =>
+          String(section?.videoUrl || "").trim()
+        ) ||
+        selectedRulesSections[0] ||
+        null;
+
+      const isRulesStudy = Boolean(selectedRulesSection);
+
+      const recordingUrl = isRulesStudy
+        ? String(selectedRulesSection?.videoUrl || "").trim()
+        : String(recording?.recordingUrl || "").trim();
+
+      const registrationUrl = String(
+        meeting.zoomRegistrationUrl || ""
+      ).trim();
+
+      if (!registrationUrl) {
+        return res.status(400).json({
+          success: false,
+          error: "The Court Study registration link is unavailable",
+        });
+      }
+
+      const timezone =
+        meeting.timezone ||
+        courtStudyRequest.timezone ||
+        "America/Los_Angeles";
+
+      const formattedDateTime =
+        new Intl.DateTimeFormat("en-US", {
+          timeZone: timezone,
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        }).format(new Date(meeting.scheduledStart));
+
+      const timezoneLabel =
+        timezone === "America/Los_Angeles"
+          ? "Pacific Time"
+          : timezone;
+
+      const readableSessionTime =
+        `${formattedDateTime} (${timezoneLabel})`;
+
+      const hostGroupName = String(
+        courtStudyRequest.hostGroupName ||
+        courtStudyRequest.churchName ||
+        "Court of Compassion"
+      ).trim();
+
+      const materialTitle = isRulesStudy
+        ? [
+            selectedRulesSection?.chapterTitle,
+            selectedRulesSection?.sectionTitle,
+          ]
+            .filter(Boolean)
+            .join(" — ") ||
+          meeting.title ||
+          "Court Study"
+        : recording?.title ||
+          meeting.title ||
+          "Court of Compassion Interview";
+
+      const subject =
+        `Invitation: Court Study — ${materialTitle}`;
+
+      const plainTextBody = [
+        "Dear Court Study Participant,",
+        "",
+        `You are invited to participate in a Court of Compassion Court Study session hosted by ${hostGroupName}.`,
+        "",
+        `Court Study Material: ${materialTitle}`,
+        `Session: ${readableSessionTime}`,
+        "",
+        ...(recordingUrl
+          ? [
+              "Watch Court Study Video:",
+              recordingUrl,
+              "",
+            ]
+          : []),
+        "Register for Court Study:",
+        registrationUrl,
+        "",
+        "Each participant must register separately. After registration, Zoom will send each registered participant a personal confirmation email and unique join link.",
+        "",
+        "Court of Compassion",
+      ].join("\n");
+
+      const safeHostGroupName =
+        safeEmailHtml(hostGroupName);
+
+      const safeMaterialTitle =
+        safeEmailHtml(materialTitle);
+
+      const safeSessionTime =
+        safeEmailHtml(readableSessionTime);
+
+      const safeRecordingUrl =
+        safeEmailWebUrl(recordingUrl);
+
+      const safeRegistrationUrl =
+        safeEmailWebUrl(registrationUrl);
+
+      const htmlBody = `
+        <!doctype html>
+        <html lang="en">
+          <body style="
+            margin:0;
+            padding:0;
+            background:#f7f2e9;
+            font-family:Arial,Helvetica,sans-serif;
+            color:#172554;
+          ">
+            <table
+              role="presentation"
+              width="100%"
+              cellspacing="0"
+              cellpadding="0"
+              border="0"
+              style="background:#f7f2e9;padding:32px 12px;"
+            >
+              <tr>
+                <td align="center">
+
+                  <table
+                    role="presentation"
+                    width="100%"
+                    cellspacing="0"
+                    cellpadding="0"
+                    border="0"
+                    style="
+                      max-width:640px;
+                      background:#ffffff;
+                      border:1px solid #e5e7eb;
+                      border-radius:14px;
+                      overflow:hidden;
+                    "
+                  >
+
+                    <tr>
+                      <td
+                        align="center"
+                        style="
+                          background:#0b2a68;
+                          padding:24px 32px;
+                          text-align:center;
+                        "
+                      >
+                        <img
+                          src="https://static.wixstatic.com/media/2ccb97_745227d9536b452b83a82556e6c5a430~mv2.png"
+                          alt="Court of Compassion Seal"
+                          width="84"
+                          height="84"
+                          style="
+                            display:block;
+                            margin:0 auto 14px auto;
+                            border-radius:50%;
+                            border:2px solid #d8b24c;
+                            background:#ffffff;
+                          "
+                        >
+
+                        <div style="
+                          font-size:12px;
+                          letter-spacing:2px;
+                          color:#d8b24c;
+                          font-weight:700;
+                          margin-bottom:8px;
+                        ">
+                          COURT OF COMPASSION
+                        </div>
+
+                        <div style="
+                          font-size:26px;
+                          line-height:34px;
+                          color:#ffffff;
+                          font-weight:700;
+                        ">
+                          You Are Invited to a Court Study
+                        </div>
+                      </td>
+                    </tr>
+
+                    <tr>
+                      <td style="
+                        padding:28px 32px;
+                        font-size:14px;
+                        line-height:21px;
+                      ">
+
+                        <p style="margin:0 0 18px 0;">
+                          Dear Court Study Participant,
+                        </p>
+
+                        <p style="margin:0 0 20px 0;">
+                          You are invited to participate in a Court of Compassion
+                          Court Study session.
+                        </p>
+
+                        <p style="margin:0 0 22px 0;">
+                          <strong>Host Group or Community:</strong>
+                          ${safeHostGroupName}
+                          <br>
+
+                          <strong>Court Study Material:</strong>
+                          ${safeMaterialTitle}
+                          <br>
+
+                          <strong>Session:</strong>
+                          ${safeSessionTime}
+                        </p>
+
+                        ${
+                          safeRecordingUrl
+                            ? `
+                              <p style="margin:0 0 12px 0;">
+                                <a
+                                  href="${safeRecordingUrl}"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style="
+                                    display:inline-block;
+                                    padding:12px 18px;
+                                    background:#0b2a68;
+                                    color:#ffffff;
+                                    text-decoration:none;
+                                    border-radius:4px;
+                                    font-weight:bold;
+                                  "
+                                >
+                                  Watch Court Study Video
+                                </a>
+                              </p>
+                            `
+                            : ""
+                        }
+
+                        <p style="margin:0 0 20px 0;">
+                          <a
+                            href="${safeRegistrationUrl}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style="
+                              display:inline-block;
+                              padding:12px 18px;
+                              background:#8a6500;
+                              color:#ffffff;
+                              text-decoration:none;
+                              border-radius:4px;
+                              font-weight:bold;
+                            "
+                          >
+                            Register for Court Study
+                          </a>
+                        </p>
+
+                        <div style="
+                          padding:13px 14px;
+                          background:#fff7dd;
+                          border-left:4px solid #8a6500;
+                        ">
+                          Each participant must register separately.
+                          After registration, Zoom will send each registered
+                          participant a personal confirmation email and unique join link.
+                        </div>
+
+                      </td>
+                    </tr>
+
+                    <tr>
+                      <td style="
+                        padding:8px 32px 28px 32px;
+                        text-align:center;
+                      ">
+                        <div style="
+                          border-top:2px solid #d8b24c;
+                          padding-top:18px;
+                          font-size:13px;
+                          font-weight:700;
+                          color:#0b2a68;
+                        ">
+                          Court of Compassion
+                        </div>
+
+                        <div style="
+                          padding-top:5px;
+                          font-size:12px;
+                          color:#6b7280;
+                        ">
+                          Truth • Compassion • Social Relevance
+                        </div>
+
+                        <div style="
+                          padding-top:8px;
+                          font-size:12px;
+                        ">
+                          courtofcompassion.com
+                        </div>
+                      </td>
+                    </tr>
+
+                  </table>
+
+                </td>
+              </tr>
+            </table>
+          </body>
+        </html>
+      `;
+
+      let sentCount = 0;
+      const failedEmails = [];
+
+      for (const email of emails) {
+        try {
+          await sendEmail(
+            email,
+            subject,
+            plainTextBody,
+            htmlBody
+          );
+
+          sentCount += 1;
+        } catch (sendErr) {
+          console.error(
+            "Participant invitation send failed:",
+            sendErr
+          );
+
+          failedEmails.push(email);
+        }
+      }
+
+      return res.status(200).json({
+        success: failedEmails.length === 0,
+        sentCount,
+        failedCount: failedEmails.length,
+        failedEmails,
+      });
+    } catch (err) {
+      console.error(
+        "❌ POST /api/court-study/public-invitation/:token/send error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
 // ================================================
 // Admin: view Zoom registrants for a Court Study
 // ================================================
@@ -8783,12 +9250,10 @@ const safeParticipantInviteComposerUrl =
                           Invite Court Study Participants
                         </h3>
 
-                     <p style="margin:0 0 14px 0;">
-  Create a branded Court of Compassion invitation for your participants.
-  If you prefer to use your normal email application, you may instead
-  open the plain invitation below and add participants’ addresses in the
-  Bcc field.
-</p>
+                    <p style="margin:0 0 14px 0;">
+  Review the Court Study participant invitation, enter the participants’
+  email addresses, and send the invitation from the Court Study invitation page.
+</p> 
 
                         ${participantInviteComposerUrl
   ? `
@@ -8807,7 +9272,7 @@ const safeParticipantInviteComposerUrl =
           font-weight:bold;
         "
       >
-        Create Branded Participant Invitation
+        Invite Court Study Participants
       </a>
     </p>
   `
@@ -8815,24 +9280,7 @@ const safeParticipantInviteComposerUrl =
 
                         
 
-                        <p style="margin:0 0 18px 0;">
-                          <a
-                            href="${safeMemberMailtoUrl}"
-                            style="
-                              display:inline-block;
-                              padding:12px 18px;
-                              background:#0b2a68;
-                              color:#ffffff;
-                              text-decoration:none;
-                              border-radius:4px;
-                              font-weight:bold;
-                            "
-                          >
-                            >
-  Open Plain Invitation in My Email
-</a>
-                          
-                        </p>
+                        
 
                         <p
                           style="
@@ -8842,8 +9290,8 @@ const safeParticipantInviteComposerUrl =
                             color:#555555;
                           "
                         >
-                          For privacy, the Court of Compassion does not receive
-                          or store participants’ email addresses.
+                          For privacy, participant email addresses are used only to send
+the Court Study invitation and are not saved to the Court Study database.
                         </p>
 
                       </td>
