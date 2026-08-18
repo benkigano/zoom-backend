@@ -6678,6 +6678,181 @@ app.get(
   }
 );
 
+async function sendCommunityHostedZoomApprovalEmail({
+  requestId,
+  organizerName,
+  organizerEmail,
+  hostGroupName,
+  preferredStart,
+  timezone,
+}) {
+  const safeOrganizerName =
+    String(organizerName || "").trim() || "Court Study Organizer";
+
+  const safeOrganizerEmail =
+    String(organizerEmail || "").trim();
+
+  const safeHostGroupName =
+    String(hostGroupName || "").trim() || "your group or community";
+
+  if (!safeOrganizerEmail) {
+    throw new Error(
+      "Cannot send Zoom connection email because organizerEmail is missing."
+    );
+  }
+
+  const connectZoomUrl =
+    `https://api.courtofcompassion.com/court-study/zoom/connect-organizer/` +
+    encodeURIComponent(requestId);
+
+  let readableSessionTime = "the approved session time";
+
+  if (preferredStart) {
+    try {
+      readableSessionTime =
+        new Intl.DateTimeFormat("en-US", {
+          timeZone:
+            String(timezone || "").trim() ||
+            "America/Los_Angeles",
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          timeZoneName: "short",
+        }).format(new Date(preferredStart));
+    } catch (dateError) {
+      console.warn(
+        "Could not format approved Court Study session time:",
+        dateError
+      );
+    }
+  }
+
+  const text = [
+    `Dear ${safeOrganizerName},`,
+    "",
+    "Your Court of Compassion Court Study request has been approved.",
+    "",
+    `Host group or community: ${safeHostGroupName}`,
+    `Approved session: ${readableSessionTime}`,
+    "",
+    "The next step is to connect the Zoom account that will host this Court Study.",
+    "",
+    "After you connect Zoom, Court of Compassion will automatically create and configure the meeting using the approved Court Study details.",
+    "",
+    `Connect Zoom: ${connectZoomUrl}`,
+    "",
+    "Court of Compassion",
+  ].join("\n");
+
+  const html = `
+<!doctype html>
+<html lang="en">
+<body style="margin:0;padding:0;background:#f7f2e9;font-family:Arial,Helvetica,sans-serif;color:#24324a;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f7f2e9;padding:32px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
+          <tr>
+            <td style="background:#0b2a68;padding:28px 32px;text-align:center;">
+              <img
+                src="https://static.wixstatic.com/media/2ccb97_745227d9536b452b83a82556e6c5a430~mv2.png"
+                alt="Court of Compassion Seal"
+                width="96"
+                height="96"
+                style="display:block;width:96px;height:96px;margin:0 auto 14px auto;border-radius:50%;border:2px solid #d8b24c;background:#ffffff;"
+              />
+              <div style="font-size:12px;letter-spacing:2px;color:#d8b24c;font-weight:700;margin-bottom:8px;">
+                COURT OF COMPASSION
+              </div>
+              <div style="font-size:26px;line-height:34px;color:#ffffff;font-weight:700;">
+                Court Study Approved
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:0 32px;">
+              <div style="height:4px;background:#d8b24c;"></div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:28px 32px;font-size:15px;line-height:23px;color:#24324a;">
+              <p>Dear ${safeOrganizerName},</p>
+
+              <p>
+                Your Court of Compassion Court Study request has been
+                <strong>approved</strong>.
+              </p>
+
+              <p>
+                <strong>Host Group or Community:</strong> ${safeHostGroupName}<br />
+                <strong>Approved Session:</strong> ${readableSessionTime}
+              </p>
+
+              <p>
+                The next step is to connect the Zoom account that will host
+                this Court Study.
+              </p>
+
+              <p>
+                After you connect Zoom, Court of Compassion will automatically
+                create and configure the meeting using the approved Court Study
+                details.
+              </p>
+
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0;">
+                <tr>
+                  <td style="background:#0b2a68;border-radius:5px;">
+                    <a
+                      href="${connectZoomUrl}"
+                      style="display:inline-block;padding:13px 22px;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;"
+                    >
+                      Connect Zoom
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="font-size:13px;color:#667085;">
+                Use the Zoom account that should host this Court Study session.
+                Court of Compassion will handle the meeting setup automatically
+                after authorization is completed.
+              </p>
+
+              <hr style="border:0;border-top:1px solid #e5e7eb;margin:26px 0 18px;" />
+
+              <div style="text-align:center;color:#667085;font-size:12px;line-height:19px;">
+                <strong style="color:#0b2a68;">Court of Compassion</strong><br />
+                Justice • Truth • Social Relevance
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+`;
+
+  await transporter.sendMail({
+    from: `"Court of Compassion" <${process.env.GMAIL_USER}>`,
+    to: safeOrganizerEmail,
+    subject: "Court Study Approved — Connect Your Zoom Account",
+    text,
+    html,
+    replyTo: process.env.GMAIL_USER,
+  });
+
+  console.log(
+    `✅ Court Study Zoom connection email sent for request ${requestId}`
+  );
+}
+
 // =====================================================
 // Admin: update Court Study request status
 // =====================================================
@@ -6771,11 +6946,58 @@ app.patch(
           },
         });
 
-      return res.status(200).json({
-        success: true,
-        message: `Court Study request status changed to ${requestedStatus}`,
-        request: updatedRequest,
-      });
+      let zoomConnectionEmailSent = false;
+let zoomConnectionEmailError = null;
+
+if (
+  requestedStatus === "APPROVED" &&
+  String(existingRequest.meetingFormat || "")
+    .trim()
+    .toUpperCase() === "COMMUNITY_HOSTED" &&
+  String(existingRequest.status || "")
+    .trim()
+    .toUpperCase() !== "APPROVED"
+) {
+  try {
+    await sendCommunityHostedZoomApprovalEmail({
+      requestId,
+      organizerName:
+        existingRequest.organizerName ||
+        existingRequest.pastorName ||
+        "",
+      organizerEmail:
+        existingRequest.organizerEmail ||
+        existingRequest.pastorEmail ||
+        "",
+      hostGroupName:
+        existingRequest.hostGroupName ||
+        existingRequest.churchName ||
+        "",
+      preferredStart: existingRequest.preferredStart,
+      timezone: existingRequest.timezone,
+    });
+
+    zoomConnectionEmailSent = true;
+  } catch (emailError) {
+    zoomConnectionEmailError = String(
+      emailError?.message || emailError
+    );
+
+    console.error(
+      "❌ COURT STUDY ZOOM APPROVAL EMAIL FAILED:",
+      requestId,
+      emailError
+    );
+  }
+}
+      
+    return res.status(200).json({
+  success: true,
+  message: `Court Study request status changed to ${requestedStatus}`,
+  request: updatedRequest,
+  zoomConnectionEmailSent,
+  zoomConnectionEmailError,
+});  
     } catch (err) {
       console.error(
         "❌ PATCH /api/court-study-requests/:id/status error:",
