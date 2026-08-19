@@ -1107,9 +1107,164 @@ if (
   zoomUser.id
 );
 
-    return res.status(200).send(
-      "✅ Zoom connected successfully. You may close this tab and return to Court of Compassion."
-    );
+   return res.status(200).type("html").send(`
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  />
+  <title>Court Study Setup Complete</title>
+
+  <style>
+    body {
+      margin: 0;
+      background: #f7f2e9;
+      color: #24324a;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .page {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 18px;
+      box-sizing: border-box;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 620px;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    }
+
+    .header {
+      background: #0b2a68;
+      color: #ffffff;
+      text-align: center;
+      padding: 30px 24px;
+      border-bottom: 4px solid #d8b24c;
+    }
+
+    .brand {
+      color: #f2c94c;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.25;
+    }
+
+    .content {
+      padding: 32px;
+      line-height: 1.65;
+      font-size: 16px;
+    }
+
+    .success {
+      width: 54px;
+      height: 54px;
+      margin: 0 auto 24px auto;
+      border-radius: 50%;
+      background: #eaf7ed;
+      color: #17823b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 30px;
+      font-weight: 700;
+    }
+
+    .notice {
+      margin: 24px 0;
+      padding: 18px;
+      background: #fff8df;
+      border-left: 4px solid #b38a00;
+    }
+
+    .continue {
+      font-weight: 700;
+      color: #0b2a68;
+      font-size: 17px;
+    }
+
+    .close {
+      margin-top: 28px;
+      color: #6b7280;
+      font-size: 14px;
+    }
+
+    .footer {
+      border-top: 1px solid #e5e7eb;
+      padding: 20px 32px;
+      text-align: center;
+      color: #687386;
+      font-size: 13px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <div class="card">
+
+      <div class="header">
+        <div class="brand">COURT OF COMPASSION</div>
+        <h1>Zoom Connected Successfully</h1>
+      </div>
+
+      <div class="content">
+        <div class="success">✓</div>
+
+        <p>
+          Your Zoom account has been connected and your
+          Court Study meeting has been created successfully.
+        </p>
+
+        <p>
+          We have sent your
+          <strong>Court Study Session Ready</strong>
+          email to you.
+        </p>
+
+        <div class="notice">
+          That email contains your Court Study material,
+          meeting registration information, and instructions
+          for inviting participants.
+        </div>
+
+        <p class="continue">
+          Please check your email to continue.
+        </p>
+
+        <p class="close">
+          You may now close this page.
+        </p>
+      </div>
+
+      <div class="footer">
+        Court of Compassion<br />
+        Justice • Truth • Social Relevance
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>
+`);
+    
   } catch (error) {
     console.error(
       "❌ COURT STUDY ZOOM CALLBACK ERROR:",
