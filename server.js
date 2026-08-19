@@ -1360,6 +1360,18 @@ if (
   zoomUser.id
 );
 
+   const connectedZoomEmail =
+  String(zoomUser.email || "").trim() ||
+  "Not available";
+
+const safeConnectedZoomEmail =
+  connectedZoomEmail
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;"); 
+
    return res.status(200).type("html").send(`
 <!doctype html>
 <html lang="en">
@@ -1485,6 +1497,11 @@ if (
           Your Zoom account has been connected and your
           Court Study meeting has been created successfully.
         </p>
+
+        <p>
+  <strong>Hosting Zoom account:</strong>
+  ${safeConnectedZoomEmail}
+</p>
 
         <p>
           We have sent your
