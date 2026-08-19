@@ -7127,7 +7127,7 @@ async function sendCommunityHostedZoomApprovalEmail({
   }
 
   const connectZoomUrl =
-    `https://api.courtofcompassion.com/court-study/zoom/connect-organizer/` +
+    `https://api.courtofcompassion.com/court-study/zoom/authorize-organizer/` +
     encodeURIComponent(requestId);
 
   let readableSessionTime = "the approved session time";
@@ -7162,12 +7162,14 @@ async function sendCommunityHostedZoomApprovalEmail({
     "",
     `Host group or community: ${safeHostGroupName}`,
     `Approved session: ${readableSessionTime}`,
-    "",
-    "The next step is to connect the Zoom account that will host this Court Study.",
-    "",
-    "After you connect Zoom, Court of Compassion will automatically create and configure the meeting using the approved Court Study details.",
-    "",
-    `Connect Zoom: ${connectZoomUrl}`,
+  "",
+"Before you continue, open Zoom in a new browser tab and sign in to the Zoom account you want to use to host this Court Study.",
+"",
+"Leave that Zoom account signed in, return to this email, and then select Continue to Zoom below. When the Zoom connection is complete, Zoom will automatically return you to Court of Compassion, where your Court Study setup will continue.",
+"",
+"Important: Keep the Zoom account you want to use signed in while you continue. Do not switch Zoom accounts until Zoom returns you to Court of Compassion. Court of Compassion will then create and configure the Court Study meeting in the Zoom account you connected. You do not need to create the meeting yourself.",
+"",
+    `Continue to Zoom: ${connectZoomUrl}`,
     "",
     "Court of Compassion",
   ].join("\n");
@@ -7224,10 +7226,13 @@ async function sendCommunityHostedZoomApprovalEmail({
               </p>
 
               <p>
-                After you connect Zoom, Court of Compassion will automatically
-                create and configure the meeting using the approved Court Study
-                details.
-              </p>
+  Before you continue, open Zoom in a new browser tab and sign in to
+  the Zoom account you want to use to host this Court Study.
+  Leave that Zoom account signed in, return to this email, and then
+  click Continue to Zoom below. When the Zoom connection is complete,
+  Zoom will automatically return you to Court of Compassion, where
+  your Court Study setup will continue.
+</p>
 
               <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0;">
                 <tr>
@@ -7236,17 +7241,19 @@ async function sendCommunityHostedZoomApprovalEmail({
                       href="${connectZoomUrl}"
                       style="display:inline-block;padding:13px 22px;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;"
                     >
-                      Connect Zoom
+                     Continue to Zoom 
                     </a>
                   </td>
                 </tr>
               </table>
 
               <p style="font-size:13px;color:#667085;">
-                Use the Zoom account that should host this Court Study session.
-                Court of Compassion will handle the meeting setup automatically
-                after authorization is completed.
-              </p>
+  <strong>Important:</strong> Keep the Zoom account you want to use
+  signed in while you click Continue to Zoom. Do not switch Zoom accounts
+  until Zoom returns you to Court of Compassion. Court of Compassion will
+  then create and configure the Court Study meeting in the Zoom account
+  you connected. You do not need to create the meeting yourself.
+</p>
 
               <hr style="border:0;border-top:1px solid #e5e7eb;margin:26px 0 18px;" />
 
