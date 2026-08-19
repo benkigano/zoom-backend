@@ -557,11 +557,264 @@ app.get("/court-study/zoom/connect/:churchContactId", async (req, res) => {
 });
 
 // ========================================================
-// COURT STUDY ZOOM CONNECT — COMMUNITY ORGANIZER OAUTH
+// COURT STUDY ZOOM CONNECT — HOST ACCOUNT CONFIRMATION
 // ========================================================
 
 app.get(
   "/court-study/zoom/connect-organizer/:requestId",
+  async (req, res) => {
+    try {
+      const requestId = String(req.params.requestId || "").trim();
+
+      if (!requestId) {
+        return res.status(400).send(
+          "A Court Study request ID is required."
+        );
+      }
+
+      const courtStudyRequest =
+        await prisma.courtStudyRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+        });
+
+      if (!courtStudyRequest) {
+        return res.status(404).send(
+          "Court Study request not found."
+        );
+      }
+
+      if (
+        String(courtStudyRequest.meetingFormat || "")
+          .trim()
+          .toUpperCase() !== "COMMUNITY_HOSTED"
+      ) {
+        return res.status(400).send(
+          "This Court Study is not configured for an organizer-hosted Zoom meeting."
+        );
+      }
+
+      const blockedStatuses = new Set([
+        "PENDING",
+        "DECLINED",
+        "CANCELLED",
+      ]);
+
+      if (
+        blockedStatuses.has(
+          String(courtStudyRequest.status || "")
+            .trim()
+            .toUpperCase()
+        )
+      ) {
+        return res.status(403).send(
+          "This Court Study request is not currently authorized to connect Zoom."
+        );
+      }
+
+      const continueUrl =
+        `/court-study/zoom/authorize-organizer/${encodeURIComponent(
+          requestId
+        )}`;
+
+      return res.status(200).type("html").send(`
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+  <title>Connect Hosting Zoom Account</title>
+
+  <style>
+    body {
+      margin: 0;
+      background: #f6f1e8;
+      color: #10295f;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .page {
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 32px 18px;
+      box-sizing: border-box;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 620px;
+      background: #ffffff;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.08);
+    }
+
+    .header {
+      background: #123574;
+      color: #ffffff;
+      text-align: center;
+      padding: 30px 28px;
+      border-bottom: 4px solid #d4a900;
+    }
+
+    .court {
+      color: #f4c430;
+      font-size: 13px;
+      letter-spacing: 2px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 28px;
+    }
+
+    .content {
+      padding: 34px;
+      font-size: 17px;
+      line-height: 1.55;
+    }
+
+    .notice {
+      background: #fff7d9;
+      border-left: 4px solid #c99a00;
+      padding: 18px;
+      margin: 24px 0;
+    }
+
+    .important {
+      font-weight: 700;
+    }
+
+    .button {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 15px 24px;
+      background: #123574;
+      color: #ffffff !important;
+      text-decoration: none;
+      font-weight: 700;
+      border-radius: 5px;
+    }
+
+    .small {
+      color: #667085;
+      margin-top: 22px;
+      font-size: 14px;
+    }
+
+    .footer {
+      border-top: 1px solid #e5e7eb;
+      text-align: center;
+      padding: 20px;
+      color: #667085;
+      font-size: 13px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <div class="card">
+
+      <div class="header">
+        <div class="court">
+          COURT OF COMPASSION
+        </div>
+
+        <h1>
+          Connect the Zoom Account That Will Host This Court Study
+        </h1>
+      </div>
+
+      <div class="content">
+
+        <p>
+          Your Court Study request has been approved.
+        </p>
+
+        <p>
+          The next step is to authorize the Zoom account
+          that should host this Court Study session.
+        </p>
+
+        <div class="notice">
+          <div class="important">
+            Important — choose the correct Zoom account.
+          </div>
+
+          <p>
+            The Zoom account you authorize on the next
+            screen will be the account in which the Court
+            Study meeting is created.
+          </p>
+
+          <p>
+            If your church, ministry, organization, company,
+            or community uses its own Zoom account, make sure
+            you authorize that account rather than a personal
+            Zoom account.
+          </p>
+        </div>
+
+        <p>
+          Court of Compassion will automatically create and
+          configure the meeting after Zoom authorization is
+          completed.
+        </p>
+
+        <a
+          class="button"
+          href="${continueUrl}"
+        >
+          Continue to Zoom
+        </a>
+
+        <div class="small">
+          If Zoom is already signed in to the wrong account,
+          switch to the correct Zoom account before completing
+          authorization.
+        </div>
+
+      </div>
+
+      <div class="footer">
+        Court of Compassion<br>
+        Justice • Truth • Social Relevance
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>
+      `);
+    } catch (error) {
+      console.error(
+        "COURT STUDY ZOOM HOST ACCOUNT CONFIRMATION ERROR:",
+        error
+      );
+
+      return res.status(500).send(
+        "Unable to prepare Zoom authorization."
+      );
+    }
+  }
+);
+
+// ========================================================
+// COURT STUDY ZOOM CONNECT — COMMUNITY ORGANIZER OAUTH
+// ========================================================
+
+app.get(
+  "/court-study/zoom/authorize-organizer/:requestId",
+  
   async (req, res) => {
     try {
       const requestId = String(req.params.requestId || "").trim();
