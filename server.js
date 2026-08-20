@@ -112,6 +112,63 @@ function requireAdminToken(req, res, next) {
   next();
 }
 
+async function queryWixCollection(collectionId) {
+  const apiKey = process.env.WIX_API_KEY;
+  const siteId = process.env.WIX_SITE_ID;
+
+  if (!apiKey || !siteId) {
+    throw new Error("WIX_API_KEY or WIX_SITE_ID is not configured");
+  }
+
+  const response = await fetch(
+    "https://www.wixapis.com/wix-data/v2/items/query",
+    {
+      method: "POST",
+      headers: {
+        Authorization: apiKey,
+        "wix-site-id": siteId,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        dataCollectionId: collectionId,
+        query: {
+          paging: {
+            limit: 1000,
+            offset: 0,
+          },
+        },
+        consistentRead: true,
+      }),
+    }
+  );
+
+  const responseText = await response.text();
+
+  let result;
+  try {
+    result = responseText ? JSON.parse(responseText) : {};
+  } catch {
+    result = {};
+  }
+
+  if (!response.ok) {
+    console.error(
+      `Wix Data query failed for ${collectionId}:`,
+      response.status,
+      responseText
+    );
+
+    throw new Error(
+      `Wix Data query failed for ${collectionId} (${response.status})`
+    );
+  }
+
+  return (result.dataItems || []).map((item) => ({
+    ...(item.data || {}),
+    _id: item.data?._id || item.id,
+  }));
+}
+
 const app = express();
 
 function parseDateTimeInTimeZone(value, timeZone) {
@@ -470,6 +527,59 @@ async function getChurchContactZoomAccessToken(churchContactId) {
   });
 }
 
+// ============================================================
+// COURT CORRESPONDENT ADMIN — WIX CMS READ ROUTES
+// ============================================================
+
+app.get(
+  "/api/admin/journalist-applications",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const applications = await queryWixCollection(
+        "journalistapplications"
+      );
+
+      return res.status(200).json({
+        applications,
+      });
+    } catch (error) {
+      console.error(
+        "COURT CORRESPONDENT APPLICATIONS FETCH ERROR:",
+        error
+      );
+
+      return res.status(502).json({
+        success: false,
+        error: "Unable to retrieve Court Correspondent applications.",
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/admin/journalist-profiles",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const profiles = await queryWixCollection("journalists");
+
+      return res.status(200).json({
+        profiles,
+      });
+    } catch (error) {
+      console.error(
+        "COURT CORRESPONDENT PROFILES FETCH ERROR:",
+        error
+      );
+
+      return res.status(502).json({
+        success: false,
+        error: "Unable to retrieve Court Correspondent profiles.",
+      });
+    }
+  }
+);
 
 // ============================================================
 // COURT STUDY MEETINGS — PASTOR ZOOM OAUTH
