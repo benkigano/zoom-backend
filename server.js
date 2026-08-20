@@ -171,6 +171,41 @@ async function queryWixCollection(collectionId) {
 
 const app = express();
 
+const allowedCorsOrigins = [
+  "https://courtofcompassion.com",
+  "https://www.courtofcompassion.com",
+];
+
+app.use(cors({
+  origin(origin, callback) {
+    // Allow requests with no origin (e.g. server-to-server, curl)
+    if (!origin) return callback(null, true);
+
+    // Allow the two exact Court of Compassion hostnames
+    if (allowedCorsOrigins.includes(origin)) return callback(null, true);
+
+    // Allow any HTTPS hostname that ends exactly with ".wix-vibe.com"
+    try {
+      const parsed = new URL(origin);
+      const isHttps = parsed.protocol === "https:";
+      const hostname = parsed.hostname.toLowerCase();
+      const isWixVibe = isHttps && hostname.endsWith(".wix-vibe.com");
+
+      if (isWixVibe) return callback(null, true);
+    } catch (err) {
+      // Invalid origin falls through to rejection
+    }
+
+    return callback(new Error("Not allowed by CORS"));
+  },
+
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+
+  allowedHeaders: ["Content-Type", "Authorization", "x-admin-token"],
+
+  credentials: true,
+}));
+
 function parseDateTimeInTimeZone(value, timeZone) {
   const dateTimeText = String(value || "").trim();
   const zone = String(timeZone || "").trim();
@@ -2011,40 +2046,6 @@ const safeEmailWebUrl = (value) => {
 };
 app.use(express.json());
 
-const allowedCorsOrigins = [
-  "https://courtofcompassion.com",
-  "https://www.courtofcompassion.com",
-];
-
-app.use(cors({
-  origin(origin, callback) {
-    // Allow requests with no origin (e.g. server-to-server, curl)
-    if (!origin) return callback(null, true);
-
-    // Allow the two exact Court of Compassion hostnames
-    if (allowedCorsOrigins.includes(origin)) return callback(null, true);
-
-    // Allow any HTTPS hostname that ends exactly with ".wix-vibe.com"
-    try {
-      const parsed = new URL(origin);
-      const isHttps = parsed.protocol === "https:";
-      const hostname = parsed.hostname.toLowerCase();
-      const isWixVibe = isHttps && hostname.endsWith(".wix-vibe.com");
-
-      if (isWixVibe) return callback(null, true);
-    } catch (err) {
-      // Invalid origin falls through to rejection
-    }
-
-    return callback(new Error("Not allowed by CORS"));
-  },
-
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-
-  allowedHeaders: ["Content-Type", "Authorization", "x-admin-token"],
-
-  credentials: true,
-}));
 
 app.use((req, res, next) => {
   console.log("➡️", req.method, req.originalUrl);
