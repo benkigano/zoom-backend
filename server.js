@@ -184,12 +184,15 @@ app.use(cors({
     // Allow the two exact Court of Compassion hostnames
     if (allowedCorsOrigins.includes(origin)) return callback(null, true);
 
-    // Allow any HTTPS hostname that ends exactly with ".wix-vibe.com"
+   // Allow HTTPS Wix Vibe preview hostnames
     try {
       const parsed = new URL(origin);
       const isHttps = parsed.protocol === "https:";
       const hostname = parsed.hostname.toLowerCase();
-      const isWixVibe = isHttps && hostname.endsWith(".wix-vibe.com");
+      const isWixVibe =
+  isHttps &&
+  (hostname.endsWith(".wix-vibe.com") ||
+    hostname.endsWith(".wix-vibe-site.com"));
 
       if (isWixVibe) return callback(null, true);
     } catch (err) {
