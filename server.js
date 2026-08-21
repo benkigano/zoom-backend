@@ -2326,6 +2326,110 @@ const safeEmailWebUrl = (value) => {
     return "#";
   }
 };
+
+function buildJournalistApprovalEmailHtml(bodyText) {
+  // Validate input
+  if (!bodyText || typeof bodyText !== 'string') {
+    throw new Error('Email body must be a non-empty string');
+  }
+
+  const trimmedBody = String(bodyText).trim();
+
+  if (trimmedBody.length === 0) {
+    throw new Error('Email body cannot be empty');
+  }
+
+  // Escape first, then preserve line breaks
+  const safeBody = safeEmailHtml(trimmedBody);
+
+  // Convert lines to paragraphs, preserving blank lines for spacing
+  const bodyHtml = safeBody
+    .split('\n')
+    .map(line => {
+      const trimmedLine = line.trim();
+
+      if (trimmedLine === '') {
+        return '<div style="height:8px;line-height:8px;">&nbsp;</div>';
+      }
+
+      return `<p style="margin:0 0 12px 0;">${trimmedLine}</p>`;
+    })
+    .join('');
+
+  return `
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body style="margin:0;padding:0;background:#f7f2e9;font-family:Arial,Helvetica,sans-serif;color:#172554;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f7f2e9;padding:32px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
+
+          <!-- BRANDED HEADER -->
+          <tr>
+            <td align="center" style="background:#0b2a68;padding:24px 32px 22px 32px;text-align:center;">
+              <img
+                src="https://static.wixstatic.com/media/2ccb97_745227d9536b452b83a82556e6c5a430~mv2.png"
+                alt="Court of Compassion Seal"
+                width="96"
+                height="96"
+                style="display:block;width:96px;height:96px;margin:0 auto 14px auto;border-radius:50%;border:2px solid #d8b24c;background:#ffffff;"
+              >
+              <div style="font-size:12px;letter-spacing:2px;color:#d8b24c;font-weight:700;margin-bottom:8px;">
+                COURT OF COMPASSION
+              </div>
+              <div style="font-size:26px;line-height:34px;color:#ffffff;font-weight:700;">
+                Court Correspondent Application Approved
+              </div>
+            </td>
+          </tr>
+
+          <!-- GOLD DIVIDER -->
+          <tr>
+            <td style="padding:0 32px;">
+              <div style="height:4px;background:#d8b24c;"></div>
+            </td>
+          </tr>
+
+          <!-- EMAIL BODY CONTENT -->
+          <tr>
+            <td style="padding:28px 32px 12px 32px;font-size:14px;line-height:21px;color:#172554;">
+              ${bodyHtml}
+            </td>
+          </tr>
+
+          <!-- FOOTER DIVIDER -->
+          <tr>
+            <td style="padding:0 32px;">
+              <div style="height:1px;background:#e5e7eb;"></div>
+            </td>
+          </tr>
+
+          <!-- BRANDED FOOTER -->
+          <tr>
+            <td style="padding:22px 32px 28px 32px;text-align:center;">
+              <div style="border-top:2px solid #d8b24c;padding-top:18px;font-size:13px;font-weight:700;color:#0b2a68;">
+                Court of Compassion
+              </div>
+              <div style="padding-top:5px;font-size:12px;color:#6b7280;">
+                Justice • Truth • Social Relevance
+              </div>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+}
+
 app.use(express.json());
 
 // POST /api/admin/journalist-applications/:id/send-approval-email
@@ -2413,7 +2517,12 @@ app.post(
 
       try {
         // Reuse the existing Court of Compassion email helper
-        await sendEmail(recipientEmail, subject, body);
+        await sendEmail(
+  recipientEmail,
+  subject,
+  body,
+  buildJournalistApprovalEmailHtml(body)
+);
 
         console.log(
           "✅ Approval email sent for journalist application:",
