@@ -2328,6 +2328,133 @@ const safeEmailWebUrl = (value) => {
 };
 app.use(express.json());
 
+// POST /api/admin/journalist-applications/:id/send-approval-email
+// Protected: requireAdminToken
+app.post(
+  "/api/admin/journalist-applications/:id/send-approval-email",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const applicationId = String(req.params.id || "").trim();
+
+      if (!applicationId) {
+        return res.status(400).json({
+          success: false,
+          error: "Application ID is required",
+        });
+      }
+
+      // Only accept subject and body from the frontend — reject any other keys
+      const allowedKeys = new Set(["subject", "body"]);
+      const extraKeys = Object.keys(req.body || {}).filter(
+        (k) => !allowedKeys.has(k)
+      );
+
+      if (extraKeys.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error: "Only subject and body are allowed in the request body",
+        });
+      }
+
+      const subject = String(req.body?.subject || "").trim();
+      const body = String(req.body?.body || "").trim();
+
+      if (!subject || !body) {
+        return res.status(400).json({
+          success: false,
+          error: "Subject and body are required",
+        });
+      }
+
+      // Query Wix journalistapplications
+      let applications = [];
+      try {
+        applications = await queryWixCollection("journalistapplications");
+      } catch (err) {
+        console.error("❌ Failed to query journalistapplications:", err);
+        return res.status(502).json({
+          success: false,
+          error: "Unable to retrieve applications from Wix",
+        });
+      }
+
+      const application = applications.find(
+        (app) => app._id === applicationId
+      );
+
+      if (!application) {
+        return res.status(404).json({
+          success: false,
+          error: "Application not found",
+        });
+      }
+
+      // Application must already be Approved
+      if (String(application.applicationStatus || "").trim() !== "Approved") {
+        return res.status(409).json({
+          success: false,
+          error:
+            "Application must be approved before sending the approval email",
+        });
+      }
+
+      // Recipient comes only from the stored application record
+      const recipientEmail = String(application.email || "")
+        .trim()
+        .toLowerCase();
+
+      if (!recipientEmail) {
+        return res.status(400).json({
+          success: false,
+          error: "Application does not contain an email address",
+        });
+      }
+
+      try {
+        // Reuse the existing Court of Compassion email helper
+        await sendEmail(recipientEmail, subject, body);
+
+        console.log(
+          "✅ Approval email sent for journalist application:",
+          applicationId,
+          "to:",
+          recipientEmail
+        );
+
+        return res.status(200).json({
+          success: true,
+          message: "Approval email sent",
+          applicationId,
+          sentTo: recipientEmail,
+        });
+      } catch (sendErr) {
+        // Log full SMTP error server-side only
+        console.error(
+          "❌ Failed to send approval email for application:",
+          applicationId,
+          sendErr
+        );
+
+        return res.status(500).json({
+          success: false,
+          error: "Failed to send approval email",
+        });
+      }
+    } catch (err) {
+      // Log full error server-side, return sanitized message
+      console.error(
+        "❌ POST /api/admin/journalist-applications/:id/send-approval-email error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: "Unable to send approval email",
+      });
+    }
+  }
+);
 
 app.use((req, res, next) => {
   console.log("➡️", req.method, req.originalUrl);
