@@ -2515,6 +2515,18 @@ app.post(
         });
       }
 
+     const apiKey = process.env.WIX_API_KEY;
+const siteId = process.env.WIX_SITE_ID;
+
+if (!apiKey || !siteId) {
+  console.error("❌ WIX_API_KEY or WIX_SITE_ID is not configured");
+
+  return res.status(500).json({
+    success: false,
+    error: "Wix configuration is missing",
+  });
+}
+      
       try {
         // Reuse the existing Court of Compassion email helper
         await sendEmail(
@@ -2524,19 +2536,97 @@ app.post(
   buildJournalistApprovalEmailHtml(body)
 );
 
-        console.log(
-          "✅ Approval email sent for journalist application:",
-          applicationId,
-          "to:",
-          recipientEmail
-        );
+       console.log(
+  "✅ Approval email sent for journalist application:",
+  applicationId,
+  "to:",
+  recipientEmail
+);
 
-        return res.status(200).json({
-          success: true,
-          message: "Approval email sent",
-          applicationId,
-          sentTo: recipientEmail,
-        });
+const approvalEmailSentAt = new Date().toISOString();
+
+try {
+  const patchUrl = `https://www.wixapis.com/wix-data/v2/items/${encodeURIComponent(
+    applicationId
+  )}`;
+
+  const patchBody = {
+    dataCollectionId: "journalistapplications",
+    patch: {
+      dataItemId: applicationId,
+      fieldModifications: [
+        {
+          fieldPath: "approvalEmailSentAt",
+          action: "SET_FIELD",
+          setFieldOptions: {
+            value: approvalEmailSentAt,
+          },
+        },
+      ],
+    },
+  };
+
+  const patchRes = await fetch(patchUrl, {
+    method: "PATCH",
+    headers: {
+      Authorization: apiKey,
+      "wix-site-id": siteId,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(patchBody),
+  });
+
+  if (!patchRes.ok) {
+    const text = await patchRes.text().catch(() => "");
+
+    console.error(
+      "❌ WIX PATCH approvalEmailSentAt failed:",
+      patchRes.status,
+      text
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Approval email sent",
+      applicationId,
+      sentTo: recipientEmail,
+      approvalEmailSentAt,
+      auditLogged: false,
+      warning: "Email was sent, but the sent timestamp could not be saved",
+    });
+  }
+
+  console.log(
+    "✅ approvalEmailSentAt saved to Wix for application:",
+    applicationId,
+    approvalEmailSentAt
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: "Approval email sent",
+    applicationId,
+    sentTo: recipientEmail,
+    approvalEmailSentAt,
+    auditLogged: true,
+  });
+} catch (patchErr) {
+  console.error(
+    "❌ WIX PATCH approvalEmailSentAt exception:",
+    patchErr
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: "Approval email sent",
+    applicationId,
+    sentTo: recipientEmail,
+    approvalEmailSentAt,
+    auditLogged: false,
+    warning: "Email was sent, but the sent timestamp could not be saved",
+  });
+}
+        
       } catch (sendErr) {
         // Log full SMTP error server-side only
         console.error(
