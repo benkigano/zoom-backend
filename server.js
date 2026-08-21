@@ -619,7 +619,7 @@ app.get(
   }
 );
 
-// Approve a journalist application (partial update via Wix PATCH items API)
+// Approve a journalist application and create journalist profile if needed
 app.post(
   "/api/admin/journalist-applications/:id/approve",
   requireAdminToken,
@@ -645,6 +645,178 @@ app.post(
         });
       }
 
+      // A. Query journalistapplications and find the specific application
+      let applications = [];
+      try {
+        applications = await queryWixCollection(
+          "journalistapplications"
+        );
+      } catch (err) {
+        console.error(
+          "❌ Failed to query journalistapplications:",
+          err
+        );
+        return res.status(502).json({
+          success: false,
+          error: "Unable to retrieve applications from Wix",
+        });
+      }
+
+      // B. Return 404 if application does not exist
+      const application = applications.find(
+        (app) => app._id === applicationId
+      );
+
+      if (!application) {
+        return res.status(404).json({
+          success: false,
+          error: "Application not found",
+        });
+      }
+
+      // C. Normalize the application's email with trim().toLowerCase()
+      const normalizedEmail = (
+        application.email || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      // D. If normalized email is empty, return an error and do not approve
+      if (!normalizedEmail) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Application email is required before approval",
+        });
+      }
+
+      // E. Query "journalists"
+      let existingProfiles = [];
+      try {
+        existingProfiles = await queryWixCollection(
+          "journalists"
+        );
+      } catch (err) {
+        console.error(
+          "❌ Failed to query journalists:",
+          err
+        );
+        return res.status(502).json({
+          success: false,
+          error: "Unable to retrieve journalist profiles from Wix",
+        });
+      }
+
+      // F. Check for an existing profile using normalized lowercase email
+      const duplicateProfile = existingProfiles.find(
+        (profile) =>
+          (profile.email || "")
+            .trim()
+            .toLowerCase() === normalizedEmail
+      );
+
+      let createdProfileId = null;
+
+      // G. If no matching profile exists, create the profile FIRST
+      if (!duplicateProfile) {
+        const fullName = `${
+          application.firstName || ""
+        } ${application.lastName || ""}`.trim();
+
+        const profileData = {
+          fullName,
+          email: normalizedEmail,
+          bio: application.bio || "",
+          hideFromPublicDirectory: true,
+        };
+
+        // Only include website if portfolioLink has a value
+        if (application.portfolioLink) {
+          profileData.website = application.portfolioLink;
+        }
+
+        // Only include resumeUrl if resumeLink has a value
+        if (application.resumeLink) {
+          profileData.resumeUrl = application.resumeLink;
+        }
+
+        const insertUrl =
+          "https://www.wixapis.com/wix-data/v2/items";
+
+        const insertBody = {
+          dataCollectionId: "journalists",
+          dataItem: {
+            data: profileData,
+          },
+        };
+
+        try {
+          const insertRes = await fetch(insertUrl, {
+            method: "POST",
+            headers: {
+              Authorization: apiKey,
+              "wix-site-id": siteId,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(insertBody),
+          });
+
+          if (!insertRes.ok) {
+            const text = await insertRes.text().catch(() => "");
+            console.error(
+              "❌ WIX POST journalist profile failed:",
+              insertRes.status,
+              text
+            );
+
+            // If profile creation fails, do NOT mark application Approved
+            return res.status(502).json({
+              success: false,
+              error:
+                "Failed to create journalist profile on Wix",
+            });
+          }
+
+          let insertResponseBody = null;
+          try {
+            const insertText = await insertRes.text();
+            insertResponseBody = insertText
+              ? JSON.parse(insertText)
+              : null;
+          } catch {
+            insertResponseBody = null;
+          }
+
+          createdProfileId =
+            insertResponseBody?.dataItem?.id || null;
+
+          console.log(
+            "✅ Created journalist profile for email:",
+            normalizedEmail,
+            "Profile ID:",
+            createdProfileId
+          );
+        } catch (err) {
+          console.error(
+            "❌ Error creating journalist profile:",
+            err
+          );
+
+          // If profile creation fails, do NOT mark application Approved
+          return res.status(500).json({
+            success: false,
+            error: String(err),
+          });
+        }
+      } else {
+        // If matching profile exists, do not create another profile
+        console.log(
+          `ℹ️  Journalist profile already exists for email: ${normalizedEmail}`
+        );
+      }
+
+      // H. Only after profile exists or was created,
+      // PATCH applicationStatus to "Approved"
       const patchUrl = `https://www.wixapis.com/wix-data/v2/items/${encodeURIComponent(
         applicationId
       )}`;
@@ -696,17 +868,22 @@ app.post(
         });
       }
 
-      let responseBody = null;
+      let patchResponseBody = null;
       try {
         const text = await patchRes.text();
-        responseBody = text ? JSON.parse(text) : null;
+        patchResponseBody = text ? JSON.parse(text) : null;
       } catch {
-        responseBody = null;
+        patchResponseBody = null;
       }
 
       return res.status(200).json({
         success: true,
-        application: responseBody,
+        application: patchResponseBody,
+        message: duplicateProfile
+          ? "Application approved. Journalist profile already exists."
+          : "Application approved. Journalist profile created.",
+        profileCreated: !duplicateProfile,
+        profileId: createdProfileId,
       });
     } catch (err) {
       console.error(
