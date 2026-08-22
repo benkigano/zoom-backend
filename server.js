@@ -4643,7 +4643,10 @@ app.get("/zoom/oauth/callback", async (req, res) => {
     return res.send("✅ Zoom connected. You can close this tab.");
   } catch (err) {
     console.error(err);
-    return res.status(500).send(String(err));
+  return res
+  .status(500)
+  .type("text/plain")
+  .send("Unable to complete the Zoom connection. Please try again.");  
   }
 });
 
