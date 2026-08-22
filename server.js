@@ -5,6 +5,7 @@ import cors from "cors";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
 import { prisma } from "./prisma/client.js";
+import escapeHtml from "escape-html";
 
 const ADMIN_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -2326,7 +2327,7 @@ async function sendEmail(to, subject, body, htmlBody = null) {
     to,
     subject,
     text: body,
-    html: htmlBody || String(body).replace(/\n/g, "<br>"),
+   html: htmlBody || escapeHtml(String(body)).replace(/\n/g, "<br>"), 
   });
 
   console.log("✅ DISTRIBUTION EMAIL SENT TO:", to);
