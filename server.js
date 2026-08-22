@@ -6202,6 +6202,10 @@ if (!baseUrl) {
           ? `Dear ${pastorName},`
           : "Dear Pastor or Church Leader,";
 
+        const htmlGreeting = pastorName
+  ? `Dear ${escapeHtml(pastorName)},`
+  : "Dear Pastor or Church Leader,";
+        
         const subject =
           `Court of Compassion Invitation — ${recordingTitle}`;
 
@@ -6226,7 +6230,7 @@ Respectfully,
 Court of Compassion`;
 
         const htmlBody = `
-          <p>${greeting}</p>
+          <p>${htmlGreeting}</p>
 
           <p>
             <strong>${campaign.guestName}</strong>${organizationText}
