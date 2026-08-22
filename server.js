@@ -6943,10 +6943,34 @@ app.post(
         .trim()
         .toLowerCase();
 
-      const basicEmailPattern =
-        /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const firstAt = normalizedEmail.indexOf("@");
+const lastAt = normalizedEmail.lastIndexOf("@");
 
-      if (!basicEmailPattern.test(normalizedEmail)) {
+const localPart =
+  firstAt > 0 ? normalizedEmail.slice(0, firstAt) : "";
+
+const domainPart =
+  firstAt > 0 ? normalizedEmail.slice(firstAt + 1) : "";
+
+const hasWhitespace = Array.from(normalizedEmail).some(
+  (character) => character.trim() === ""
+);
+
+if (
+  normalizedEmail.length > 254 ||
+  firstAt <= 0 ||
+  firstAt !== lastAt ||
+  localPart.length > 64 ||
+  domainPart.length > 253 ||
+  !domainPart.includes(".") ||
+  localPart.startsWith(".") ||
+  localPart.endsWith(".") ||
+  localPart.includes("..") ||
+  domainPart.startsWith(".") ||
+  domainPart.endsWith(".") ||
+  domainPart.includes("..") ||
+  hasWhitespace
+) {
         return res.status(400).send(
           "Please enter a valid email address."
         );
