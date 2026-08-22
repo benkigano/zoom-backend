@@ -3394,13 +3394,35 @@ app.post("/recordings/:id/distribute", requireAdminToken, async (req, res) => {
    function isValidTranscriptUrl(url) {
   if (!url) return false;
 
-  const value = String(url).trim();
+  const value = String(url || "").trim();
 
-  if (!value) return false;
-  if (value.includes("example.com")) return false;
-  if (value.includes("about:blank")) return false;
+if (!value) return false;
 
-  return value.startsWith("http://") || value.startsWith("https://");
+try {
+  const parsedUrl = new URL(value);
+
+  if (
+    parsedUrl.protocol !== "http:" &&
+    parsedUrl.protocol !== "https:"
+  ) {
+    return false;
+  }
+
+  const hostname = parsedUrl.hostname
+    .toLowerCase()
+    .replace(/\.$/, "");
+
+  if (
+    hostname === "example.com" ||
+    hostname.endsWith(".example.com")
+  ) {
+    return false;
+  }
+
+  return true;
+} catch {
+  return false;
+}
 }
 
   function parseRecordingUrlAndPasscode(value) {
