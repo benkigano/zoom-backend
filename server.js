@@ -2375,7 +2375,7 @@ function buildJournalistApprovalEmailHtml(bodyText) {
   }
 
   // Escape first, then preserve line breaks
-  const safeBody = safeEmailHtml(trimmedBody);
+  const safeBody = escapeHtml(trimmedBody);
 
   // Convert lines to paragraphs, preserving blank lines for spacing
   const bodyHtml = safeBody
