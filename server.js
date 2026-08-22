@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import cors from "cors";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
@@ -171,6 +172,37 @@ async function queryWixCollection(collectionId) {
 
 const app = express();
 
+const apiRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 300,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const forwardedFor = req.headers["x-forwarded-for"];
+    const forwardedValue = Array.isArray(forwardedFor)
+      ? forwardedFor[0]
+      : forwardedFor;
+
+    const clientIp =
+      String(forwardedValue || "")
+        .split(",")[0]
+        .trim() || req.ip;
+
+    return ipKeyGenerator(clientIp);
+  },
+  skip: (req) =>
+  req.method === "OPTIONS" ||
+  req.path === "/" ||
+  req.path === "/health" ||
+  req.path === "/api/health",
+  message: {
+    success: false,
+    error: "Too many requests. Please try again later.",
+  },
+});
+
+
+
 const allowedCorsOrigins = [
   "https://courtofcompassion.com",
   "https://www.courtofcompassion.com",
@@ -208,6 +240,8 @@ app.use(cors({
 
   credentials: true,
 }));
+
+app.use(apiRateLimiter);
 
 function parseDateTimeInTimeZone(value, timeZone) {
   const dateTimeText = String(value || "").trim();
