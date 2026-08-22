@@ -5677,10 +5677,13 @@ app.post(
         });
       }
 
-      const backendBaseUrl =
-        process.env.BACKEND_PUBLIC_URL ||
-        `${req.protocol}://${req.get("host")}`;
+      const backendBaseUrl = String(
+  process.env.PUBLIC_BASE_URL || ""
+).replace(/\/+$/, "");
 
+if (!backendBaseUrl) {
+  throw new Error("PUBLIC_BASE_URL is not configured");
+}
       const pastorInvitationUrl =
         `${backendBaseUrl}/guest-distribution/` +
         encodeURIComponent(campaign.distributionToken);
@@ -6127,10 +6130,13 @@ app.post(
           .send("A maximum of 100 recipients may be invited at one time.");
       }
 
-      const baseUrl =
-        String(process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "") ||
-        `${req.protocol}://${req.get("host")}`;
+      const baseUrl = String(
+  process.env.PUBLIC_BASE_URL || ""
+).replace(/\/+$/, "");
 
+if (!baseUrl) {
+  throw new Error("PUBLIC_BASE_URL is not configured");
+}
       const mediaPageUrl =
         `${baseUrl}/guest-distribution/` +
         encodeURIComponent(distributionToken);
