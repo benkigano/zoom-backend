@@ -2003,11 +2003,10 @@ const safeConnectedZoomEmail =
       error
     );
 
-    return res.status(500).send(
-      `Unable to connect Zoom account: ${String(
-        error?.message || error
-      )}`
-    );
+    return res
+  .status(500)
+  .type("text/plain")
+  .send("Unable to connect the Zoom account. Please try again.");
   }
 });
 
