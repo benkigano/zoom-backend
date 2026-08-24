@@ -375,6 +375,17 @@ async function queryWixCollection(collectionId) {
 
 const app = express();
 
+app.disable("x-powered-by");
+
+app.use((req, res, next) => {
+  res.setHeader(
+    "Strict-Transport-Security",
+    "max-age=31536000; includeSubDomains"
+  );
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  next();
+});
+
 const apiRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 300,
@@ -4340,6 +4351,7 @@ app.get("/health", (req, res) => {
 });
 // ---- /api compatibility layer (supports Wix calling /api/*) ----
 app.get("/api/health", (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
   res.status(200).json({ message: "Backend is available" });
 });
 
@@ -12296,6 +12308,19 @@ const parsedEnd = parseDateTimeInTimeZone(
     }
   }
 );
+
+// Final 404 handler — must remain after all application routes.
+app.use((req, res) => {
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'none'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'"
+  );
+
+  return res.status(404).json({
+    success: false,
+    error: "Not found",
+  });
+});
 
    app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
