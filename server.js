@@ -73,6 +73,208 @@ function verifyAdminSessionToken(token) {
   }
 }
 
+// ============================================================
+// MYZOOM BACKEND AUTHENTICATION
+// ============================================================
+
+const MYZOOM_SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+const MYZOOM_PERMISSIONS = Object.freeze({
+  guest: Object.freeze({
+    canScheduleInterview: true,
+    canCreateMeeting: false,
+    canViewMeetings: false,
+    canViewRecordings: false,
+    canDeleteMeetings: false,
+    canDeleteRecordings: false,
+  }),
+
+  // Keep "journalist" as the internal technical role name.
+  // Public-facing UI will display "Court Correspondent".
+  journalist: Object.freeze({
+    canScheduleInterview: false,
+    canCreateMeeting: true,
+    canViewMeetings: false,
+    canViewRecordings: false,
+    canDeleteMeetings: false,
+    canDeleteRecordings: false,
+  }),
+
+  admin: Object.freeze({
+    canScheduleInterview: true,
+    canCreateMeeting: true,
+    canViewMeetings: true,
+    canViewRecordings: true,
+    canDeleteMeetings: true,
+    canDeleteRecordings: true,
+  }),
+});
+
+function secureStringEquals(leftValue, rightValue) {
+  const left = Buffer.from(String(leftValue ?? ""), "utf8");
+  const right = Buffer.from(String(rightValue ?? ""), "utf8");
+
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(left, right);
+}
+
+function getMyZoomRoleForPin(pin) {
+  const candidatePin = String(pin ?? "").trim();
+
+  if (!candidatePin) {
+    return null;
+  }
+
+  const configuredPins = [
+    ["guest", String(process.env.MYZOOM_GUEST_PIN ?? "").trim()],
+    ["journalist", String(process.env.MYZOOM_JOURNALIST_PIN ?? "").trim()],
+    ["admin", String(process.env.MYZOOM_ADMIN_PIN ?? "").trim()],
+  ];
+
+  for (const [role, configuredPin] of configuredPins) {
+    if (
+      configuredPin &&
+      secureStringEquals(candidatePin, configuredPin)
+    ) {
+      return role;
+    }
+  }
+
+  return null;
+}
+
+function getMyZoomPermissions(role) {
+  return MYZOOM_PERMISSIONS[role] || null;
+}
+
+function createMyZoomSessionToken(role) {
+  const sessionSecret = process.env.MYZOOM_SESSION_SECRET;
+
+  if (!sessionSecret) {
+    throw new Error("MYZOOM_SESSION_SECRET is not configured");
+  }
+
+  if (!MYZOOM_PERMISSIONS[role]) {
+    throw new Error("Invalid MyZoom role");
+  }
+
+  const expiresAt = Date.now() + MYZOOM_SESSION_TTL_MS;
+
+  const payload = Buffer.from(
+    JSON.stringify({
+      role,
+      exp: expiresAt,
+      nonce: crypto.randomBytes(16).toString("hex"),
+    })
+  ).toString("base64url");
+
+  const signature = crypto
+    .createHmac("sha256", sessionSecret)
+    .update(payload)
+    .digest("base64url");
+
+  return {
+    token: `${payload}.${signature}`,
+    expiresAt,
+  };
+}
+
+function verifyMyZoomSessionToken(token) {
+  try {
+    const sessionSecret = process.env.MYZOOM_SESSION_SECRET;
+
+    if (!sessionSecret) {
+      return null;
+    }
+
+    const tokenText = String(token ?? "").trim();
+    const parts = tokenText.split(".");
+
+    if (parts.length !== 2) {
+      return null;
+    }
+
+    const [payloadPart, signaturePart] = parts;
+
+    const expectedSignature = crypto
+      .createHmac("sha256", sessionSecret)
+      .update(payloadPart)
+      .digest();
+
+    const suppliedSignature = Buffer.from(signaturePart, "base64url");
+
+    if (
+      expectedSignature.length !== suppliedSignature.length ||
+      !crypto.timingSafeEqual(expectedSignature, suppliedSignature)
+    ) {
+      return null;
+    }
+
+    const payload = JSON.parse(
+      Buffer.from(payloadPart, "base64url").toString("utf8")
+    );
+
+    const role = String(payload?.role ?? "");
+    const expiresAt = Number(payload?.exp);
+
+    if (!MYZOOM_PERMISSIONS[role]) {
+      return null;
+    }
+
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      return null;
+    }
+
+    return {
+      role,
+      expiresAt,
+      permissions: getMyZoomPermissions(role),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getMyZoomBearerToken(req) {
+  const authorization = String(req.headers.authorization ?? "").trim();
+
+  if (!authorization.toLowerCase().startsWith("bearer ")) {
+    return "";
+  }
+
+  return authorization.slice(7).trim();
+}
+
+function requireMyZoomSession(requiredPermission = null) {
+  return (req, res, next) => {
+    const token = getMyZoomBearerToken(req);
+    const session = verifyMyZoomSessionToken(token);
+
+    if (!session) {
+      return res.status(401).json({
+        success: false,
+        error: "MyZoom authentication required.",
+      });
+    }
+
+    if (
+      requiredPermission &&
+      session.permissions?.[requiredPermission] !== true
+    ) {
+      return res.status(403).json({
+        success: false,
+        error: "You do not have permission to perform this action.",
+      });
+    }
+
+    req.myZoomSession = session;
+    next();
+  };
+}
+
 function requireAdminToken(req, res, next) {
   const cookieHeader = String(req.headers.cookie || "");
 
