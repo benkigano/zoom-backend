@@ -2668,6 +2668,89 @@ function buildJournalistApprovalEmailHtml(bodyText) {
 
 app.use(express.json());
 
+// ============================================================
+// MYZOOM AUTHENTICATION API
+// ============================================================
+
+const myZoomLoginRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: "Too many MyZoom login attempts. Please try again later.",
+  },
+});
+
+app.post(
+  "/api/myzoom/auth/login",
+  myZoomLoginRateLimiter,
+  (req, res) => {
+    try {
+      const pin = String(req.body?.pin ?? "").trim();
+
+      if (!pin) {
+        return res.status(400).json({
+          success: false,
+          error: "PIN is required.",
+        });
+      }
+
+      const role = getMyZoomRoleForPin(pin);
+
+      if (!role) {
+        return res.status(401).json({
+          success: false,
+          error: "Invalid PIN.",
+        });
+      }
+
+      const permissions = getMyZoomPermissions(role);
+      const session = createMyZoomSessionToken(role);
+
+      return res.status(200).json({
+        success: true,
+        sessionToken: session.token,
+        expiresAt: session.expiresAt,
+        role,
+        permissions,
+      });
+    } catch (error) {
+      console.error("MYZOOM LOGIN ERROR:", error);
+
+      return res.status(500).json({
+        success: false,
+        error: "Unable to sign in to MyZoom. Please try again.",
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/myzoom/auth/session",
+  requireMyZoomSession(),
+  (req, res) => {
+    return res.status(200).json({
+      success: true,
+      role: req.myZoomSession.role,
+      permissions: req.myZoomSession.permissions,
+      expiresAt: req.myZoomSession.expiresAt,
+    });
+  }
+);
+
+app.post(
+  "/api/myzoom/auth/logout",
+  requireMyZoomSession(),
+  (req, res) => {
+    return res.status(200).json({
+      success: true,
+      message: "MyZoom session ended.",
+    });
+  }
+);
+
 // POST /api/admin/journalist-applications/:id/send-approval-email
 // Protected: requireAdminToken
 app.post(
