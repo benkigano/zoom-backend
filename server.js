@@ -1336,9 +1336,9 @@ app.delete(
       }
 
       const deleteUrl =
-        `https://www.wixapis.com/wix-data/v2/items/${encodeURIComponent(
-          applicationId
-        )}`;
+  `https://www.wixapis.com/wix-data/v2/items/${encodeURIComponent(
+    applicationId
+  )}?dataCollectionId=${encodeURIComponent("journalistapplications")}`;
 
       const deleteRes = await fetch(deleteUrl, {
         method: "DELETE",
@@ -1424,9 +1424,9 @@ app.delete(
       }
 
       const deleteUrl =
-        `https://www.wixapis.com/wix-data/v2/items/${encodeURIComponent(
-          profileId
-        )}`;
+  `https://www.wixapis.com/wix-data/v2/items/${encodeURIComponent(
+    profileId
+  )}?dataCollectionId=${encodeURIComponent("journalists")}`;
 
       const deleteRes = await fetch(deleteUrl, {
         method: "DELETE",
