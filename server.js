@@ -1085,6 +1085,17 @@ app.post(
         },
       };
 
+      // Record the original approval decision time only once
+if (!application.decisionDate) {
+  patchBody.patch.fieldModifications.push({
+    fieldPath: "decisionDate",
+    action: "SET_FIELD",
+    setFieldOptions: {
+      value: new Date().toISOString(),
+    },
+  });
+}
+      
       const patchRes = await fetch(patchUrl, {
         method: "PATCH",
         headers: {
@@ -1138,6 +1149,155 @@ app.post(
         "❌ POST /api/admin/journalist-applications/:id/approve error:",
         err
       );
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
+// ============================================================
+// COURT CORRESPONDENT ADMIN — REJECT APPLICATION
+// ============================================================
+
+app.post(
+  "/api/admin/journalist-applications/:id/reject",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const applicationId = String(req.params.id || "").trim();
+
+      if (!applicationId) {
+        return res.status(400).json({
+          success: false,
+          error: "Application ID is required",
+        });
+      }
+
+      const apiKey = process.env.WIX_API_KEY;
+      const siteId = process.env.WIX_SITE_ID;
+
+      if (!apiKey || !siteId) {
+        console.error("❌ WIX_API_KEY or WIX_SITE_ID is not configured");
+        return res.status(500).json({
+          success: false,
+          error: "Wix configuration is missing",
+        });
+      }
+
+      // A. Query journalistapplications and find the specific application
+      let applications = [];
+      try {
+        applications = await queryWixCollection(
+          "journalistapplications"
+        );
+      } catch (err) {
+        console.error(
+          "❌ Failed to query journalistapplications:",
+          err
+        );
+        return res.status(502).json({
+          success: false,
+          error: "Unable to retrieve applications from Wix",
+        });
+      }
+
+      // B. Return 404 if application does not exist
+      const application = applications.find(
+        (app) => app._id === applicationId
+      );
+
+      if (!application) {
+        return res.status(404).json({
+          success: false,
+          error: "Application not found",
+        });
+      }
+
+      // C. PATCH applicationStatus to "Rejected"
+      const patchUrl =
+        `https://www.wixapis.com/wix-data/v2/items/${encodeURIComponent(
+          applicationId
+        )}`;
+
+      const patchBody = {
+        dataCollectionId: "journalistapplications",
+        patch: {
+          dataItemId: applicationId,
+          fieldModifications: [
+            {
+              fieldPath: "applicationStatus",
+              action: "SET_FIELD",
+              setFieldOptions: {
+                value: "Rejected",
+              },
+            },
+          ],
+        },
+      };
+
+      // Record the original decision time only once
+      if (!application.decisionDate) {
+        patchBody.patch.fieldModifications.push({
+          fieldPath: "decisionDate",
+          action: "SET_FIELD",
+          setFieldOptions: {
+            value: new Date().toISOString(),
+          },
+        });
+      }
+
+      const patchRes = await fetch(patchUrl, {
+        method: "PATCH",
+        headers: {
+          Authorization: apiKey,
+          "wix-site-id": siteId,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(patchBody),
+      });
+
+      if (patchRes.status === 404) {
+        return res.status(404).json({
+          success: false,
+          error: "Application not found",
+        });
+      }
+
+      if (!patchRes.ok) {
+        const text = await patchRes.text().catch(() => "");
+        console.error(
+          "❌ WIX PATCH rejected journalistapplication failed:",
+          patchRes.status,
+          text
+        );
+
+        return res.status(502).json({
+          success: false,
+          error: "Failed to reject application on Wix",
+        });
+      }
+
+      let patchResponseBody = null;
+      try {
+        const text = await patchRes.text();
+        patchResponseBody = text ? JSON.parse(text) : null;
+      } catch {
+        patchResponseBody = null;
+      }
+
+      return res.status(200).json({
+        success: true,
+        application: patchResponseBody,
+        message: "Application rejected.",
+      });
+    } catch (err) {
+      console.error(
+        "❌ POST /api/admin/journalist-applications/:id/reject error:",
+        err
+      );
+
       return res.status(500).json({
         success: false,
         error: String(err),
