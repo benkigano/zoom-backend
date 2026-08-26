@@ -1487,6 +1487,7 @@ app.delete(
 
 app.post(
   "/api/admin/journalist-applications/:id/notes",
+  express.json(),
   requireAdminToken,
   async (req, res) => {
     try {
