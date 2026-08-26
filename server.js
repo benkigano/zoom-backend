@@ -1589,6 +1589,200 @@ app.post(
 );
 
 // ============================================================
+// COURT CORRESPONDENT ADMIN — APPEND ADMIN NOTE
+// ============================================================
+
+app.post(
+  "/api/admin/journalist-applications/:id/notes/append",
+  express.json(),
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const applicationId = String(req.params.id || "").trim();
+
+      if (!applicationId) {
+        return res.status(400).json({
+          success: false,
+          error: "Application ID is required",
+        });
+      }
+
+      const requestBody =
+        req.body && typeof req.body === "object" ? req.body : {};
+
+      const bodyKeys = Object.keys(requestBody);
+
+      if (
+        bodyKeys.length !== 1 ||
+        bodyKeys[0] !== "note" ||
+        typeof requestBody.note !== "string"
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "Request body must contain only a note string",
+        });
+      }
+
+      const trimmedNote = requestBody.note.trim();
+
+      if (!trimmedNote) {
+        return res.status(400).json({
+          success: false,
+          error: "Note is required",
+        });
+      }
+
+      const apiKey = process.env.WIX_API_KEY;
+      const siteId = process.env.WIX_SITE_ID;
+
+      if (!apiKey || !siteId) {
+        console.error("❌ WIX_API_KEY or WIX_SITE_ID is not configured");
+        return res.status(500).json({
+          success: false,
+          error: "Wix configuration is missing",
+        });
+      }
+
+      let applications = [];
+
+      try {
+        applications = await queryWixCollection(
+          "journalistapplications"
+        );
+      } catch (err) {
+        console.error(
+          "❌ Failed to query journalistapplications for admin note append:",
+          err
+        );
+
+        return res.status(502).json({
+          success: false,
+          error: "Unable to retrieve applications from Wix",
+        });
+      }
+
+      const application = applications.find(
+        (app) => app._id === applicationId
+      );
+
+      if (!application) {
+        return res.status(404).json({
+          success: false,
+          error: "Application not found",
+        });
+      }
+
+      const existingAdminNotes =
+        typeof application.adminNotes === "string"
+          ? application.adminNotes
+          : "";
+
+      const now = new Date();
+
+      const datePart = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }).format(now);
+
+      const timePart = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      }).format(now);
+
+      const timestamp = `${datePart} • ${timePart}`;
+
+      const appendedNote =
+        `[${timestamp}] Admin\n${trimmedNote}`;
+
+      const nextAdminNotes = existingAdminNotes
+        ? `${existingAdminNotes}\n\n${appendedNote}`
+        : appendedNote;
+
+      const patchUrl =
+        `https://www.wixapis.com/wix-data/v2/items/${encodeURIComponent(
+          applicationId
+        )}`;
+
+      const patchBody = {
+        dataCollectionId: "journalistapplications",
+        patch: {
+          dataItemId: applicationId,
+          fieldModifications: [
+            {
+              fieldPath: "adminNotes",
+              action: "SET_FIELD",
+              setFieldOptions: {
+                value: nextAdminNotes,
+              },
+            },
+          ],
+        },
+      };
+
+      const patchRes = await fetch(patchUrl, {
+        method: "PATCH",
+        headers: {
+          Authorization: apiKey,
+          "wix-site-id": siteId,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(patchBody),
+      });
+
+      if (patchRes.status === 404) {
+        return res.status(404).json({
+          success: false,
+          error: "Application not found",
+        });
+      }
+
+      if (!patchRes.ok) {
+        const text = await patchRes.text().catch(() => "");
+
+        console.error(
+          "❌ WIX PATCH adminNotes append failed:",
+          patchRes.status,
+          text
+        );
+
+        return res.status(502).json({
+          success: false,
+          error: "Failed to append admin note in Wix",
+        });
+      }
+
+      console.log(
+        "✅ Admin note appended:",
+        applicationId,
+        timestamp
+      );
+
+      return res.status(200).json({
+        success: true,
+        applicationId,
+        appendedNote,
+        adminNotes: nextAdminNotes,
+        message: "Admin note appended successfully",
+      });
+    } catch (err) {
+      console.error(
+        "❌ POST /api/admin/journalist-applications/:id/notes/append error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
+// ============================================================
 // COURT STUDY MEETINGS — PASTOR ZOOM OAUTH
 // ============================================================
 
