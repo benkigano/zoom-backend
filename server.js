@@ -1307,6 +1307,181 @@ app.post(
 );
 
 // ============================================================
+// COURT CORRESPONDENT ADMIN — DELETE APPLICATION
+// ============================================================
+
+app.delete(
+  "/api/admin/journalist-applications/:id",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const applicationId = String(req.params.id || "").trim();
+
+      if (!applicationId) {
+        return res.status(400).json({
+          success: false,
+          error: "Application ID is required",
+        });
+      }
+
+      const apiKey = process.env.WIX_API_KEY;
+      const siteId = process.env.WIX_SITE_ID;
+
+      if (!apiKey || !siteId) {
+        console.error("❌ WIX_API_KEY or WIX_SITE_ID is not configured");
+        return res.status(500).json({
+          success: false,
+          error: "Wix configuration is missing",
+        });
+      }
+
+      const deleteUrl =
+        `https://www.wixapis.com/wix-data/v2/items/${encodeURIComponent(
+          applicationId
+        )}`;
+
+      const deleteRes = await fetch(deleteUrl, {
+        method: "DELETE",
+        headers: {
+          Authorization: apiKey,
+          "wix-site-id": siteId,
+        },
+      });
+
+      if (deleteRes.status === 404) {
+        return res.status(404).json({
+          success: false,
+          error: "Application not found",
+        });
+      }
+
+      if (!deleteRes.ok) {
+        const text = await deleteRes.text().catch(() => "");
+
+        console.error(
+          "❌ WIX DELETE journalistapplication failed:",
+          deleteRes.status,
+          text
+        );
+
+        return res.status(502).json({
+          success: false,
+          error: "Failed to delete application from Wix",
+        });
+      }
+
+      console.log(
+        "✅ Journalist application deleted:",
+        applicationId
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: "Application deleted successfully",
+      });
+    } catch (err) {
+      console.error(
+        "❌ DELETE /api/admin/journalist-applications/:id error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
+
+// ============================================================
+// COURT CORRESPONDENT ADMIN — DELETE PROFILE
+// ============================================================
+
+app.delete(
+  "/api/admin/journalist-profiles/:id",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const profileId = String(req.params.id || "").trim();
+
+      if (!profileId) {
+        return res.status(400).json({
+          success: false,
+          error: "Profile ID is required",
+        });
+      }
+
+      const apiKey = process.env.WIX_API_KEY;
+      const siteId = process.env.WIX_SITE_ID;
+
+      if (!apiKey || !siteId) {
+        console.error("❌ WIX_API_KEY or WIX_SITE_ID is not configured");
+        return res.status(500).json({
+          success: false,
+          error: "Wix configuration is missing",
+        });
+      }
+
+      const deleteUrl =
+        `https://www.wixapis.com/wix-data/v2/items/${encodeURIComponent(
+          profileId
+        )}`;
+
+      const deleteRes = await fetch(deleteUrl, {
+        method: "DELETE",
+        headers: {
+          Authorization: apiKey,
+          "wix-site-id": siteId,
+        },
+      });
+
+      if (deleteRes.status === 404) {
+        return res.status(404).json({
+          success: false,
+          error: "Profile not found",
+        });
+      }
+
+      if (!deleteRes.ok) {
+        const text = await deleteRes.text().catch(() => "");
+
+        console.error(
+          "❌ WIX DELETE journalist profile failed:",
+          deleteRes.status,
+          text
+        );
+
+        return res.status(502).json({
+          success: false,
+          error: "Failed to delete profile from Wix",
+        });
+      }
+
+      console.log(
+        "✅ Journalist profile deleted:",
+        profileId
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: "Profile deleted successfully",
+      });
+    } catch (err) {
+      console.error(
+        "❌ DELETE /api/admin/journalist-profiles/:id error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
+// ============================================================
 // COURT STUDY MEETINGS — PASTOR ZOOM OAUTH
 // ============================================================
 
