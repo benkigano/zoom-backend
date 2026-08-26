@@ -1482,6 +1482,112 @@ app.delete(
 );
 
 // ============================================================
+// COURT CORRESPONDENT ADMIN — SAVE ADMIN NOTES
+// ============================================================
+
+app.post(
+  "/api/admin/journalist-applications/:id/notes",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const applicationId = String(req.params.id || "").trim();
+      const adminNotes =
+        typeof req.body?.adminNotes === "string"
+          ? req.body.adminNotes
+          : "";
+
+      if (!applicationId) {
+        return res.status(400).json({
+          success: false,
+          error: "Application ID is required",
+        });
+      }
+
+      const apiKey = process.env.WIX_API_KEY;
+      const siteId = process.env.WIX_SITE_ID;
+
+      if (!apiKey || !siteId) {
+        console.error("❌ WIX_API_KEY or WIX_SITE_ID is not configured");
+        return res.status(500).json({
+          success: false,
+          error: "Wix configuration is missing",
+        });
+      }
+
+      const patchUrl =
+        `https://www.wixapis.com/wix-data/v2/items/${encodeURIComponent(
+          applicationId
+        )}`;
+
+      const patchBody = {
+        dataCollectionId: "journalistapplications",
+        patch: {
+          dataItemId: applicationId,
+          fieldModifications: [
+            {
+              fieldPath: "adminNotes",
+              action: "SET_FIELD",
+              setFieldOptions: {
+                value: adminNotes,
+              },
+            },
+          ],
+        },
+      };
+
+      const patchRes = await fetch(patchUrl, {
+        method: "PATCH",
+        headers: {
+          Authorization: apiKey,
+          "wix-site-id": siteId,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(patchBody),
+      });
+
+      if (patchRes.status === 404) {
+        return res.status(404).json({
+          success: false,
+          error: "Application not found",
+        });
+      }
+
+      if (!patchRes.ok) {
+        const text = await patchRes.text().catch(() => "");
+
+        console.error(
+          "❌ WIX PATCH adminNotes failed:",
+          patchRes.status,
+          text
+        );
+
+        return res.status(502).json({
+          success: false,
+          error: "Failed to save admin notes",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        applicationId,
+        adminNotes,
+        message: "Admin notes saved successfully",
+      });
+    } catch (err) {
+      console.error(
+        "❌ POST /api/admin/journalist-applications/:id/notes error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
+// ============================================================
 // COURT STUDY MEETINGS — PASTOR ZOOM OAUTH
 // ============================================================
 
