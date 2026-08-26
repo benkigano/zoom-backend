@@ -1135,6 +1135,124 @@ if (!application.decisionDate) {
         patchResponseBody = null;
       }
 
+          // ------------------------------------------------------------
+    // COURT CORRESPONDENT — ADMIN APPROVAL NOTIFICATION
+    // ------------------------------------------------------------
+    const shouldSendAdminNotification =
+      application.adminNotificationStatus !== "Approved" ||
+      !application.adminNotificationSentAt;
+
+    if (shouldSendAdminNotification) {
+      const adminEmail = String(
+        process.env.ADMIN_EMAIL ||
+          process.env.GMAIL_USER ||
+          ""
+      ).trim();
+
+      if (!adminEmail) {
+        console.error(
+          "⚠️ Court Correspondent approval admin notification skipped: admin email is not configured"
+        );
+      } else {
+        try {
+          const applicantName =
+            `${String(application.firstName || "").trim()} ${String(
+              application.lastName || ""
+            ).trim()}`.trim() || "Unknown applicant";
+
+          const applicantEmail =
+            String(application.email || "").trim() || "Not provided";
+
+          const adminNotificationSentAt = new Date().toISOString();
+
+          const decisionTimestamp =
+            String(application.decisionDate || "").trim() ||
+            adminNotificationSentAt;
+
+          const adminSubject =
+            `Court Correspondent application approved — ${applicantName}`;
+
+          const adminBody = [
+            "A Court Correspondent application has been approved.",
+            "",
+            `Applicant: ${applicantName}`,
+            `Email: ${applicantEmail}`,
+            "Status: Approved",
+            `Decision timestamp: ${decisionTimestamp}`,
+            `Application ID: ${applicationId}`,
+          ].join("\n");
+
+          await sendEmail(
+            adminEmail,
+            adminSubject,
+            adminBody
+          );
+
+          const notificationAuditUrl =
+            `https://www.wixapis.com/wix-data/v2/items/${encodeURIComponent(
+              applicationId
+            )}`;
+
+          const notificationAuditBody = {
+            dataCollectionId: "journalistapplications",
+            patch: {
+              dataItemId: applicationId,
+              fieldModifications: [
+                {
+                  fieldPath: "adminNotificationSentAt",
+                  action: "SET_FIELD",
+                  setFieldOptions: {
+                    value: adminNotificationSentAt,
+                  },
+                },
+                {
+                  fieldPath: "adminNotificationStatus",
+                  action: "SET_FIELD",
+                  setFieldOptions: {
+                    value: "Approved",
+                  },
+                },
+              ],
+            },
+          };
+
+          const notificationAuditRes = await fetch(
+            notificationAuditUrl,
+            {
+              method: "PATCH",
+              headers: {
+                Authorization: apiKey,
+                "wix-site-id": siteId,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(notificationAuditBody),
+            }
+          );
+
+          if (!notificationAuditRes.ok) {
+            const auditErrorText =
+              await notificationAuditRes.text().catch(() => "");
+
+            console.error(
+              "⚠️ Approval admin notification email sent, but audit save failed:",
+              notificationAuditRes.status,
+              auditErrorText
+            );
+          } else {
+            console.log(
+              "✅ Court Correspondent approval admin notification sent:",
+              applicationId
+            );
+          }
+        } catch (notificationErr) {
+          console.error(
+            "⚠️ Court Correspondent approval succeeded, but admin notification failed:",
+            notificationErr
+          );
+        }
+      }
+    }
+      
       return res.status(200).json({
         success: true,
         application: patchResponseBody,
@@ -1287,6 +1405,124 @@ app.post(
         patchResponseBody = null;
       }
 
+    // ------------------------------------------------------------
+    // COURT CORRESPONDENT — ADMIN REJECTION NOTIFICATION
+    // ------------------------------------------------------------
+    const shouldSendAdminNotification =
+      application.adminNotificationStatus !== "Rejected" ||
+      !application.adminNotificationSentAt;
+
+    if (shouldSendAdminNotification) {
+      const adminEmail = String(
+        process.env.ADMIN_EMAIL ||
+          process.env.GMAIL_USER ||
+          ""
+      ).trim();
+
+      if (!adminEmail) {
+        console.error(
+          "⚠️ Court Correspondent rejection admin notification skipped: admin email is not configured"
+        );
+      } else {
+        try {
+          const applicantName =
+            `${String(application.firstName || "").trim()} ${String(
+              application.lastName || ""
+            ).trim()}`.trim() || "Unknown applicant";
+
+          const applicantEmail =
+            String(application.email || "").trim() || "Not provided";
+
+          const adminNotificationSentAt = new Date().toISOString();
+
+          const decisionTimestamp =
+            String(application.decisionDate || "").trim() ||
+            adminNotificationSentAt;
+
+          const adminSubject =
+            `Court Correspondent application rejected — ${applicantName}`;
+
+          const adminBody = [
+            "A Court Correspondent application has been rejected.",
+            "",
+            `Applicant: ${applicantName}`,
+            `Email: ${applicantEmail}`,
+            "Status: Rejected",
+            `Decision timestamp: ${decisionTimestamp}`,
+            `Application ID: ${applicationId}`,
+          ].join("\n");
+
+          await sendEmail(
+            adminEmail,
+            adminSubject,
+            adminBody
+          );
+
+          const notificationAuditUrl =
+            `https://www.wixapis.com/wix-data/v2/items/${encodeURIComponent(
+              applicationId
+            )}`;
+
+          const notificationAuditBody = {
+            dataCollectionId: "journalistapplications",
+            patch: {
+              dataItemId: applicationId,
+              fieldModifications: [
+                {
+                  fieldPath: "adminNotificationSentAt",
+                  action: "SET_FIELD",
+                  setFieldOptions: {
+                    value: adminNotificationSentAt,
+                  },
+                },
+                {
+                  fieldPath: "adminNotificationStatus",
+                  action: "SET_FIELD",
+                  setFieldOptions: {
+                    value: "Rejected",
+                  },
+                },
+              ],
+            },
+          };
+
+          const notificationAuditRes = await fetch(
+            notificationAuditUrl,
+            {
+              method: "PATCH",
+              headers: {
+                Authorization: apiKey,
+                "wix-site-id": siteId,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(notificationAuditBody),
+            }
+          );
+
+          if (!notificationAuditRes.ok) {
+            const auditErrorText =
+              await notificationAuditRes.text().catch(() => "");
+
+            console.error(
+              "⚠️ Rejection admin notification email sent, but audit save failed:",
+              notificationAuditRes.status,
+              auditErrorText
+            );
+          } else {
+            console.log(
+              "✅ Court Correspondent rejection admin notification sent:",
+              applicationId
+            );
+          }
+        } catch (notificationErr) {
+          console.error(
+            "⚠️ Court Correspondent rejection succeeded, but admin notification failed:",
+            notificationErr
+          );
+        }
+      }
+    }
+      
       return res.status(200).json({
         success: true,
         application: patchResponseBody,
