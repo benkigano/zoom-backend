@@ -3549,6 +3549,109 @@ function buildJournalistApprovalEmailHtml(bodyText) {
   `;
 }
 
+function buildJournalistRejectionEmailHtml(bodyText) {
+  // Validate input
+  if (!bodyText || typeof bodyText !== 'string') {
+    throw new Error('Email body must be a non-empty string');
+  }
+
+  const trimmedBody = String(bodyText).trim();
+
+  if (trimmedBody.length === 0) {
+    throw new Error('Email body cannot be empty');
+  }
+
+  // Escape first, then preserve line breaks
+  const safeBody = escapeHtml(trimmedBody);
+
+  // Convert lines to paragraphs, preserving blank lines for spacing
+  const bodyHtml = safeBody
+    .split('\n')
+    .map(line => {
+      const trimmedLine = line.trim();
+
+      if (trimmedLine === '') {
+        return '<div style="height:8px;line-height:8px;">&nbsp;</div>';
+      }
+
+      return `<p style="margin:0 0 12px 0;">${trimmedLine}</p>`;
+    })
+    .join('');
+
+  return `
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body style="margin:0;padding:0;background:#f7f2e9;font-family:Arial,Helvetica,sans-serif;color:#172554;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f7f2e9;padding:32px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
+
+          <!-- BRANDED HEADER -->
+          <tr>
+            <td align="center" style="background:#0b2a68;padding:24px 32px 22px 32px;text-align:center;">
+              <img
+                src="https://static.wixstatic.com/media/2ccb97_745227d9536b452b83a82556e6c5a430~mv2.png"
+                alt="Court of Compassion Seal"
+                width="96"
+                height="96"
+                style="display:block;width:96px;height:96px;margin:0 auto 14px auto;border-radius:50%;border:2px solid #d8b24c;background:#ffffff;"
+              >
+              <div style="font-size:12px;letter-spacing:2px;color:#d8b24c;font-weight:700;margin-bottom:8px;">
+                COURT OF COMPASSION
+              </div>
+              <div style="font-size:26px;line-height:34px;color:#ffffff;font-weight:700;">
+                Court Correspondent Application Update
+              </div>
+            </td>
+          </tr>
+
+          <!-- GOLD DIVIDER -->
+          <tr>
+            <td style="padding:0 32px;">
+              <div style="height:4px;background:#d8b24c;"></div>
+            </td>
+          </tr>
+
+          <!-- EMAIL BODY CONTENT -->
+          <tr>
+            <td style="padding:28px 32px 12px 32px;font-size:14px;line-height:21px;color:#172554;">
+              ${bodyHtml}
+            </td>
+          </tr>
+
+          <!-- FOOTER DIVIDER -->
+          <tr>
+            <td style="padding:0 32px;">
+              <div style="height:1px;background:#e5e7eb;"></div>
+            </td>
+          </tr>
+
+          <!-- BRANDED FOOTER -->
+          <tr>
+            <td style="padding:22px 32px 28px 32px;text-align:center;">
+              <div style="border-top:2px solid #d8b24c;padding-top:18px;font-size:13px;font-weight:700;color:#0b2a68;">
+                Court of Compassion
+              </div>
+              <div style="padding-top:5px;font-size:12px;color:#6b7280;">
+                Justice • Truth • Social Relevance
+              </div>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+}
+
 app.use(express.json());
 
 // ============================================================
@@ -3852,6 +3955,240 @@ try {
       return res.status(500).json({
         success: false,
         error: "Unable to send approval email",
+      });
+    }
+  }
+);
+
+// POST /api/admin/journalist-applications/:id/send-rejection-email
+// Protected: requireAdminToken
+app.post(
+  "/api/admin/journalist-applications/:id/send-rejection-email",
+  requireAdminToken,
+  async (req, res) => {
+    try {
+      const applicationId = String(req.params.id || "").trim();
+
+      if (!applicationId) {
+        return res.status(400).json({
+          success: false,
+          error: "Application ID is required",
+        });
+      }
+
+      // Only accept subject and body from the frontend — reject any other keys
+      const allowedKeys = new Set(["subject", "body"]);
+      const extraKeys = Object.keys(req.body || {}).filter(
+        (k) => !allowedKeys.has(k)
+      );
+
+      if (extraKeys.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error: "Only subject and body are allowed in the request body",
+        });
+      }
+
+      const subject = String(req.body?.subject || "").trim();
+      const body = String(req.body?.body || "").trim();
+
+      if (!subject || !body) {
+        return res.status(400).json({
+          success: false,
+          error: "Subject and body are required",
+        });
+      }
+
+      // Query Wix journalistapplications
+      let applications = [];
+
+      try {
+        applications = await queryWixCollection(
+          "journalistapplications"
+        );
+      } catch (err) {
+        console.error(
+          "❌ Failed to query journalistapplications:",
+          err
+        );
+
+        return res.status(502).json({
+          success: false,
+          error: "Unable to retrieve applications from Wix",
+        });
+      }
+
+      const application = applications.find(
+        (app) => app._id === applicationId
+      );
+
+      if (!application) {
+        return res.status(404).json({
+          success: false,
+          error: "Application not found",
+        });
+      }
+
+      // Application must already be Rejected
+      if (
+        String(application.applicationStatus || "").trim() !==
+        "Rejected"
+      ) {
+        return res.status(409).json({
+          success: false,
+          error:
+            "Application must be rejected before sending the rejection email",
+        });
+      }
+
+      // Recipient comes only from the stored application record
+      const recipientEmail = String(application.email || "")
+        .trim()
+        .toLowerCase();
+
+      if (!recipientEmail) {
+        return res.status(400).json({
+          success: false,
+          error: "Application does not contain an email address",
+        });
+      }
+
+      const apiKey = process.env.WIX_API_KEY;
+      const siteId = process.env.WIX_SITE_ID;
+
+      if (!apiKey || !siteId) {
+        console.error(
+          "❌ WIX_API_KEY or WIX_SITE_ID is not configured"
+        );
+
+        return res.status(500).json({
+          success: false,
+          error: "Wix configuration is missing",
+        });
+      }
+
+      try {
+        await sendEmail(
+          recipientEmail,
+          subject,
+          body,
+          buildJournalistRejectionEmailHtml(body)
+        );
+
+        console.log(
+          "✅ Rejection email sent for journalist application:",
+          applicationId,
+          "to:",
+          recipientEmail
+        );
+
+        const rejectionEmailSentAt = new Date().toISOString();
+
+        try {
+          const patchUrl =
+            `https://www.wixapis.com/wix-data/v2/items/${encodeURIComponent(
+              applicationId
+            )}`;
+
+          const patchBody = {
+            dataCollectionId: "journalistapplications",
+            patch: {
+              dataItemId: applicationId,
+              fieldModifications: [
+                {
+                  fieldPath: "rejectionEmailSentAt",
+                  action: "SET_FIELD",
+                  setFieldOptions: {
+                    value: rejectionEmailSentAt,
+                  },
+                },
+              ],
+            },
+          };
+
+          const patchRes = await fetch(patchUrl, {
+            method: "PATCH",
+            headers: {
+              Authorization: apiKey,
+              "wix-site-id": siteId,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(patchBody),
+          });
+
+          if (!patchRes.ok) {
+            const text = await patchRes.text().catch(() => "");
+
+            console.error(
+              "❌ WIX PATCH rejectionEmailSentAt failed:",
+              patchRes.status,
+              text
+            );
+
+            return res.status(200).json({
+              success: true,
+              message: "Rejection email sent",
+              applicationId,
+              sentTo: recipientEmail,
+              rejectionEmailSentAt,
+              auditLogged: false,
+              warning:
+                "Email was sent, but the sent timestamp could not be saved",
+            });
+          }
+
+          console.log(
+            "✅ rejectionEmailSentAt saved to Wix for application:",
+            applicationId,
+            rejectionEmailSentAt
+          );
+
+          return res.status(200).json({
+            success: true,
+            message: "Rejection email sent",
+            applicationId,
+            sentTo: recipientEmail,
+            rejectionEmailSentAt,
+            auditLogged: true,
+          });
+        } catch (patchErr) {
+          console.error(
+            "❌ WIX PATCH rejectionEmailSentAt exception:",
+            patchErr
+          );
+
+          return res.status(200).json({
+            success: true,
+            message: "Rejection email sent",
+            applicationId,
+            sentTo: recipientEmail,
+            rejectionEmailSentAt,
+            auditLogged: false,
+            warning:
+              "Email was sent, but the sent timestamp could not be saved",
+          });
+        }
+      } catch (sendErr) {
+        console.error(
+          "❌ Failed to send rejection email for application:",
+          applicationId,
+          sendErr
+        );
+
+        return res.status(500).json({
+          success: false,
+          error: "Failed to send rejection email",
+        });
+      }
+    } catch (err) {
+      console.error(
+        "❌ POST /api/admin/journalist-applications/:id/send-rejection-email error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: "Unable to send rejection email",
       });
     }
   }
