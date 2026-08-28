@@ -973,6 +973,7 @@ app.post(
 
         const profileData = {
           fullName,
+          title: "Court Correspondent",
           email: normalizedEmail,
           bio: application.bio || "",
           hideFromPublicDirectory: true,
