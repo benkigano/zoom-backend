@@ -11039,8 +11039,8 @@ app.post(
       const safeRecordingUrl =
         safeEmailWebUrl(recordingUrl);
 
-      const safeRegistrationUrl =
-        safeEmailWebUrl(registrationUrl);
+      const safeParticipantZoomUrl =
+  safeEmailWebUrl(participantZoomUrl);
 
       const htmlBody = `
         <!doctype html>
@@ -11178,7 +11178,7 @@ app.post(
 
                         <p style="margin:0 0 20px 0;">
                           <a
-                            href="${safeRegistrationUrl}"
+                            href="${safeParticipantZoomUrl}"
                             target="_blank"
                             rel="noopener noreferrer"
                             style="
@@ -11191,7 +11191,9 @@ app.post(
                               font-weight:bold;
                             "
                           >
-                            Register for Court Study
+                            ${usesZoomRegistration
+  ? "Register for Court Study"
+  : "Join the Court Study Session"}
                           </a>
                         </p>
 
@@ -11200,9 +11202,11 @@ app.post(
                           background:#fff7dd;
                           border-left:4px solid #8a6500;
                         ">
-                          Each participant must register separately.
-                          After registration, Zoom will send each registered
-                          participant a personal confirmation email and unique join link.
+                          ${usesZoomRegistration
+  ? `Each participant must register separately.
+     After registration, Zoom will send each registered participant a personal confirmation email and unique join link.`
+  : `This meeting does not use Zoom participant registration.
+     Use the Join the Court Study Session button above to enter the meeting.`}
                         </div>
 
                       </td>
@@ -11700,22 +11704,32 @@ const podcastUrl = isRulesStudy
   : String(recording?.podcastUrl || "").trim();
 
       const registrationUrl = String(
-        meeting.zoomRegistrationUrl || ""
-      ).trim();
+  meeting.zoomRegistrationUrl || ""
+).trim();
 
-      const missingFields = [];
+const joinUrl = String(
+  meeting.zoomJoinUrl || ""
+).trim();
 
-      if (!pastorEmail) {
-        missingFields.push("pastorEmail");
-      }
+const usesZoomRegistration = Boolean(registrationUrl);
+const participantZoomUrl =
+  courtStudyRequest.meetingFormat === "COMMUNITY_HOSTED"
+    ? registrationUrl || joinUrl
+    : registrationUrl;
 
-      if (!isRulesStudy && !recordingUrl) {
-        missingFields.push("recordingUrl");
-      }
+const missingFields = [];
 
-      if (!registrationUrl) {
-        missingFields.push("zoomRegistrationUrl");
-      }
+if (!pastorEmail) {
+  missingFields.push("pastorEmail");
+}
+
+if (!isRulesStudy && !recordingUrl) {
+  missingFields.push("recordingUrl");
+}
+
+if (!participantZoomUrl) {
+  missingFields.push("zoomRegistrationUrlOrJoinUrl");
+}
 
       if (missingFields.length > 0) {
   return {
@@ -11786,11 +11800,19 @@ const memberInvitationText = isRulesStudy
       "",
       `Session: ${readableSessionTime}`,
       "",
+      ...(usesZoomRegistration
+  ? [
       "Register for the Zoom Court Study Session:",
       registrationUrl,
       "",
-      "Important: Each participant must register separately using the registration link above. Zoom will send each registered participant a personal confirmation email and unique join link.",
-    ].join("\n")
+      "Important: Each participant must register separately using the registration link above. Zoom will send each registered participant a personal confirmation email with a unique personal join link.",
+    ]
+  : [
+      "Join the Zoom Court Study Session:",
+      participantZoomUrl,
+      "",
+      "Important: This meeting does not use Zoom participant registration. Use the Zoom join link above to enter the Court Study session.",
+    ]),
   : [
       `You are invited to participate in a Court of Compassion Court Study session hosted by ${churchName}.`,
       "",
@@ -11807,10 +11829,19 @@ const memberInvitationText = isRulesStudy
             "",
           ]
         : []),
+      ...(usesZoomRegistration
+  ? [
       "Register for the Zoom Court Study Session:",
       registrationUrl,
       "",
-      "Important: Each participant must register separately using the registration link above. Zoom will send each registered participant a personal confirmation email and unique join link.",
+      "Important: Each participant must register separately using the registration link above. Zoom will send each registered participant a personal confirmation email with a unique personal join link.",
+    ]
+  : [
+      "Join the Zoom Court Study Session:",
+      participantZoomUrl,
+      "",
+      "Important: This meeting does not use Zoom participant registration. Use the Zoom join link above to enter the Court Study session.",
+    ]),
     ].join("\n");
 
       const subject =
@@ -11858,15 +11889,27 @@ const hostDisplayName = isCommunityHosted
             "",
           ]
         : []),
+      ...(usesZoomRegistration
+  ? [
       "Public Zoom Registration:",
       registrationUrl,
       "",
       isCommunityHosted
-  ? "FOR THE ORGANIZER AND PARTICIPANTS:"
-  : "FOR THE COURT STUDY ORGANIZER AND PARTICIPANTS:",
+        ? "FOR THE ORGANIZER AND PARTICIPANTS:"
+        : "FOR THE COURT STUDY ORGANIZER AND PARTICIPANTS:",
       isCommunityHosted
-  ? "Each person—including the organizer—must register separately using the public Zoom Registration link above. After registration, Zoom will email that person a unique personal join link."
-  : "Each person—including the Court Study organizer—must register separately using the public Zoom Registration link above. After registration, Zoom will email that person a unique personal join link.",
+        ? "Each person—including the organizer—must register separately using the public Zoom Registration link above. After registration, Zoom will email that person a unique personal join link."
+        : "Each person—including the Court Study organizer—must register separately using the public Zoom Registration link above. After registration, Zoom will email that person a unique personal join link.",
+    ]
+  : [
+      "Zoom Meeting Join Link:",
+      participantZoomUrl,
+      "",
+      isCommunityHosted
+        ? "FOR THE ORGANIZER AND PARTICIPANTS:"
+        : "FOR THE COURT STUDY ORGANIZER AND PARTICIPANTS:",
+      "This meeting does not use Zoom participant registration. Use the Zoom join link above to enter the Court Study session.",
+    ]),
       "",
       isCommunityHosted
   ? "READY-MADE PARTICIPANT INVITATION"
@@ -11896,15 +11939,27 @@ const hostDisplayName = isCommunityHosted
             "",
           ]
         : []),
+      ...(usesZoomRegistration
+  ? [
       "Public Zoom Registration URL:",
       registrationUrl,
       "",
       isCommunityHosted
-  ? "FOR THE ORGANIZER AND PARTICIPANTS:"
-  : "FOR THE COURT STUDY ORGANIZER AND PARTICIPANTS:",
+        ? "FOR THE ORGANIZER AND PARTICIPANTS:"
+        : "FOR THE COURT STUDY ORGANIZER AND PARTICIPANTS:",
       isCommunityHosted
-  ? "Each person—including the organizer—must register separately using the public Zoom Registration URL above. After registration, Zoom will email that person a unique personal join link."
-  : "Each person—including the Court Study organizer—must register separately using the public Zoom Registration URL above. After registration, Zoom will email that person a unique personal join link.",
+        ? "Each person—including the organizer—must register separately using the public Zoom Registration URL above. After registration, Zoom will email that person a unique personal join link."
+        : "Each person—including the Court Study organizer—must register separately using the public Zoom Registration URL above. After registration, Zoom will email that person a unique personal join link.",
+    ]
+  : [
+      "Zoom Meeting Join URL:",
+      participantZoomUrl,
+      "",
+      isCommunityHosted
+        ? "FOR THE ORGANIZER AND PARTICIPANTS:"
+        : "FOR THE COURT STUDY ORGANIZER AND PARTICIPANTS:",
+      "This meeting does not use Zoom participant registration. Use the Zoom join URL above to enter the Court Study session.",
+    ]),
       "",
       isCommunityHosted
   ? "READY-MADE PARTICIPANT INVITATION"
@@ -11918,8 +11973,8 @@ const hostDisplayName = isCommunityHosted
 
        const safeRecordingUrl = safeEmailWebUrl(recordingUrl);
        const safePodcastUrl = safeEmailWebUrl(podcastUrl);
-       const safeRegistrationUrl =
-       safeEmailWebUrl(registrationUrl); 
+        const safeParticipantZoomUrl =
+  safeEmailWebUrl(participantZoomUrl);
 
       const memberEmailSubject =
   `Invitation: Court Study — ${interviewTitle}`;
@@ -12188,16 +12243,20 @@ const safeParticipantInviteComposerUrl =
                             line-height:24px;
                           "
                         >
-                          Public Zoom Registration
+                          ${usesZoomRegistration
+  ? "Public Zoom Registration"
+  : "Zoom Meeting Join Link"}
                         </h3>
 
                         <p style="margin:0 0 12px 0;">
-                          Share this registration link with participants:
+                          ${usesZoomRegistration
+  ? "Share this registration link with participants:"
+  : "Share this Zoom meeting link with participants:"}
                         </p>
 
                         <p style="margin:0 0 18px 0;">
                           <a
-                            href="${safeRegistrationUrl}"
+                            href="${safeParticipantZoomUrl}"
                             target="_blank"
                             rel="noopener noreferrer"
                             style="
@@ -12210,7 +12269,9 @@ const safeParticipantInviteComposerUrl =
                               font-weight:bold;
                             "
                           >
-                            Register for the Court Study Session
+                            ${usesZoomRegistration
+  ? "Register for the Court Study Session"
+  : "Join the Court Study Session"}
                           </a>
                         </p>
 
@@ -12229,11 +12290,15 @@ const safeParticipantInviteComposerUrl =
                               : "For the Court Study organizer and participants:"}
                           </strong>
 
-                          ${
-                            isCommunityHosted
-                              ? "Each person—including the organizer—must register separately using the gold Register for the Court Study Session button. After registration, Zoom will email that person a unique personal join link."
-                              : "Each person—including the Court Study organizer—must register separately using the gold Register for the Court Study Session button. After registration, Zoom will email that person a unique personal join link."
-                          }
+                         ${
+  isCommunityHosted
+    ? (
+        usesZoomRegistration
+          ? "Each person—including the organizer—must register separately using the gold Register for the Court Study Session button. After registration, Zoom will email that person a unique personal join link."
+          : "This meeting does not use Zoom participant registration. The organizer and participants should use the gold Join the Court Study Session button above to enter the meeting."
+      )
+    : "Each person—including the Court Study organizer—must register separately using the gold Register for the Court Study Session button. After registration, Zoom will email that person a unique personal join link."
+} 
                         </div>
 
                         <!-- PARTICIPANT INVITATION -->
