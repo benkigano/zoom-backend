@@ -11813,7 +11813,8 @@ const memberInvitationText = isRulesStudy
       "",
       "Important: This meeting does not use Zoom participant registration. Use the Zoom join link above to enter the Court Study session.",
     ]),
-  : [
+     ]
+    : [
       `You are invited to participate in a Court of Compassion Court Study session hosted by ${churchName}.`,
       "",
       `Interview: ${interviewTitle}`,
