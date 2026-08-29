@@ -11612,6 +11612,26 @@ async function sendCourtStudyInvitationInternal({
       const meeting = courtStudyRequest.courtStudyMeeting;
       const recording = courtStudyRequest.recording;
 
+    console.log("🔎 COURT STUDY INVITATION DEBUG", {
+  requestedId: requestId,
+  loadedRequestId: courtStudyRequest.id,
+
+  organizerName: courtStudyRequest.organizerName,
+  organizerEmail: courtStudyRequest.organizerEmail,
+
+  hostGroupName: courtStudyRequest.hostGroupName,
+  churchName: courtStudyRequest.churchName,
+
+  meetingFormat: courtStudyRequest.meetingFormat,
+  preferredStart: courtStudyRequest.preferredStart,
+
+  linkedMeetingDatabaseId: meeting?.id,
+  meetingScheduledStart: meeting?.scheduledStart,
+  zoomMeetingId: meeting?.zoomMeetingId,
+  zoomRegistrationUrl: meeting?.zoomRegistrationUrl,
+  zoomJoinUrl: meeting?.zoomJoinUrl,
+});  
+      
       if (!meeting) {
   return {
     success: false,
