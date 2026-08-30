@@ -9655,208 +9655,22 @@ if (
 
       // Send a receipt confirmation without allowing an email failure
 // to undo the successfully saved Court Study request.
-let confirmationEmailSent = false;
 
-try {
-  const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
-    auth: {
-      user: process.env.GMAIL_USER,
-      pass: process.env.GMAIL_APP_PASSWORD,
-    },
+      const confirmationEmailSent =
+  await sendCourtStudyRequestReceivedEmail({
+    organizerName,
+    organizerEmail,
+    hostGroupName,
+    hostGroupType,
+    studyFocusType,
+    preferredStart,
+    timezone,
+    sessionFormat,
+    meetingFormat,
+    estimatedAttendance,
+    selectedRulesSections,
+    requestId: request.id,
   });
-
-  let readablePreferredStart = "Not specified";
-
-  try {
-    if (
-      preferredStart instanceof Date &&
-      !Number.isNaN(preferredStart.getTime())
-    ) {
-      readablePreferredStart = preferredStart.toLocaleString("en-US", {
-        timeZone: timezone,
-        weekday: "long",
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        timeZoneName: "short",
-      });
-    }
-  } catch (dateFormatError) {
-    readablePreferredStart =
-      preferredStart instanceof Date
-        ? preferredStart.toISOString()
-        : String(preferredStart || "Not specified");
-  }
-
-  const selectedMaterialText =
-    Array.isArray(selectedRulesSections) &&
-    selectedRulesSections.length > 0
-      ? selectedRulesSections
-          .map((section, index) => {
-            const chapter =
-              section?.chapterTitle || section?.chapterId || "";
-            const title =
-              section?.sectionTitle ||
-              section?.videoTitle ||
-              section?.sectionId ||
-              section?.id ||
-              "Selected section";
-
-            return `${index + 1}. ${
-              chapter ? `${chapter} — ` : ""
-            }${title}`;
-          })
-          .join("\n")
-      : "No specific Rules sections were listed.";
-
-  const readableStudyFocus =
-    typeof studyFocusType === "string"
-      ? studyFocusType.replaceAll("_", " ")
-      : "Court Study";
-
-  const readableFormat =
-    sessionFormat || meetingFormat || "Not specified";
-
-  const confirmationText = [
-    `Dear ${organizerName},`,
-    "",
-    "Thank you. We have received your Court Study request.",
-    "",
-    `Request reference: ${request.id}`,
-    `Organizer: ${organizerName}`,
-    `Host group or community: ${hostGroupName}`,
-    `Group type: ${hostGroupType}`,
-    `Study focus: ${readableStudyFocus}`,
-    `Preferred session time: ${readablePreferredStart}`,
-    `Format: ${readableFormat}`,
-    `Estimated attendance: ${
-      estimatedAttendance ?? "Not specified"
-    }`,
-    "",
-    "Selected Court Study material:",
-    selectedMaterialText,
-    "",
-    "Your request is now pending administrative review. This confirmation acknowledges receipt of the request; it does not yet mean that the request has been approved or scheduled.",
-    "",
-    "Court of Compassion",
-  ].join("\n");
-
-  const confirmationHtmlBody = confirmationText
-  .split("\n")
-  .map((line) => {
-    const safeLine = String(line || "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-
-    return safeLine
-      ? `<div style="margin:0 0 8px 0;">${safeLine}</div>`
-      : `<div style="height:8px;line-height:8px;">&nbsp;</div>`;
-  })
-  .join("");
-
-const confirmationHtml = `
-<!doctype html>
-<html>
-  <body style="margin:0;padding:0;background:#f7f2e9;font-family:Arial,Helvetica,sans-serif;color:#172554;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f7f2e9;padding:32px 12px;">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
-
-            <tr>
-              <td style="background:#0b2a68;padding:28px 32px;text-align:center;">
-               <img
-  src="https://static.wixstatic.com/media/2ccb97_745227d9536b452b83a82556e6c5a430~mv2.png"
-  alt="Court of Compassion Seal"
-  width="96"
-  height="96"
-  style="display:block;width:96px;height:96px;margin:0 auto 14px auto;border-radius:50%;border:2px solid #d8b24c;background:#ffffff;"
-/> 
-                <div style="font-size:12px;letter-spacing:2px;color:#d8b24c;font-weight:700;margin-bottom:8px;">
-                  COURT OF COMPASSION
-                </div>
-                <div style="font-size:26px;line-height:34px;color:#ffffff;font-weight:700;">
-                  Court Study Request Received
-                </div>
-              </td>
-            </tr>
-
-            <tr>
-              <td style="padding:0 32px;">
-                <div style="height:4px;background:#d8b24c;"></div>
-              </td>
-            </tr>
-
-            <tr>
-              <td style="padding:28px 32px 12px 32px;">
-                <div style="display:inline-block;background:#eef8f0;border:1px solid #b7dfbf;border-radius:999px;padding:7px 12px;font-size:12px;font-weight:700;color:#176534;">
-                  PENDING ADMINISTRATIVE REVIEW
-                </div>
-              </td>
-            </tr>
-
-            <tr>
-              <td style="padding:12px 32px 28px 32px;font-size:15px;line-height:23px;color:#24324a;">
-                ${confirmationHtmlBody}
-              </td>
-            </tr>
-
-            <tr>
-              <td style="padding:0 32px;">
-                <div style="border-top:1px solid #e5e7eb;"></div>
-              </td>
-            </tr>
-
-            <tr>
-              <td style="padding:22px 32px 28px 32px;text-align:center;">
-                <div style="font-size:13px;font-weight:700;color:#0b2a68;margin-bottom:6px;">
-                  Court of Compassion
-                </div>
-                <div style="font-size:12px;line-height:18px;color:#6b7280;">
-                  Justice • Truth • Social Relevance
-                </div>
-                <div style="font-size:11px;line-height:17px;color:#9ca3af;margin-top:10px;">
-                  This is an automated confirmation that your Court Study request was received.
-                </div>
-              </td>
-            </tr>
-
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>
-`;
-  
-  await transporter.sendMail({
-    from: `"Court of Compassion" <${process.env.GMAIL_USER}>`,
-    to: organizerEmail,
-    subject: "Court Study Request Received",
-    text: confirmationText,
-html: confirmationHtml,
-replyTo: process.env.GMAIL_USER,
-  });
-
-  confirmationEmailSent = true;
-
-  console.log(
-    `✅ Court Study confirmation email sent for request ${request.id}`
-  );
-} catch (emailError) {
-  console.error(
-    `⚠️ Court Study request ${request.id} was saved, but its confirmation email failed:`,
-    emailError
-  );
-}
       
       return res.status(201).json({
         success: true,
