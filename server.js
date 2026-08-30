@@ -2727,23 +2727,231 @@ if (requestId) {
       );
   }
 
-  if (connectedZoomEmail !== organizerEmail) {
-    return res
-      .status(409)
-      .type("text/plain")
-      .send(
-        [
-          "Different Zoom account detected.",
-          "",
-          `Court Study request email: ${organizerEmail}`,
-          `Connected Zoom account: ${connectedZoomEmail}`,
-          "",
-          "No Court Study meeting has been created.",
-          "",
-          "Please switch to the Zoom account you want to use for this Court Study and connect Zoom again.",
-        ].join("\n")
-      );
-  }
+     if (connectedZoomEmail !== organizerEmail) {
+  const safeExpectedZoomEmail =
+    escapeHtml(organizerEmail);
+
+  const safeConnectedZoomEmail =
+    escapeHtml(connectedZoomEmail);
+
+  const retryZoomUrl =
+    `/court-study/zoom/authorize-organizer/${encodeURIComponent(
+      requestId
+    )}`;
+
+  return res.status(409).type("html").send(`
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+  <title>Different Zoom Account Detected</title>
+
+  <style>
+    body {
+      margin: 0;
+      background: #f6f1e8;
+      color: #10295f;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .page {
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 32px 18px;
+      box-sizing: border-box;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 640px;
+      background: #ffffff;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.08);
+    }
+
+    .header {
+      background: #123574;
+      color: #ffffff;
+      text-align: center;
+      padding: 30px 28px;
+      border-bottom: 4px solid #d4a900;
+    }
+
+    .court {
+      color: #f4c430;
+      font-size: 13px;
+      letter-spacing: 2px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 27px;
+    }
+
+    .content {
+      padding: 34px;
+      font-size: 17px;
+      line-height: 1.55;
+    }
+
+    .warning {
+      background: #fff7d9;
+      border-left: 4px solid #c99a00;
+      padding: 18px;
+      margin: 22px 0;
+    }
+
+    .account {
+      margin: 10px 0 18px 0;
+      padding: 12px 14px;
+      background: #f7f8fa;
+      border-radius: 6px;
+    }
+
+    .label {
+      font-size: 13px;
+      color: #667085;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .email {
+      font-size: 18px;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    .button {
+      display: inline-block;
+      margin: 8px 8px 8px 0;
+      padding: 14px 20px;
+      background: #123574;
+      color: #ffffff !important;
+      text-decoration: none;
+      font-weight: 700;
+      border-radius: 5px;
+    }
+
+    .secondary {
+      background: #8a6500;
+    }
+
+    .safe {
+      margin-top: 22px;
+      font-weight: 700;
+    }
+
+    .footer {
+      border-top: 1px solid #e5e7eb;
+      text-align: center;
+      padding: 20px;
+      color: #667085;
+      font-size: 13px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <div class="card">
+
+      <div class="header">
+        <div class="court">
+          COURT OF COMPASSION
+        </div>
+
+        <h1>
+          Different Zoom Account Detected
+        </h1>
+      </div>
+
+      <div class="content">
+
+        <p>
+          The Zoom account currently active/open does not
+          match the email used for this Court Study request.
+        </p>
+
+        <div class="account">
+          <div class="label">
+            Court Study request email
+          </div>
+          <div class="email">
+            ${safeExpectedZoomEmail}
+          </div>
+        </div>
+
+        <div class="account">
+          <div class="label">
+            Zoom account currently connected
+          </div>
+          <div class="email">
+            ${safeConnectedZoomEmail}
+          </div>
+        </div>
+
+        <div class="warning">
+          <strong>No Court Study meeting has been created.</strong>
+          Court of Compassion stopped the process before saving
+          this Zoom connection or creating the meeting.
+        </div>
+
+        <p>
+          <strong>Step 1 — Switch the Zoom account.</strong>
+          Click the link below to open Zoom in a new tab.
+          Check the email shown in your Zoom profile and use
+          Zoom's <strong>Switch Account</strong> option if needed.
+        </p>
+
+        <a
+          class="button secondary"
+          href="https://zoom.us/profile"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Open Zoom to Switch Account
+        </a>
+
+        <p style="margin-top:24px;">
+          <strong>Step 2 — Try the connection again.</strong>
+          After the correct Zoom account is active/open,
+          return to this page and click the button below.
+        </p>
+
+        <a
+          class="button"
+          href="${retryZoomUrl}"
+        >
+          Try Zoom Connection Again
+        </a>
+
+        <div class="safe">
+          Court of Compassion will verify the Zoom email again
+          before saving the connection or creating the meeting.
+        </div>
+
+      </div>
+
+      <div class="footer">
+        Court of Compassion<br>
+        Justice • Truth • Social Relevance
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>
+  `);
+} 
 }
     
     const expiresInSeconds = Number(
