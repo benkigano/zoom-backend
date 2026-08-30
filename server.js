@@ -2979,17 +2979,13 @@ if (
   zoomUser.id
 );
 
-   const connectedZoomEmail =
-  String(zoomUser.email || "").trim() ||
-  "Not available";
-
-const safeConnectedZoomEmail =
-  connectedZoomEmail
+   const safeConnectedZoomEmail =
+  (connectedZoomEmail || "Not available")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;"); 
+    .replaceAll("'", "&#039;");
 
    return res.status(200).type("html").send(`
 <!doctype html>
