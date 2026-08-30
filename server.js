@@ -2161,6 +2161,12 @@ app.get(
         );
       }
 
+      const expectedZoomEmail = escapeHtml(
+  String(courtStudyRequest.organizerEmail || "")
+    .trim()
+    .toLowerCase()
+);
+
       const continueUrl =
         `/court-study/zoom/authorize-organizer/${encodeURIComponent(
           requestId
@@ -2293,43 +2299,57 @@ app.get(
           that should host this Court Study session.
         </p>
 
-        <div class="notice">
-          <div class="important">
-            Important — choose the correct Zoom account.
-          </div>
+       <div class="notice">
+  <div class="important">
+    Zoom account expected for this Court Study
+  </div>
 
-          <p>
-            The Zoom account you authorize on the next
-            screen will be the account in which the Court
-            Study meeting is created.
-          </p>
+  <p style="font-size:18px;font-weight:700;">
+    ${expectedZoomEmail}
+  </p>
 
-          <p>
-            If your church, ministry, organization, company,
-            or community uses its own Zoom account, make sure
-            you authorize that account rather than a personal
-            Zoom account.
-          </p>
-        </div>
+  <p>
+    If your Zoom account uses the email address shown above,
+    make sure that Zoom account is currently
+    <strong>active/open</strong>.
+    <a
+      href="https://zoom.us/profile"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      Click that link to open Zoom to check your account
+    </a>.
+  </p>
 
-        <p>
-          Court of Compassion will automatically create and
-          configure the meeting after Zoom authorization is
-          completed.
-        </p>
+  <p>
+    Check the email shown in your Zoom profile.
+    If it is not the account you want to use for this Court Study,
+    use Zoom's <strong>Switch Account</strong> option before continuing.
+  </p>
 
-        <a
-          class="button"
-          href="${continueUrl}"
-        >
-          Continue to Zoom
-        </a>
+  <p>
+    If Zoom opens under a different account, Court of Compassion
+    will verify the Zoom email before creating the meeting and
+    will give you an opportunity to switch accounts if necessary.
+  </p>
+</div>
 
-        <div class="small">
-          If Zoom is already signed in to the wrong account,
-          switch to the correct Zoom account before completing
-          authorization.
-        </div>
+<p>
+  After the correct Zoom account is active/open,
+  return to this page and continue.
+</p>
+
+<a
+  class="button"
+  href="${continueUrl}"
+>
+  Continue to Zoom
+</a>
+
+<div class="small">
+  Court of Compassion will verify the Zoom account email
+  before saving the connection or creating the Court Study meeting.
+</div> 
 
       </div>
 
@@ -2675,6 +2695,57 @@ const invitation =
       );
     }
 
+    const connectedZoomEmail = String(
+  zoomUser.email || ""
+)
+  .trim()
+  .toLowerCase();
+
+// For community-hosted Court Studies, verify that the
+// Zoom account being authorized matches the organizer
+// email carried by this Court Study invitation.
+//
+// IMPORTANT:
+// This check happens BEFORE tokens are saved,
+// BEFORE the invitation is marked used,
+// BEFORE the request becomes ZOOM_CONNECTED,
+// and BEFORE any Zoom meeting is created.
+if (requestId) {
+  if (!connectedZoomEmail) {
+    return res
+      .status(409)
+      .type("text/plain")
+      .send(
+        [
+          "Unable to verify the Zoom account.",
+          "",
+          `Court Study request email: ${organizerEmail}`,
+          "Zoom did not return an email address for the connected account.",
+          "",
+          "No Court Study meeting has been created.",
+        ].join("\n")
+      );
+  }
+
+  if (connectedZoomEmail !== organizerEmail) {
+    return res
+      .status(409)
+      .type("text/plain")
+      .send(
+        [
+          "Different Zoom account detected.",
+          "",
+          `Court Study request email: ${organizerEmail}`,
+          `Connected Zoom account: ${connectedZoomEmail}`,
+          "",
+          "No Court Study meeting has been created.",
+          "",
+          "Please switch to the Zoom account you want to use for this Court Study and connect Zoom again.",
+        ].join("\n")
+      );
+  }
+}
+    
     const expiresInSeconds = Number(
       tokenData.expires_in || 3600
     );
