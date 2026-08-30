@@ -208,6 +208,28 @@ model JournalistAvailability {
   @@index([status])
 }
 
+model Subscription {
+  id                   String   @id @default(cuid())
+
+  email                String   @unique
+
+  stripeCustomerId     String?  @unique
+  stripeSubscriptionId String?  @unique
+  stripePriceId        String?
+
+  plan                 String?
+  status               String
+
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean  @default(false)
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([status])
+  @@index([currentPeriodEnd])
+}
+
 model ZoomMeeting {
   id                 String @id @default(cuid())
   interviewRequestId String @unique
