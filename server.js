@@ -9620,6 +9620,346 @@ replyTo: process.env.GMAIL_USER,
   }
 );
 
+// ======================================================
+// Public: streamlined COMMUNITY_HOSTED Court Study request
+// Creates an approved request ready for Zoom OAuth.
+// The existing PENDING submission route remains unchanged.
+// ======================================================
+app.post(
+  "/api/court-study-requests/streamlined",
+  express.json(),
+  async (req, res) => {
+    try {
+      const body = req.body || {};
+
+      const cleanText = (value) =>
+        typeof value === "string" ? value.trim() : "";
+
+      const organizerName = cleanText(body.organizerName);
+      const organizerEmail = cleanText(body.organizerEmail);
+      const organizerPhone = cleanText(body.organizerPhone);
+      const organizerRole = cleanText(body.organizerRole);
+
+      const hostGroupName = cleanText(body.hostGroupName);
+      const hostGroupType = cleanText(body.hostGroupType);
+      const rawHostMode = cleanText(body.hostMode);
+
+      const hostGroupWebsite = cleanText(body.hostGroupWebsite);
+      const hostGroupCity = cleanText(body.hostGroupCity);
+      const hostGroupState = cleanText(body.hostGroupState);
+      const hostGroupZip = cleanText(body.hostGroupZip);
+      const hostGroupCountry = cleanText(body.hostGroupCountry);
+
+      const preferredStartInput =
+        cleanText(body.preferredStart);
+
+      let preferredDate = cleanText(body.preferredDate);
+      let preferredTime = cleanText(body.preferredTime);
+
+      if (
+        (!preferredDate || !preferredTime) &&
+        preferredStartInput
+      ) {
+        const preferredStartMatch =
+          preferredStartInput.match(
+            /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/
+          );
+
+        if (preferredStartMatch) {
+          preferredDate =
+            preferredDate || preferredStartMatch[1];
+
+          preferredTime =
+            preferredTime || preferredStartMatch[2];
+        }
+      }
+
+      const timezoneInput = cleanText(body.timezone);
+
+      const rawSessionFormat = cleanText(
+        body.meetingFormat ?? body.format
+      );
+
+      const normalizedHostMode = rawHostMode
+        ? rawHostMode
+            .toUpperCase()
+            .replace(/[\s-]+/g, "_")
+        : hostGroupType.toLowerCase() === "church"
+          ? "PASTOR_HOSTED"
+          : "COMMUNITY_HOSTED";
+
+      // This new streamlined route is intentionally
+      // limited to COMMUNITY_HOSTED requests.
+      if (normalizedHostMode !== "COMMUNITY_HOSTED") {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Streamlined Zoom authorization is available only for Community Hosted Court Studies.",
+        });
+      }
+
+      if (
+        !organizerName ||
+        !organizerEmail ||
+        !hostGroupName ||
+        !hostGroupType ||
+        !preferredDate ||
+        !preferredTime ||
+        !timezoneInput ||
+        !rawSessionFormat
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Organizer name, organizer email, host group, group type, preferred date, preferred time, time zone, and format are required.",
+        });
+      }
+
+      const timezoneAliases = {
+        "PACIFIC TIME": "America/Los_Angeles",
+        "MOUNTAIN TIME": "America/Denver",
+        "CENTRAL TIME": "America/Chicago",
+        "EASTERN TIME": "America/New_York",
+        "ALASKA TIME": "America/Anchorage",
+        "HAWAII TIME": "Pacific/Honolulu",
+      };
+
+      const timezone =
+        timezoneAliases[timezoneInput.toUpperCase()] ||
+        timezoneInput;
+
+      const preferredStart =
+        parseDateTimeInTimeZone(
+          `${preferredDate}T${preferredTime}`,
+          timezone
+        );
+
+      if (
+        !(preferredStart instanceof Date) ||
+        Number.isNaN(preferredStart.getTime())
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "The preferred date, time, or time zone could not be interpreted.",
+        });
+      }
+
+      const focusKey =
+        cleanText(body.studyFocusType).toUpperCase();
+
+      const focusMap = {
+        RULES_OF_COURT_PROCEDURE:
+          "RULES_OF_PROCEDURE",
+        RULES_OF_PROCEDURE:
+          "RULES_OF_PROCEDURE",
+        INTERVIEW_RECORDING:
+          "INTERVIEW_RECORDING",
+        COMPLETED_INTERVIEW:
+          "INTERVIEW_RECORDING",
+      };
+
+      const studyFocusType = focusMap[focusKey];
+
+      if (!studyFocusType) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "A valid Court Study focus is required.",
+        });
+      }
+
+      let selectedRulesSections = [];
+
+      if (Array.isArray(body.selectedRulesSections)) {
+        selectedRulesSections =
+          body.selectedRulesSections;
+      } else if (
+        typeof body.selectedRulesSections ===
+          "string" &&
+        body.selectedRulesSections.trim()
+      ) {
+        try {
+          const parsedSections = JSON.parse(
+            body.selectedRulesSections
+          );
+
+          if (!Array.isArray(parsedSections)) {
+            return res.status(400).json({
+              success: false,
+              error:
+                "Selected Rules sections must be supplied as an array.",
+            });
+          }
+
+          selectedRulesSections = parsedSections;
+        } catch {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Selected Rules sections contain invalid JSON.",
+          });
+        }
+      }
+
+      if (
+        studyFocusType ===
+          "RULES_OF_PROCEDURE" &&
+        selectedRulesSections.length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "At least one Rules of Court Procedure section must be selected.",
+        });
+      }
+
+      const formatKey = rawSessionFormat
+        .toUpperCase()
+        .replace(/[\s-]+/g, "_");
+
+      const sessionFormatMap = {
+        ONLINE: "ONLINE",
+        IN_PERSON: "IN_PERSON",
+        HYBRID: "HYBRID",
+      };
+
+      const sessionFormat =
+        sessionFormatMap[formatKey];
+
+      if (!sessionFormat) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Format must be Online, In Person, or Hybrid.",
+        });
+      }
+
+      // Zoom authorization makes sense only when
+      // Zoom will actually be used.
+      if (sessionFormat === "IN_PERSON") {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Streamlined Zoom authorization is available only for Online or Hybrid Court Studies.",
+        });
+      }
+
+      let estimatedAttendance = null;
+
+      if (
+        body.estimatedAttendance !== undefined &&
+        body.estimatedAttendance !== null &&
+        String(body.estimatedAttendance).trim() !== ""
+      ) {
+        estimatedAttendance = Number.parseInt(
+          String(body.estimatedAttendance),
+          10
+        );
+
+        if (
+          !Number.isInteger(estimatedAttendance) ||
+          estimatedAttendance < 1
+        ) {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Expected number of participants must be a positive whole number.",
+          });
+        }
+      }
+
+      const request =
+        await prisma.courtStudyRequest.create({
+          data: {
+            // Preserve legacy admin compatibility.
+            pastorName: organizerName,
+            pastorEmail: organizerEmail,
+            roleTitle: organizerRole || null,
+            churchName: hostGroupName,
+            dioceseOrGroup: hostGroupName,
+            phone: organizerPhone || null,
+
+            // Inclusive organizer information.
+            organizerName,
+            organizerEmail,
+            organizerPhone:
+              organizerPhone || null,
+            organizerRole:
+              organizerRole || null,
+
+            // Host group or community.
+            hostGroupName,
+            hostGroupType,
+            hostGroupWebsite:
+              hostGroupWebsite || null,
+            hostGroupCity:
+              hostGroupCity || null,
+            hostGroupState:
+              hostGroupState || null,
+            hostGroupZip:
+              hostGroupZip || null,
+            hostGroupCountry:
+              hostGroupCountry || null,
+
+            // Study material.
+            studyFocusType,
+            selectedRulesSections,
+
+            // Requested session details.
+            preferredStart,
+            timezone,
+            meetingFormat:
+              "COMMUNITY_HOSTED",
+            sessionFormat,
+            estimatedAttendance,
+            notes:
+              cleanText(body.notes) || null,
+
+            // This is the new streamlined branch.
+            status: "APPROVED",
+          },
+        });
+
+      console.log(
+        "✅ STREAMLINED COURT STUDY REQUEST CREATED:",
+        request.id,
+        organizerEmail
+      );
+
+      return res.status(201).json({
+        success: true,
+        streamlined: true,
+        message:
+          "Court Study request created and ready for Zoom authorization.",
+        request: {
+          id: request.id,
+          status: request.status,
+          meetingFormat:
+            request.meetingFormat,
+          sessionFormat:
+            request.sessionFormat,
+        },
+        zoomAuthorizationPath:
+          `/court-study/zoom/authorize-organizer/${encodeURIComponent(
+            request.id
+          )}`,
+      });
+    } catch (error) {
+      console.error(
+        "❌ Streamlined Court Study request submission failed:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "The streamlined Court Study request could not be submitted.",
+      });
+    }
+  }
+);
+
 // =====================================================
 // Admin: list Court Study requests
 // =====================================================
