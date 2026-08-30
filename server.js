@@ -803,6 +803,47 @@ async function getCourtStudyHostZoomAccessToken({
   return refreshedTokens.access_token;
 }
 
+async function isActiveSubscriberEmail(email) {
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
+
+  if (!normalizedEmail) {
+    return false;
+  }
+
+  const subscription = await prisma.subscription.findUnique({
+    where: {
+      email: normalizedEmail,
+    },
+    select: {
+      status: true,
+      currentPeriodEnd: true,
+    },
+  });
+
+  if (!subscription) {
+    return false;
+  }
+
+  const normalizedStatus = String(subscription.status || "")
+    .trim()
+    .toUpperCase();
+
+  if (normalizedStatus !== "ACTIVE") {
+    return false;
+  }
+
+  if (
+    subscription.currentPeriodEnd &&
+    subscription.currentPeriodEnd.getTime() <= Date.now()
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 /*
  * Backward-compatible wrapper for the existing pastor/church
  * workflow while the remaining Court Study routes are migrated.
