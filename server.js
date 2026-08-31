@@ -4036,6 +4036,217 @@ app.post(
 
     console.log("📩 STRIPE WEBHOOK HIT:", event.type);
 
+        const normalizeStripeEmail = (value) =>
+      String(value || "")
+        .trim()
+        .toLowerCase();
+
+    const getStripePlanFromPriceId = (priceId) => {
+      const normalizedPriceId = String(priceId || "").trim();
+
+      if (!normalizedPriceId) {
+        return null;
+      }
+
+      if (normalizedPriceId === process.env.STRIPE_PRICE_BASIC) {
+        return "BASIC";
+      }
+
+      if (
+        normalizedPriceId ===
+        process.env.STRIPE_PRICE_CHURCH_INDIVIDUAL
+      ) {
+        return "CHURCH_INDIVIDUAL";
+      }
+
+      if (normalizedPriceId === process.env.STRIPE_PRICE_CHURCH_GROUP) {
+        return "CHURCH_GROUP";
+      }
+
+      return null;
+    };
+
+    const getStripeCustomerEmail = async (
+      customerId,
+      fallbackEmail = ""
+    ) => {
+      const normalizedFallbackEmail =
+        normalizeStripeEmail(fallbackEmail);
+
+      if (normalizedFallbackEmail) {
+        return normalizedFallbackEmail;
+      }
+
+      if (!customerId) {
+        return "";
+      }
+
+      const customer = await stripe.customers.retrieve(customerId);
+
+      if (!customer || customer.deleted) {
+        return "";
+      }
+
+      return normalizeStripeEmail(customer.email);
+    };
+
+    const syncStripeSubscription = async (
+      subscription,
+      fallbackEmail = ""
+    ) => {
+      const stripeSubscriptionId = String(
+        subscription?.id || ""
+      ).trim();
+
+      const stripeCustomerId =
+        typeof subscription?.customer === "string"
+          ? subscription.customer
+          : String(subscription?.customer?.id || "").trim();
+
+      const firstItem = subscription?.items?.data?.[0] || null;
+
+      const stripePriceId = String(
+        firstItem?.price?.id || ""
+      ).trim();
+
+      const plan = getStripePlanFromPriceId(stripePriceId);
+
+      const email = await getStripeCustomerEmail(
+        stripeCustomerId,
+        fallbackEmail
+      );
+
+      if (!stripeSubscriptionId || !stripeCustomerId || !email) {
+        throw new Error(
+          "Stripe subscription is missing subscription ID, customer ID, or email"
+        );
+      }
+
+      const normalizedStatus = String(
+        subscription?.status || ""
+      )
+        .trim()
+        .toUpperCase();
+
+      const status =
+        normalizedStatus === "ACTIVE"
+          ? "ACTIVE"
+          : normalizedStatus || "UNKNOWN";
+
+      const periodEndSeconds =
+        subscription?.current_period_end ??
+        firstItem?.current_period_end ??
+        null;
+
+      const currentPeriodEnd =
+        Number.isFinite(Number(periodEndSeconds)) &&
+        Number(periodEndSeconds) > 0
+          ? new Date(Number(periodEndSeconds) * 1000)
+          : null;
+
+      const subscriptionData = {
+        email,
+        stripeCustomerId,
+        stripeSubscriptionId,
+        stripePriceId: stripePriceId || null,
+        plan,
+        status,
+        currentPeriodEnd,
+        cancelAtPeriodEnd:
+          subscription?.cancel_at_period_end === true,
+      };
+
+      const existingSubscription =
+        await prisma.subscription.findFirst({
+          where: {
+            OR: [
+              {
+                stripeSubscriptionId,
+              },
+              {
+                stripeCustomerId,
+              },
+              {
+                email,
+              },
+            ],
+          },
+          select: {
+            id: true,
+          },
+        });
+
+      if (existingSubscription) {
+        await prisma.subscription.update({
+          where: {
+            id: existingSubscription.id,
+          },
+          data: subscriptionData,
+        });
+      } else {
+        await prisma.subscription.create({
+          data: subscriptionData,
+        });
+      }
+    };
+
+    try {
+      switch (event.type) {
+        case "checkout.session.completed": {
+          const session = event.data.object;
+
+          const stripeSubscriptionId =
+            typeof session?.subscription === "string"
+              ? session.subscription
+              : String(session?.subscription?.id || "").trim();
+
+          if (!stripeSubscriptionId) {
+            console.warn(
+              "⚠️ Stripe checkout session completed without a subscription ID"
+            );
+            break;
+          }
+
+          const subscription =
+            await stripe.subscriptions.retrieve(
+              stripeSubscriptionId
+            );
+
+          await syncStripeSubscription(
+            subscription,
+            session?.customer_details?.email ||
+              session?.customer_email ||
+              ""
+          );
+
+          break;
+        }
+
+        case "customer.subscription.created":
+        case "customer.subscription.updated":
+        case "customer.subscription.deleted": {
+          await syncStripeSubscription(event.data.object);
+          break;
+        }
+
+        default:
+          console.log(
+            "ℹ️ Stripe webhook event ignored:",
+            event.type
+          );
+      }
+    } catch (error) {
+      console.error(
+        "❌ Stripe webhook processing failed:",
+        error?.message || error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: "Stripe webhook processing failed",
+      });
+    }
+
     return res.status(200).json({
       received: true,
     });
