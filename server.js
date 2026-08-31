@@ -6,6 +6,11 @@ import nodemailer from "nodemailer";
 import crypto from "crypto";
 import { prisma } from "./prisma/client.js";
 import escapeHtml from "escape-html";
+import Stripe from "stripe";
+
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY)
+  : null;
 
 const ADMIN_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -3968,6 +3973,75 @@ function buildJournalistRejectionEmailHtml(bodyText) {
 </html>
   `;
 }
+
+// ============================================================
+// STRIPE WEBHOOK
+// IMPORTANT: Must remain above app.use(express.json()) so Stripe
+// signature verification receives the original raw request body.
+// ============================================================
+
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    if (!stripe) {
+      console.error("❌ Stripe is not configured");
+      return res.status(503).json({
+        success: false,
+        error: "Stripe is not configured",
+      });
+    }
+
+    const webhookSecret = String(
+      process.env.STRIPE_WEBHOOK_SECRET || ""
+    ).trim();
+
+    if (!webhookSecret) {
+      console.error("❌ STRIPE_WEBHOOK_SECRET is not configured");
+      return res.status(503).json({
+        success: false,
+        error: "Stripe webhook is not configured",
+      });
+    }
+
+    const signature = req.get("stripe-signature");
+
+    if (!signature) {
+      console.warn("⚠️ Stripe webhook missing signature");
+      return res.status(400).json({
+        success: false,
+        error: "Missing Stripe signature",
+      });
+    }
+
+    let event;
+
+    try {
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        signature,
+        webhookSecret
+      );
+    } catch (error) {
+      console.warn(
+        "⚠️ Stripe webhook signature verification failed:",
+        error?.message || error
+      );
+
+      return res.status(400).json({
+        success: false,
+        error: "Invalid Stripe webhook signature",
+      });
+    }
+
+    console.log("📩 STRIPE WEBHOOK HIT:", event.type);
+
+    return res.status(200).json({
+      received: true,
+    });
+  }
+);
+
 
 app.use(express.json());
 
