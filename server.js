@@ -2773,7 +2773,35 @@ if (requestId) {
       );
   }
 
-     if (connectedZoomEmail !== organizerEmail) {
+  const normalizeZoomIdentityEmail = (email) => {
+  const normalized = String(email || "")
+    .trim()
+    .toLowerCase();
+
+  const atIndex = normalized.lastIndexOf("@");
+
+  if (atIndex <= 0) {
+    return normalized;
+  }
+
+  const localPart = normalized.slice(0, atIndex);
+  const domainPart = normalized.slice(atIndex + 1);
+
+  if (domainPart === "gmail.com" || domainPart === "googlemail.com") {
+    const baseLocalPart = localPart.split("+")[0];
+
+    return `${baseLocalPart}@gmail.com`;
+  }
+
+  return normalized;
+};
+
+const zoomEmailMatchesOrganizer =
+  normalizeZoomIdentityEmail(connectedZoomEmail) ===
+  normalizeZoomIdentityEmail(organizerEmail);
+
+if (!zoomEmailMatchesOrganizer) {
+  
   const safeExpectedZoomEmail =
     escapeHtml(organizerEmail);
 
