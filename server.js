@@ -9946,6 +9946,13 @@ app.post(
         }
       }
 
+      const isActiveSubscriber =
+  await isActiveSubscriberEmail(organizerEmail);
+
+const initialRequestStatus = isActiveSubscriber
+  ? "APPROVED"
+  : "PENDING";
+      
       const request =
         await prisma.courtStudyRequest.create({
           data: {
@@ -9994,10 +10001,42 @@ app.post(
               cleanText(body.notes) || null,
 
             // This is the new streamlined branch.
-            status: "APPROVED",
+            status: initialRequestStatus,
           },
         });
 
+      if (!isActiveSubscriber) {
+  const confirmationEmailSent =
+    await sendCourtStudyRequestReceivedEmail({
+      organizerName,
+      organizerEmail,
+      hostGroupName,
+      hostGroupType,
+      studyFocusType,
+      preferredStart,
+      timezone,
+      sessionFormat,
+      meetingFormat: "COMMUNITY_HOSTED",
+      estimatedAttendance,
+      selectedRulesSections,
+      requestId: request.id,
+    });
+
+  return res.status(201).json({
+    success: true,
+    streamlined: false,
+    message:
+      "Court Study request submitted successfully and is pending administrative review.",
+    confirmationEmailSent,
+    request: {
+      id: request.id,
+      status: request.status,
+      meetingFormat: request.meetingFormat,
+      sessionFormat: request.sessionFormat,
+    },
+  });
+}
+      
       console.log(
         "✅ STREAMLINED COURT STUDY REQUEST CREATED:",
         request.id,
