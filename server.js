@@ -12,6 +12,10 @@ const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
   : null;
 
+const emetsaysStripe = process.env.EMETSAYS_STRIPE_SECRET_KEY
+  ? new Stripe(process.env.EMETSAYS_STRIPE_SECRET_KEY)
+  : null;
+
 const ADMIN_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 function createAdminSessionToken() {
