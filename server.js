@@ -10339,11 +10339,48 @@ const initialRequestStatus = isActiveSubscriber
       requestId: request.id,
     });
 
+  if (!emetsaysStripe) {
+    console.error(
+      "EMETSAYS_STRIPE_SECRET_KEY is not configured for non-subscriber Court Study checkout."
+    );
+
+    return res.status(500).json({
+      success: false,
+      error: "Court Study payment checkout is temporarily unavailable.",
+    });
+  }
+
+  const checkoutSession =
+    await emetsaysStripe.checkout.sessions.create({
+      mode: "payment",
+      line_items: [
+        {
+          price: "price_1UAzCFEbfPOQenqUq5BIPlSI",
+          quantity: 1,
+        },
+      ],
+      customer_email: organizerEmail,
+      client_reference_id: request.id,
+      metadata: {
+        courtStudyRequestId: request.id,
+        paymentPurpose: "COURT_STUDY_NON_SUBSCRIBER",
+      },
+      success_url:
+        `https://www.courtofcompassion.com/court-study/payment-success` +
+        `?requestId=${encodeURIComponent(request.id)}` +
+        `&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url:
+        `https://www.courtofcompassion.com/court-study/payment-cancelled` +
+        `?requestId=${encodeURIComponent(request.id)}`,
+    });
+
   return res.status(201).json({
     success: true,
     streamlined: false,
+    paymentRequired: true,
+    checkoutUrl: checkoutSession.url,
     message:
-      "Court Study request submitted successfully and is pending administrative review.",
+      "Court Study request created. Payment is required to continue.",
     confirmationEmailSent,
     request: {
       id: request.id,
