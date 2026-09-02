@@ -4285,6 +4285,258 @@ app.post(
   }
 );
 
+// ============================================================
+// EMETSAYS STRIPE WEBHOOK
+// One-time non-subscriber Court Study payments.
+//
+// IMPORTANT: Must remain above app.use(express.json()) so Stripe
+// signature verification receives the original raw request body.
+// ============================================================
+
+app.post(
+  "/api/emetsays/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    if (!emetsaysStripe) {
+      console.error("❌ EmetSays Stripe is not configured");
+
+      return res.status(503).json({
+        success: false,
+        error: "EmetSays Stripe is not configured",
+      });
+    }
+
+    const webhookSecret = String(
+      process.env.EMETSAYS_STRIPE_WEBHOOK_SECRET || ""
+    ).trim();
+
+    if (!webhookSecret) {
+      console.error(
+        "❌ EMETSAYS_STRIPE_WEBHOOK_SECRET is not configured"
+      );
+
+      return res.status(503).json({
+        success: false,
+        error: "EmetSays Stripe webhook is not configured",
+      });
+    }
+
+    const signature = req.get("stripe-signature");
+
+    if (!signature) {
+      console.warn(
+        "⚠️ EmetSays Stripe webhook missing signature"
+      );
+
+      return res.status(400).json({
+        success: false,
+        error: "Missing Stripe signature",
+      });
+    }
+
+    let event;
+
+    try {
+      event = emetsaysStripe.webhooks.constructEvent(
+        req.body,
+        signature,
+        webhookSecret
+      );
+    } catch (error) {
+      console.warn(
+        "⚠️ EmetSays Stripe webhook signature verification failed:",
+        error?.message || error
+      );
+
+      return res.status(400).json({
+        success: false,
+        error: "Invalid Stripe webhook signature",
+      });
+    }
+
+    console.log(
+      "📩 EMETSAYS STRIPE WEBHOOK HIT:",
+      event.type
+    );
+
+    try {
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object;
+
+        const paymentPurpose = String(
+          session?.metadata?.paymentPurpose || ""
+        ).trim();
+
+        if (
+          paymentPurpose !== "COURT_STUDY_NON_SUBSCRIBER"
+        ) {
+          console.log(
+            "ℹ️ EmetSays checkout ignored because paymentPurpose does not match:",
+            paymentPurpose || "(missing)"
+          );
+
+          return res.status(200).json({
+            received: true,
+            ignored: true,
+          });
+        }
+
+        if (
+          String(session?.payment_status || "")
+            .trim()
+            .toLowerCase() !== "paid"
+        ) {
+          console.log(
+            "ℹ️ EmetSays Court Study checkout completed but payment is not yet paid:",
+            session?.id,
+            session?.payment_status
+          );
+
+          return res.status(200).json({
+            received: true,
+            paymentConfirmed: false,
+          });
+        }
+
+        const requestId = String(
+          session?.metadata?.courtStudyRequestId ||
+          session?.client_reference_id ||
+          ""
+        ).trim();
+
+        if (!requestId) {
+          throw new Error(
+            "Paid EmetSays Court Study checkout is missing courtStudyRequestId."
+          );
+        }
+
+        const existingRequest =
+          await prisma.courtStudyRequest.findUnique({
+            where: {
+              id: requestId,
+            },
+          });
+
+        if (!existingRequest) {
+          throw new Error(
+            `Court Study request not found for paid checkout: ${requestId}`
+          );
+        }
+
+        const existingStatus = String(
+          existingRequest.status || ""
+        )
+          .trim()
+          .toUpperCase();
+
+        if (existingStatus !== "PENDING") {
+          console.log(
+            "ℹ️ Paid Court Study request already processed or no longer pending:",
+            requestId,
+            existingStatus
+          );
+
+          return res.status(200).json({
+            received: true,
+            paymentConfirmed: true,
+            requestId,
+            status: existingStatus,
+            alreadyProcessed: true,
+          });
+        }
+
+        const meetingFormat = String(
+          existingRequest.meetingFormat || ""
+        )
+          .trim()
+          .toUpperCase();
+
+        if (meetingFormat !== "COMMUNITY_HOSTED") {
+          throw new Error(
+            `Paid non-subscriber Court Study request ${requestId} is not COMMUNITY_HOSTED.`
+          );
+        }
+
+        const updatedRequest =
+          await prisma.courtStudyRequest.update({
+            where: {
+              id: requestId,
+            },
+            data: {
+              status: "APPROVED",
+            },
+          });
+
+        let zoomConnectionEmailSent = false;
+        let zoomConnectionEmailError = null;
+
+        try {
+          await sendCommunityHostedZoomApprovalEmail({
+            requestId,
+            organizerName:
+              existingRequest.organizerName ||
+              existingRequest.pastorName ||
+              "",
+            organizerEmail:
+              existingRequest.organizerEmail ||
+              existingRequest.pastorEmail ||
+              "",
+            hostGroupName:
+              existingRequest.hostGroupName ||
+              existingRequest.churchName ||
+              "",
+            preferredStart:
+              existingRequest.preferredStart,
+            timezone:
+              existingRequest.timezone,
+          });
+
+          zoomConnectionEmailSent = true;
+        } catch (emailError) {
+          zoomConnectionEmailError = String(
+            emailError?.message || emailError
+          );
+
+          console.error(
+            "❌ PAID COURT STUDY ZOOM APPROVAL EMAIL FAILED:",
+            requestId,
+            emailError
+          );
+        }
+
+        console.log(
+          "✅ EMETSAYS COURT STUDY PAYMENT CONFIRMED:",
+          requestId,
+          session.id
+        );
+
+        return res.status(200).json({
+          received: true,
+          paymentConfirmed: true,
+          requestId,
+          status: updatedRequest.status,
+          zoomConnectionEmailSent,
+          zoomConnectionEmailError,
+        });
+      }
+
+      return res.status(200).json({
+        received: true,
+        ignored: true,
+      });
+    } catch (error) {
+      console.error(
+        "❌ EMETSAYS STRIPE WEBHOOK PROCESSING FAILED:",
+        error?.message || error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: "EmetSays Stripe webhook processing failed",
+      });
+    }
+  }
+);
 
 app.use(express.json());
 
