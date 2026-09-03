@@ -4541,6 +4541,143 @@ app.post(
 app.use(express.json());
 
 // ============================================================
+// EMETSAYS COURT STUDY PAYMENT STATUS
+// Read-only confirmation used by the payment-success page.
+// Validates the Stripe Checkout Session against the request ID
+// before returning any Court Study status information.
+// ============================================================
+
+app.get(
+  "/api/emetsays/stripe/court-study-payment-status",
+  async (req, res) => {
+    if (!emetsaysStripe) {
+      return res.status(503).json({
+        success: false,
+        error: "EmetSays Stripe is not configured",
+      });
+    }
+
+    const requestId = String(
+      req.query.requestId || ""
+    ).trim();
+
+    const sessionId = String(
+      req.query.session_id || ""
+    ).trim();
+
+    if (!requestId || !sessionId) {
+      return res.status(400).json({
+        success: false,
+        error: "requestId and session_id are required",
+      });
+    }
+
+    try {
+      const session =
+        await emetsaysStripe.checkout.sessions.retrieve(
+          sessionId
+        );
+
+      const paymentPurpose = String(
+        session?.metadata?.paymentPurpose || ""
+      ).trim();
+
+      const sessionRequestId = String(
+        session?.metadata?.courtStudyRequestId ||
+        session?.client_reference_id ||
+        ""
+      ).trim();
+
+      if (
+        paymentPurpose !== "COURT_STUDY_NON_SUBSCRIBER" ||
+        sessionRequestId !== requestId
+      ) {
+        return res.status(403).json({
+          success: false,
+          error:
+            "This Stripe Checkout Session does not match this Court Study request.",
+        });
+      }
+
+      const paymentConfirmed =
+        String(session?.payment_status || "")
+          .trim()
+          .toLowerCase() === "paid";
+
+      if (!paymentConfirmed) {
+        return res.status(200).json({
+          success: true,
+          paymentConfirmed: false,
+          requestId,
+          status: "PENDING",
+          zoomReady: false,
+          zoomAuthorizationPath: null,
+        });
+      }
+
+      const courtStudyRequest =
+        await prisma.courtStudyRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+          select: {
+            id: true,
+            status: true,
+            meetingFormat: true,
+          },
+        });
+
+      if (!courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error: "Court Study request not found",
+        });
+      }
+
+      const requestStatus = String(
+        courtStudyRequest.status || ""
+      )
+        .trim()
+        .toUpperCase();
+
+      const meetingFormat = String(
+        courtStudyRequest.meetingFormat || ""
+      )
+        .trim()
+        .toUpperCase();
+
+      const zoomReady =
+        requestStatus === "APPROVED" &&
+        meetingFormat === "COMMUNITY_HOSTED";
+
+      return res.status(200).json({
+        success: true,
+        paymentConfirmed: true,
+        requestId,
+        status: requestStatus,
+        zoomReady,
+        zoomAuthorizationPath: zoomReady
+          ? `/court-study/zoom/authorize-organizer/${encodeURIComponent(
+              requestId
+            )}`
+          : null,
+      });
+    } catch (error) {
+      console.error(
+        "❌ EMETSAYS COURT STUDY PAYMENT STATUS CHECK FAILED:",
+        error?.message || error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "Unable to confirm the Court Study payment status",
+      });
+    }
+  }
+);
+
+// ============================================================
 // MYZOOM AUTHENTICATION API
 // ============================================================
 
