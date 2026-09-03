@@ -10607,7 +10607,7 @@ const initialRequestStatus = isActiveSubscriber
       mode: "payment",
       line_items: [
         {
-          price: "price_1UAzCFEbfPOQenqUq5BIPlSI",
+        price: "price_1UBOLoEbfPOQenqUMtXUsUZA",  
           quantity: 1,
         },
       ],
