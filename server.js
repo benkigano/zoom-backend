@@ -4877,6 +4877,297 @@ app.get(
 );
 
 // ============================================================
+// COURT STUDY PAYMENT CONTINUATION STATUS
+// Public minimal status used by the durable email return page.
+// Requires the request-specific signed continuation token.
+// ============================================================
+
+app.get(
+  "/api/court-study/continuation-status",
+  async (req, res) => {
+    try {
+      const requestId = String(
+        req.query.requestId || ""
+      ).trim();
+
+      const continuationToken = String(
+        req.query.token || ""
+      ).trim();
+
+      if (!requestId || !continuationToken) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "requestId and continuation token are required",
+        });
+      }
+
+      if (
+        !verifyCourtStudyContinuationToken(
+          requestId,
+          continuationToken
+        )
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: "Invalid Court Study continuation link",
+        });
+      }
+
+      const courtStudyRequest =
+        await prisma.courtStudyRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+          select: {
+            id: true,
+            status: true,
+            meetingFormat: true,
+            organizerEmail: true,
+            pastorEmail: true,
+          },
+        });
+
+      if (!courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error: "Court Study request not found",
+        });
+      }
+
+      const status = String(
+        courtStudyRequest.status || ""
+      )
+        .trim()
+        .toUpperCase();
+
+      const meetingFormat = String(
+        courtStudyRequest.meetingFormat || ""
+      )
+        .trim()
+        .toUpperCase();
+
+      const organizerEmail = String(
+        courtStudyRequest.organizerEmail ||
+          courtStudyRequest.pastorEmail ||
+          ""
+      )
+        .trim()
+        .toLowerCase();
+
+      const activeSubscriber = organizerEmail
+        ? await isActiveSubscriberEmail(
+            organizerEmail
+          )
+        : false;
+
+      const paymentChoiceAvailable =
+        status === "PENDING" &&
+        meetingFormat === "COMMUNITY_HOSTED" &&
+        !activeSubscriber;
+
+      const zoomReady =
+        status === "APPROVED" &&
+        meetingFormat === "COMMUNITY_HOSTED";
+
+      return res.status(200).json({
+        success: true,
+        requestId,
+        status,
+        paymentChoiceAvailable,
+        activeSubscriber,
+        zoomReady,
+        zoomAuthorizationPath: zoomReady
+          ? `/court-study/zoom/authorize-organizer/${encodeURIComponent(
+              requestId
+            )}`
+          : null,
+      });
+    } catch (error) {
+      console.error(
+        "❌ COURT STUDY CONTINUATION STATUS FAILED:",
+        error?.message || error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "Unable to retrieve Court Study continuation status",
+      });
+    }
+  }
+);
+
+// ============================================================
+// COURT STUDY ONE-TIME PAYMENT CHECKOUT
+// Creates a fresh Stripe Checkout Session when an organizer
+// returns from the payment-required email.
+// ============================================================
+
+app.post(
+  "/api/court-study/one-time-checkout",
+  async (req, res) => {
+    try {
+      if (!emetsaysStripe) {
+        return res.status(503).json({
+          success: false,
+          error: "EmetSays Stripe is not configured",
+        });
+      }
+
+      const requestId = String(
+        req.body?.requestId || ""
+      ).trim();
+
+      const continuationToken = String(
+        req.body?.token || ""
+      ).trim();
+
+      if (!requestId || !continuationToken) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "requestId and continuation token are required",
+        });
+      }
+
+      if (
+        !verifyCourtStudyContinuationToken(
+          requestId,
+          continuationToken
+        )
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: "Invalid Court Study continuation link",
+        });
+      }
+
+      const courtStudyRequest =
+        await prisma.courtStudyRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+        });
+
+      if (!courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error: "Court Study request not found",
+        });
+      }
+
+      const status = String(
+        courtStudyRequest.status || ""
+      )
+        .trim()
+        .toUpperCase();
+
+      if (status !== "PENDING") {
+        return res.status(409).json({
+          success: false,
+          error:
+            "This Court Study request is no longer awaiting payment.",
+        });
+      }
+
+      const meetingFormat = String(
+        courtStudyRequest.meetingFormat || ""
+      )
+        .trim()
+        .toUpperCase();
+
+      if (meetingFormat !== "COMMUNITY_HOSTED") {
+        return res.status(400).json({
+          success: false,
+          error:
+            "This payment path is only available for community-hosted Court Study requests.",
+        });
+      }
+
+      const organizerEmail = String(
+        courtStudyRequest.organizerEmail ||
+          courtStudyRequest.pastorEmail ||
+          ""
+      )
+        .trim()
+        .toLowerCase();
+
+      if (!organizerEmail) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "This Court Study request does not have an organizer email.",
+        });
+      }
+
+      const activeSubscriber =
+        await isActiveSubscriberEmail(
+          organizerEmail
+        );
+
+      if (activeSubscriber) {
+        return res.status(409).json({
+          success: false,
+          error:
+            "This organizer already has an active subscription.",
+        });
+      }
+
+      const checkoutSession =
+        await emetsaysStripe.checkout.sessions.create({
+          mode: "payment",
+          line_items: [
+            {
+              price:
+                "price_1UBOLoEbfPOQenqUMtXUsUZA",
+              quantity: 1,
+            },
+          ],
+          customer_email: organizerEmail,
+          client_reference_id: requestId,
+          metadata: {
+            courtStudyRequestId: requestId,
+            paymentPurpose:
+              "COURT_STUDY_NON_SUBSCRIBER",
+          },
+          success_url:
+            "https://www.courtofcompassion.com/court-study/payment-success" +
+            `?requestId=${encodeURIComponent(
+              requestId
+            )}` +
+            "&session_id={CHECKOUT_SESSION_ID}",
+          cancel_url:
+            "https://www.courtofcompassion.com/court-study/continue" +
+            `?requestId=${encodeURIComponent(
+              requestId
+            )}` +
+            `&token=${encodeURIComponent(
+              continuationToken
+            )}`,
+        });
+
+      return res.status(201).json({
+        success: true,
+        requestId,
+        checkoutUrl: checkoutSession.url,
+      });
+    } catch (error) {
+      console.error(
+        "❌ COURT STUDY ONE-TIME CHECKOUT FAILED:",
+        error?.message || error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "Unable to start the Court Study payment checkout",
+      });
+    }
+  }
+);
+
+// ============================================================
 // COURT STUDY SUBSCRIPTION CHECKOUT
 // Allows a pending non-subscriber Court Study organizer to
 // choose an existing membership plan and subscribe through Stripe.
@@ -10240,6 +10531,63 @@ if (preferredStart) {
 // Public: submit an inclusive Court Study request
 // ======================================================
 
+function createCourtStudyContinuationToken(requestId) {
+  const normalizedRequestId = String(requestId || "").trim();
+  const secret = String(
+    process.env.ADMIN_SESSION_SECRET || ""
+  ).trim();
+
+  if (!normalizedRequestId) {
+    throw new Error(
+      "Court Study request ID is required for continuation token."
+    );
+  }
+
+  if (!secret) {
+    throw new Error(
+      "ADMIN_SESSION_SECRET is not configured."
+    );
+  }
+
+  return crypto
+    .createHmac("sha256", secret)
+    .update(
+      `court-study-payment-continuation:${normalizedRequestId}`
+    )
+    .digest("hex");
+}
+
+function verifyCourtStudyContinuationToken(
+  requestId,
+  suppliedToken
+) {
+  try {
+    const normalizedRequestId = String(
+      requestId || ""
+    ).trim();
+
+    const normalizedToken = String(
+      suppliedToken || ""
+    ).trim();
+
+    if (!normalizedRequestId || !normalizedToken) {
+      return false;
+    }
+
+    const expectedToken =
+      createCourtStudyContinuationToken(
+        normalizedRequestId
+      );
+
+    return secureStringEquals(
+      normalizedToken,
+      expectedToken
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function sendCourtStudyRequestReceivedEmail({
   organizerName,
   organizerEmail,
@@ -10252,7 +10600,8 @@ async function sendCourtStudyRequestReceivedEmail({
   meetingFormat,
   estimatedAttendance,
   selectedRulesSections,
-  requestId,
+requestId,
+paymentRequired = false,
 }) {
   let confirmationEmailSent = false;
 
@@ -10322,6 +10671,22 @@ async function sendCourtStudyRequestReceivedEmail({
     const readableFormat =
       sessionFormat || meetingFormat || "Not specified";
 
+    const confirmationStatusLabel = paymentRequired
+  ? "PENDING PAYMENT"
+  : "PENDING ADMINISTRATIVE REVIEW";
+
+const confirmationNextStepText = paymentRequired
+  ? "Your Court Study request has been received successfully. To continue, please choose either the one-time Court Study payment or one of the available Court of Compassion subscription plans. Once payment or an active subscription is confirmed, your request can continue through the appropriate approval and Zoom setup process."
+  : "Your request is now pending administrative review. This confirmation acknowledges receipt of the request; it does not yet mean that the request has been approved or scheduled.";
+
+    const continuationUrl = paymentRequired
+  ? `https://www.courtofcompassion.com/court-study/continue?requestId=${encodeURIComponent(
+      requestId
+    )}&token=${encodeURIComponent(
+      createCourtStudyContinuationToken(requestId)
+    )}`
+  : "";
+    
     const confirmationText = [
       `Dear ${organizerName},`,
       "",
@@ -10341,7 +10706,13 @@ async function sendCourtStudyRequestReceivedEmail({
       "Selected Court Study material:",
       selectedMaterialText,
       "",
-      "Your request is now pending administrative review. This confirmation acknowledges receipt of the request; it does not yet mean that the request has been approved or scheduled.",
+     confirmationNextStepText,
+...(paymentRequired
+  ? [
+      "",
+      "Use the Choose How to Continue button in this email to return to your Court Study request.",
+    ]
+  : []), 
       "",
       "Court of Compassion",
     ].join("\n");
@@ -10398,7 +10769,7 @@ async function sendCourtStudyRequestReceivedEmail({
             <tr>
               <td style="padding:28px 32px 12px 32px;">
                 <div style="display:inline-block;background:#eef8f0;border:1px solid #b7dfbf;border-radius:999px;padding:7px 12px;font-size:12px;font-weight:700;color:#176534;">
-                  PENDING ADMINISTRATIVE REVIEW
+                  ${confirmationStatusLabel}
                 </div>
               </td>
             </tr>
@@ -10408,6 +10779,21 @@ async function sendCourtStudyRequestReceivedEmail({
                 ${confirmationHtmlBody}
               </td>
             </tr>
+
+            ${paymentRequired
+  ? `
+    <tr>
+      <td style="padding:4px 32px 28px 32px;text-align:center;">
+        <a
+          href="${continuationUrl}"
+          style="display:inline-block;background:#b38600;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;padding:14px 24px;border-radius:6px;"
+        >
+          Choose How to Continue
+        </a>
+      </td>
+    </tr>
+  `
+  : ""}
 
             <tr>
               <td style="padding:0 32px;">
@@ -11105,8 +11491,9 @@ const initialRequestStatus = isActiveSubscriber
       meetingFormat: "COMMUNITY_HOSTED",
       estimatedAttendance,
       selectedRulesSections,
-      requestId: request.id,
-    });
+requestId: request.id,
+paymentRequired: true,
+});
 
   if (!emetsaysStripe) {
     console.error(
