@@ -4222,6 +4222,140 @@ app.post(
       }
     };
 
+    const releaseCourtStudyForActiveSubscriber = async (
+  courtStudyRequestId
+) => {
+  const requestId = String(
+    courtStudyRequestId || ""
+  ).trim();
+
+  if (!requestId) {
+    return {
+      released: false,
+      reason: "missing_request_id",
+    };
+  }
+
+  const courtStudyRequest =
+    await prisma.courtStudyRequest.findUnique({
+      where: {
+        id: requestId,
+      },
+    });
+
+  if (!courtStudyRequest) {
+    throw new Error(
+      `Court Study request not found for subscription checkout: ${requestId}`
+    );
+  }
+
+  const existingRequestStatus = String(
+    courtStudyRequest.status || ""
+  )
+    .trim()
+    .toUpperCase();
+
+  if (existingRequestStatus !== "PENDING") {
+    return {
+      released: false,
+      reason: "request_not_pending",
+      status: existingRequestStatus,
+    };
+  }
+
+  const meetingFormat = String(
+    courtStudyRequest.meetingFormat || ""
+  )
+    .trim()
+    .toUpperCase();
+
+  if (meetingFormat !== "COMMUNITY_HOSTED") {
+    throw new Error(
+      `Court Study subscription request ${requestId} is not COMMUNITY_HOSTED.`
+    );
+  }
+
+  const organizerEmail = String(
+    courtStudyRequest.organizerEmail ||
+      courtStudyRequest.pastorEmail ||
+      ""
+  )
+    .trim()
+    .toLowerCase();
+
+  if (!organizerEmail) {
+    throw new Error(
+      `Court Study request ${requestId} does not have an organizer email.`
+    );
+  }
+
+  const isActiveSubscriber =
+    await isActiveSubscriberEmail(
+      organizerEmail
+    );
+
+  if (!isActiveSubscriber) {
+    return {
+      released: false,
+      reason: "subscription_not_active",
+    };
+  }
+
+  const updatedRequest =
+    await prisma.courtStudyRequest.update({
+      where: {
+        id: requestId,
+      },
+      data: {
+        status: "APPROVED",
+      },
+    });
+
+  let zoomConnectionEmailSent = false;
+  let zoomConnectionEmailError = null;
+
+  try {
+    await sendCommunityHostedZoomApprovalEmail({
+      requestId,
+      organizerName:
+        courtStudyRequest.organizerName ||
+        courtStudyRequest.pastorName ||
+        "",
+      organizerEmail:
+        courtStudyRequest.organizerEmail ||
+        courtStudyRequest.pastorEmail ||
+        "",
+      hostGroupName:
+        courtStudyRequest.hostGroupName ||
+        courtStudyRequest.churchName ||
+        "",
+      preferredStart:
+        courtStudyRequest.preferredStart,
+      timezone:
+        courtStudyRequest.timezone,
+    });
+
+    zoomConnectionEmailSent = true;
+  } catch (emailError) {
+    zoomConnectionEmailError = String(
+      emailError?.message || emailError
+    );
+
+    console.error(
+      "❌ SUBSCRIBER COURT STUDY ZOOM APPROVAL EMAIL FAILED:",
+      requestId,
+      emailError
+    );
+  }
+
+  return {
+    released: true,
+    status: updatedRequest.status,
+    zoomConnectionEmailSent,
+    zoomConnectionEmailError,
+  };
+};
+    
     try {
       switch (event.type) {
         case "checkout.session.completed": {
@@ -4251,15 +4385,80 @@ app.post(
               ""
           );
 
+                    const paymentPurpose = String(
+            session?.metadata?.paymentPurpose || ""
+          ).trim();
+
+          if (
+            paymentPurpose === "COURT_STUDY_SUBSCRIPTION"
+          ) {
+            const courtStudyRequestId = String(
+              session?.metadata?.courtStudyRequestId ||
+                session?.client_reference_id ||
+                ""
+            ).trim();
+
+            if (!courtStudyRequestId) {
+              throw new Error(
+                "Court Study subscription checkout is missing courtStudyRequestId."
+              );
+            }
+
+       const releaseResult =
+  await releaseCourtStudyForActiveSubscriber(
+    courtStudyRequestId
+  );
+
+console.log(
+  "ℹ️ COURT STUDY SUBSCRIPTION CHECKOUT RELEASE RESULT:",
+  courtStudyRequestId,
+  releaseResult
+);
+            
+          }
+
           break;
+          
         }
 
-        case "customer.subscription.created":
-        case "customer.subscription.updated":
-        case "customer.subscription.deleted": {
-          await syncStripeSubscription(event.data.object);
-          break;
-        }
+     case "customer.subscription.created":
+case "customer.subscription.updated": {
+  const subscription = event.data.object;
+
+  await syncStripeSubscription(subscription);
+
+  const paymentPurpose = String(
+    subscription?.metadata?.paymentPurpose || ""
+  ).trim();
+
+  const courtStudyRequestId = String(
+    subscription?.metadata?.courtStudyRequestId || ""
+  ).trim();
+
+  if (
+    paymentPurpose === "COURT_STUDY_SUBSCRIPTION" &&
+    courtStudyRequestId
+  ) {
+    const releaseResult =
+      await releaseCourtStudyForActiveSubscriber(
+        courtStudyRequestId
+      );
+
+    console.log(
+      "ℹ️ COURT STUDY SUBSCRIPTION EVENT RELEASE RESULT:",
+      courtStudyRequestId,
+      event.type,
+      releaseResult
+    );
+  }
+
+  break;
+}
+
+case "customer.subscription.deleted": {
+  await syncStripeSubscription(event.data.object);
+  break;
+}   
 
         default:
           console.log(
@@ -4672,6 +4871,187 @@ app.get(
         success: false,
         error:
           "Unable to confirm the Court Study payment status",
+      });
+    }
+  }
+);
+
+// ============================================================
+// COURT STUDY SUBSCRIPTION CHECKOUT
+// Allows a pending non-subscriber Court Study organizer to
+// choose an existing membership plan and subscribe through Stripe.
+// ============================================================
+
+app.post(
+  "/api/court-study/subscription-checkout",
+  async (req, res) => {
+    try {
+      if (!stripe) {
+        return res.status(503).json({
+          success: false,
+          error: "Subscription checkout is temporarily unavailable.",
+        });
+      }
+
+      const requestId = String(
+        req.body?.requestId || ""
+      ).trim();
+
+      const rawRequestedPlan = String(
+  req.body?.plan || ""
+)
+  .trim()
+  .toUpperCase();
+
+const requestedPlan =
+  rawRequestedPlan === "CHURCH"
+    ? "CHURCH_INDIVIDUAL"
+    : rawRequestedPlan === "CHURCH GROUP"
+    ? "CHURCH_GROUP"
+    : rawRequestedPlan;
+
+      if (!requestId) {
+        return res.status(400).json({
+          success: false,
+          error: "Court Study request ID is required.",
+        });
+      }
+
+      const priceByPlan = {
+        BASIC: String(
+          process.env.STRIPE_PRICE_BASIC || ""
+        ).trim(),
+
+        CHURCH_INDIVIDUAL: String(
+          process.env.STRIPE_PRICE_CHURCH_INDIVIDUAL || ""
+        ).trim(),
+
+        CHURCH_GROUP: String(
+          process.env.STRIPE_PRICE_CHURCH_GROUP || ""
+        ).trim(),
+      };
+
+      const stripePriceId = priceByPlan[requestedPlan];
+
+      if (!stripePriceId) {
+        return res.status(400).json({
+          success: false,
+          error: "A valid subscription plan is required.",
+        });
+      }
+
+      const courtStudyRequest =
+        await prisma.courtStudyRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+        });
+
+      if (!courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error: "Court Study request not found.",
+        });
+      }
+
+      const requestStatus = String(
+        courtStudyRequest.status || ""
+      )
+        .trim()
+        .toUpperCase();
+
+      if (requestStatus !== "PENDING") {
+        return res.status(409).json({
+          success: false,
+          error:
+            "This Court Study request is no longer awaiting subscriber qualification.",
+        });
+      }
+
+      const meetingFormat = String(
+        courtStudyRequest.meetingFormat || ""
+      )
+        .trim()
+        .toUpperCase();
+
+      if (meetingFormat !== "COMMUNITY_HOSTED") {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Subscription checkout is only available for community-hosted Court Study requests.",
+        });
+      }
+
+      const organizerEmail = String(
+        courtStudyRequest.organizerEmail ||
+        courtStudyRequest.pastorEmail ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+
+      if (!organizerEmail) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "This Court Study request does not have an organizer email.",
+        });
+      }
+
+      const checkoutSession =
+        await stripe.checkout.sessions.create({
+          mode: "subscription",
+
+          line_items: [
+            {
+              price: stripePriceId,
+              quantity: 1,
+            },
+          ],
+
+          customer_email: organizerEmail,
+          client_reference_id: requestId,
+
+          metadata: {
+            courtStudyRequestId: requestId,
+            paymentPurpose: "COURT_STUDY_SUBSCRIPTION",
+            subscriptionPlan: requestedPlan,
+          },
+
+          subscription_data: {
+            metadata: {
+              courtStudyRequestId: requestId,
+              paymentPurpose: "COURT_STUDY_SUBSCRIPTION",
+              subscriptionPlan: requestedPlan,
+            },
+          },
+
+          success_url:
+            `https://www.courtofcompassion.com/court-study/subscription-success` +
+            `?requestId=${encodeURIComponent(requestId)}` +
+            `&session_id={CHECKOUT_SESSION_ID}`,
+
+          cancel_url:
+            `https://www.courtofcompassion.com/court-study/subscription-cancelled` +
+            `?requestId=${encodeURIComponent(requestId)}`,
+        });
+
+      return res.status(201).json({
+        success: true,
+        requestId,
+        plan: requestedPlan,
+        checkoutUrl: checkoutSession.url,
+      });
+    } catch (error) {
+      console.error(
+        "❌ COURT STUDY SUBSCRIPTION CHECKOUT FAILED:",
+        error?.message || error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "Unable to start Court Study subscription checkout.",
       });
     }
   }
