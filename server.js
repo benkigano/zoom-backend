@@ -12952,6 +12952,11 @@ app.get(
         meeting.zoomRegistrationUrl || ""
       ).trim();
 
+       const joinUrl = String(
+  meeting.zoomJoinUrl || ""
+).trim();
+
+      
       const timezone =
         meeting.timezone ||
         courtStudyRequest.timezone ||
@@ -12959,6 +12964,14 @@ app.get(
 
       const scheduledStart = new Date(meeting.scheduledStart);
 
+      const joinWindowOpensAt = new Date(
+  scheduledStart.getTime() - 15 * 60 * 1000
+);
+
+const canJoinNow =
+  Boolean(joinUrl || registrationUrl) &&
+  Date.now() >= joinWindowOpensAt.getTime();
+      
       const formattedDateTime =
         new Intl.DateTimeFormat("en-US", {
           timeZone: timezone,
@@ -13046,6 +13059,11 @@ app.get(
           materialTitle,
           studyType: isRulesStudy ? "RULES" : "INTERVIEW",
           readableSessionTime,
+          scheduledStart: scheduledStart.toISOString(),
+          joinWindowOpensAt: joinWindowOpensAt.toISOString(),
+          joinUrl: joinUrl || null,
+          usesZoomRegistration: Boolean(registrationUrl),
+          canJoinNow,
           recordingUrl,
           podcastUrl: podcastUrl || null,
           registrationUrl,
