@@ -13189,15 +13189,25 @@ app.post(
         : String(recording?.recordingUrl || "").trim();
 
       const registrationUrl = String(
-        meeting.zoomRegistrationUrl || ""
-      ).trim();
+  meeting.zoomRegistrationUrl || ""
+).trim();
 
-      if (!registrationUrl) {
-        return res.status(400).json({
-          success: false,
-          error: "The Court Study registration link is unavailable",
-        });
-      }
+const joinUrl = String(
+  meeting.zoomJoinUrl || ""
+).trim();
+
+const usesZoomRegistration = Boolean(registrationUrl);
+
+const participantZoomUrl = usesZoomRegistration
+  ? registrationUrl
+  : joinUrl;
+
+if (!participantZoomUrl) {
+  return res.status(400).json({
+    success: false,
+    error: "The Court Study Zoom link is unavailable",
+  });
+}
 
       const timezone =
         meeting.timezone ||
