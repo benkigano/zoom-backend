@@ -8055,6 +8055,9 @@ if (Buffer.isBuffer(req.body)) {
             email,
             registrationStatus:
               registrant.status || "approved",
+            joinUrl: registrant.join_url
+  ? String(registrant.join_url)
+  : null,
             lastEventType: body.event,
             registeredAt,
             canceledAt: null,
@@ -8075,6 +8078,9 @@ if (Buffer.isBuffer(req.body)) {
             email,
             registrationStatus:
               registrant.status || "approved",
+            joinUrl: registrant.join_url
+  ? String(registrant.join_url)
+  : null,
             lastEventType: body.event,
             registeredAt,
           },
