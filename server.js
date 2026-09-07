@@ -13449,7 +13449,7 @@ if (!participantZoomUrl) {
                           <a
                             href="${usesZoomRegistration
   ? safeParticipantZoomUrl
-  : `https://www.courtofcompassion.com/court-study/waiting?token=${encodeURIComponent(token)}`}"
+  : `https://courtofcompassion.com/court-study/waiting?token=${encodeURIComponent(token)}`}"
                             target="_blank"
                             rel="noopener noreferrer"
                             style="
