@@ -473,6 +473,7 @@ model ZoomRegistrant {
   lastName             String?
   email                String
   registrationStatus   String?
+  joinUrl String?
   lastEventType        String   @default("meeting.registration_created")
   registeredAt         DateTime @default(now())
   canceledAt           DateTime?
