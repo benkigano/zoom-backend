@@ -13447,7 +13447,9 @@ if (!participantZoomUrl) {
 
                         <p style="margin:0 0 20px 0;">
                           <a
-                            href="${safeParticipantZoomUrl}"
+                            href="${usesZoomRegistration
+  ? safeParticipantZoomUrl
+  : `https://www.courtofcompassion.com/court-study/waiting?token=${encodeURIComponent(token)}`}"
                             target="_blank"
                             rel="noopener noreferrer"
                             style="
