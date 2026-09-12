@@ -16,6 +16,10 @@ const emetsaysStripe = process.env.EMETSAYS_STRIPE_SECRET_KEY
   ? new Stripe(process.env.EMETSAYS_STRIPE_SECRET_KEY)
   : null;
 
+const courtStudyOneTimePriceId = String(
+  process.env.STRIPE_PRICE_COURT_STUDY_ONE_TIME || ""
+).trim();
+
 const ADMIN_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 function createAdminSessionToken() {
@@ -4361,6 +4365,139 @@ app.post(
         case "checkout.session.completed": {
           const session = event.data.object;
 
+          const checkoutPaymentPurpose = String(
+            session?.metadata?.paymentPurpose || ""
+          ).trim();
+
+          if (
+            checkoutPaymentPurpose === "COURT_STUDY_NON_SUBSCRIBER"
+          ) {
+            if (
+              String(session?.payment_status || "")
+                .trim()
+                .toLowerCase() !== "paid"
+            ) {
+              console.log(
+                "ℹ️ Court Study checkout completed but payment is not yet paid:",
+                session?.id,
+                session?.payment_status
+              );
+              break;
+            }
+
+            const requestId = String(
+              session?.metadata?.courtStudyRequestId ||
+                session?.client_reference_id ||
+                ""
+            ).trim();
+
+            if (!requestId) {
+              throw new Error(
+                "Paid Court Study checkout is missing courtStudyRequestId."
+              );
+            }
+
+            const existingRequest =
+              await prisma.courtStudyRequest.findUnique({
+                where: {
+                  id: requestId,
+                },
+              });
+
+            if (!existingRequest) {
+              throw new Error(
+                `Court Study request not found for paid checkout: ${requestId}`
+              );
+            }
+
+            const existingStatus = String(
+              existingRequest.status || ""
+            )
+              .trim()
+              .toUpperCase();
+
+            if (existingStatus !== "PENDING") {
+              console.log(
+                "ℹ️ Paid Court Study request already processed or no longer pending:",
+                requestId,
+                existingStatus
+              );
+              break;
+            }
+
+            const meetingFormat = String(
+              existingRequest.meetingFormat || ""
+            )
+              .trim()
+              .toUpperCase();
+
+            if (meetingFormat !== "COMMUNITY_HOSTED") {
+              throw new Error(
+                `Paid non-subscriber Court Study request ${requestId} is not COMMUNITY_HOSTED.`
+              );
+            }
+
+            const updatedRequest =
+              await prisma.courtStudyRequest.update({
+                where: {
+                  id: requestId,
+                },
+                data: {
+                  status: "APPROVED",
+                },
+              });
+
+            let zoomConnectionEmailSent = false;
+            let zoomConnectionEmailError = null;
+
+            try {
+              await sendCommunityHostedZoomApprovalEmail({
+                requestId,
+                organizerName:
+                  existingRequest.organizerName ||
+                  existingRequest.pastorName ||
+                  "",
+                organizerEmail:
+                  existingRequest.organizerEmail ||
+                  existingRequest.pastorEmail ||
+                  "",
+                hostGroupName:
+                  existingRequest.hostGroupName ||
+                  existingRequest.churchName ||
+                  "",
+                preferredStart:
+                  existingRequest.preferredStart,
+                timezone:
+                  existingRequest.timezone,
+              });
+
+              zoomConnectionEmailSent = true;
+            } catch (emailError) {
+              zoomConnectionEmailError = String(
+                emailError?.message || emailError
+              );
+
+              console.error(
+                "❌ PAID COURT STUDY ZOOM APPROVAL EMAIL FAILED:",
+                requestId,
+                emailError
+              );
+            }
+
+            console.log(
+              "✅ COURT STRIPE COURT STUDY PAYMENT CONFIRMED:",
+              requestId,
+              session.id,
+              updatedRequest.status,
+              {
+                zoomConnectionEmailSent,
+                zoomConnectionEmailError,
+              }
+            );
+
+            break;
+          }
+          
           const stripeSubscriptionId =
             typeof session?.subscription === "string"
               ? session.subscription
@@ -4749,10 +4886,10 @@ app.use(express.json());
 app.get(
   "/api/emetsays/stripe/court-study-payment-status",
   async (req, res) => {
-    if (!emetsaysStripe) {
+    if (!stripe) {
       return res.status(503).json({
         success: false,
-        error: "EmetSays Stripe is not configured",
+      error: "Court Stripe is not configured",  
       });
     }
 
@@ -4773,7 +4910,7 @@ app.get(
 
     try {
       const session =
-        await emetsaysStripe.checkout.sessions.retrieve(
+        await stripe.checkout.sessions.retrieve(
           sessionId
         );
 
@@ -5008,10 +5145,10 @@ app.post(
   "/api/court-study/one-time-checkout",
   async (req, res) => {
     try {
-      if (!emetsaysStripe) {
+      if (!stripe || !courtStudyOneTimePriceId) {
         return res.status(503).json({
           success: false,
-          error: "EmetSays Stripe is not configured",
+          error: "Court Study payment checkout is temporarily unavailable.",
         });
       }
 
@@ -5115,12 +5252,11 @@ app.post(
       }
 
       const checkoutSession =
-        await emetsaysStripe.checkout.sessions.create({
+        await stripe.checkout.sessions.create({
           mode: "payment",
           line_items: [
             {
-              price:
-                "price_1UBOLoEbfPOQenqUMtXUsUZA",
+             price: courtStudyOneTimePriceId,
               quantity: 1,
             },
           ],
@@ -11501,23 +11637,21 @@ requestId: request.id,
 paymentRequired: true,
 });
 
-  if (!emetsaysStripe) {
-    console.error(
-      "EMETSAYS_STRIPE_SECRET_KEY is not configured for non-subscriber Court Study checkout."
-    );
+  if (!stripe || !courtStudyOneTimePriceId) {
+  return res.status(500).json({
+    success: false,
+    error: "Court Study payment checkout is temporarily unavailable.",
+  });
+}
 
-    return res.status(500).json({
-      success: false,
-      error: "Court Study payment checkout is temporarily unavailable.",
-    });
-  }
+    
 
   const checkoutSession =
-    await emetsaysStripe.checkout.sessions.create({
+    await stripe.checkout.sessions.create({
       mode: "payment",
       line_items: [
         {
-        price: "price_1UBOLoEbfPOQenqUMtXUsUZA",  
+          price: courtStudyOneTimePriceId,
           quantity: 1,
         },
       ],
