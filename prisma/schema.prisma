@@ -510,11 +510,7 @@ model CourtStudyParticipant {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  courtStudyMeeting CourtStudyMeeting @relation(
-    fields: [courtStudyMeetingId],
-    references: [id],
-    onDelete: Cascade
-  )
+  courtStudyMeeting CourtStudyMeeting @relation(fields: [courtStudyMeetingId], references: [id], onDelete: Cascade)
 
   @@unique([courtStudyMeetingId, email])
   @@index([courtStudyMeetingId])
