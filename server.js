@@ -13410,32 +13410,35 @@ if (!participantZoomUrl) {
           meeting.title ||
           "Court of Compassion Interview";
 
-      const subject =
-        `Invitation: Court Study — ${materialTitle}`;
+     const subject =
+  `Invitation: Court Study — ${materialTitle}`;
 
-      const plainTextBody = [
-        "Dear Court Study Participant,",
-        "",
-        `You are invited to participate in a Court of Compassion Court Study session hosted by ${hostGroupName}.`,
-        "",
-        `Court Study Material: ${materialTitle}`,
-        `Session: ${readableSessionTime}`,
-        "",
-        ...(recordingUrl
-          ? [
-              "Watch Court Study Video:",
-              recordingUrl,
-              "",
-            ]
-          : []),
-        "Register for Court Study:",
-        registrationUrl,
-        "",
-        "Each participant must register separately. After registration, Zoom will send each registered participant a personal confirmation email and unique join link.",
-        "",
-        "Court of Compassion",
-      ].join("\n");
+const participantRegistrationUrlPlaceholder =
+  "__COURT_STUDY_PARTICIPANT_REGISTRATION_URL__";
 
+const plainTextBody = [
+  "Dear Court Study Participant,",
+  "",
+  `You are invited to participate in a Court of Compassion Court Study session hosted by ${hostGroupName}.`,
+  "",
+  `Court Study Material: ${materialTitle}`,
+  `Session: ${readableSessionTime}`,
+  "",
+  ...(recordingUrl
+    ? [
+        "Watch Court Study Video:",
+        recordingUrl,
+        "",
+      ]
+    : []),
+  "Register for Court Study:",
+  participantRegistrationUrlPlaceholder,
+  "",
+  "Complete the Court registration before entering the meeting. After registration, you will be directed to the appropriate Zoom step for this Court Study.",
+  "",
+  "Court of Compassion",
+].join("\n"); 
+      
       const safeHostGroupName =
         safeEmailHtml(hostGroupName);
 
@@ -13447,10 +13450,7 @@ if (!participantZoomUrl) {
 
       const safeRecordingUrl =
         safeEmailWebUrl(recordingUrl);
-
-      const safeParticipantZoomUrl =
-  safeEmailWebUrl(participantZoomUrl);
-
+      
       const htmlBody = `
         <!doctype html>
         <html lang="en">
@@ -13585,40 +13585,34 @@ if (!participantZoomUrl) {
                             : ""
                         }
 
-                        <p style="margin:0 0 20px 0;">
-                          <a
-                            href="${usesZoomRegistration
-  ? safeParticipantZoomUrl
-  : `https://courtofcompassion.com/court-study/waiting?token=${encodeURIComponent(token)}`}"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style="
-                              display:inline-block;
-                              padding:12px 18px;
-                              background:#8a6500;
-                              color:#ffffff;
-                              text-decoration:none;
-                              border-radius:4px;
-                              font-weight:bold;
-                            "
-                          >
-                            ${usesZoomRegistration
-  ? "Register for Court Study"
-  : "Join the Court Study Session"}
-                          </a>
-                        </p>
+                   <p style="margin:0 0 20px 0;">
+  <a
+    href="${participantRegistrationUrlPlaceholder}"
+    target="_blank"
+    rel="noopener noreferrer"
+    style="
+      display:inline-block;
+      padding:12px 18px;
+      background:#8a6500;
+      color:#ffffff;
+      text-decoration:none;
+      border-radius:4px;
+      font-weight:bold;
+    "
+  >
+    Register for Court Study
+  </a>
+</p>
 
-                        <div style="
-                          padding:13px 14px;
-                          background:#fff7dd;
-                          border-left:4px solid #8a6500;
-                        ">
-                          ${usesZoomRegistration
-  ? `Each participant must register separately.
-     After registration, Zoom will send each registered participant a personal confirmation email and unique join link.`
-  : `This meeting does not use Zoom participant registration.
-     Use the Join the Court Study Session button above to enter the meeting.`}
-                        </div>
+<div style="
+  padding:13px 14px;
+  background:#fff7dd;
+  border-left:4px solid #8a6500;
+">
+  Complete the Court registration before entering the meeting.
+  After registration, you will be directed to the appropriate
+  Zoom step for this Court Study.
+</div>     
 
                       </td>
                     </tr>
@@ -13668,25 +13662,63 @@ if (!participantZoomUrl) {
       const failedEmails = [];
 
       for (const email of emails) {
-        try {
-          await sendEmail(
+  try {
+    const participant =
+      await prisma.courtStudyParticipant.upsert({
+        where: {
+          courtStudyMeetingId_email: {
+            courtStudyMeetingId: meeting.id,
             email,
-            subject,
-            plainTextBody,
-            htmlBody
-          );
+          },
+        },
+        update: {
+          email,
+        },
+        create: {
+          courtStudyMeetingId: meeting.id,
+          email,
+          invitationToken:
+            crypto.randomBytes(32).toString("hex"),
+        },
+      });
 
-          sentCount += 1;
-        } catch (sendErr) {
-          console.error(
-            "Participant invitation send failed:",
-            sendErr
-          );
+    const courtRegistrationUrl =
+      `https://courtofcompassion.com/court-study/participant-register` +
+      `?token=${encodeURIComponent(participant.invitationToken)}`;
 
-          failedEmails.push(email);
-        }
-      }
+    const safeCourtRegistrationUrl =
+      safeEmailWebUrl(courtRegistrationUrl);
 
+    const participantPlainTextBody =
+      plainTextBody.replaceAll(
+        participantRegistrationUrlPlaceholder,
+        courtRegistrationUrl
+      );
+
+    const participantHtmlBody =
+      htmlBody.replaceAll(
+        participantRegistrationUrlPlaceholder,
+        safeCourtRegistrationUrl
+      );
+
+    await sendEmail(
+      email,
+      subject,
+      participantPlainTextBody,
+      participantHtmlBody
+    );
+
+    sentCount += 1;
+  } catch (sendErr) {
+    console.error(
+      "Participant invitation send failed:",
+      sendErr
+    );
+
+    failedEmails.push(email);
+  }
+}
+      
       return res.status(200).json({
         success: failedEmails.length === 0,
         sentCount,
