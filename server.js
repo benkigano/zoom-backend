@@ -13739,6 +13739,319 @@ const plainTextBody = [
   }
 );
 
+// =====================================================
+// Public: load Court Study participant registration
+// =====================================================
+app.get(
+  "/api/court-study/participant-registration/:token",
+  async (req, res) => {
+    try {
+      const token = String(req.params.token || "").trim();
+
+      if (!token) {
+        return res.status(400).json({
+          success: false,
+          error: "Participant registration token is required",
+        });
+      }
+
+      const participant =
+        await prisma.courtStudyParticipant.findUnique({
+          where: {
+            invitationToken: token,
+          },
+          include: {
+            courtStudyMeeting: {
+              include: {
+                courtStudyRequest: {
+                  include: {
+                    recording: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+      if (!participant || !participant.courtStudyMeeting) {
+        return res.status(404).json({
+          success: false,
+          error: "Participant registration invitation not found",
+        });
+      }
+
+      const meeting = participant.courtStudyMeeting;
+      const courtStudyRequest = meeting.courtStudyRequest;
+
+      if (!courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error: "Court Study request not found",
+        });
+      }
+
+      let selectedRulesSections = [];
+
+      try {
+        const rawSelectedRulesSections =
+          courtStudyRequest.selectedRulesSections;
+
+        if (Array.isArray(rawSelectedRulesSections)) {
+          selectedRulesSections = rawSelectedRulesSections;
+        } else if (
+          typeof rawSelectedRulesSections === "string" &&
+          rawSelectedRulesSections.trim()
+        ) {
+          const parsedSelectedRulesSections =
+            JSON.parse(rawSelectedRulesSections);
+
+          selectedRulesSections = Array.isArray(
+            parsedSelectedRulesSections
+          )
+            ? parsedSelectedRulesSections
+            : [parsedSelectedRulesSections];
+        }
+      } catch (parseError) {
+        console.warn(
+          "Could not parse selectedRulesSections for participant registration:",
+          parseError
+        );
+      }
+
+      const selectedRulesSection =
+        selectedRulesSections.find((section) =>
+          String(section?.videoUrl || "").trim()
+        ) ||
+        selectedRulesSections[0] ||
+        null;
+
+      const isRulesStudy = Boolean(selectedRulesSection);
+
+      const materialTitle = isRulesStudy
+        ? [
+            selectedRulesSection?.chapterTitle,
+            selectedRulesSection?.sectionTitle,
+          ]
+            .filter(Boolean)
+            .join(" — ") ||
+          meeting.title ||
+          "Court Study"
+        : courtStudyRequest.recording?.title ||
+          meeting.title ||
+          "Court of Compassion Interview";
+
+      const hostGroupName = String(
+        courtStudyRequest.hostGroupName ||
+        courtStudyRequest.churchName ||
+        "Court of Compassion"
+      ).trim();
+
+      return res.status(200).json({
+        success: true,
+        participant: {
+          email: participant.email,
+          firstName: participant.firstName,
+          lastName: participant.lastName,
+          status: participant.status,
+          registeredAt: participant.registeredAt,
+          preSurveyScore: participant.preSurveyScore,
+          preSurveyStatement: participant.preSurveyStatement,
+        },
+        courtStudy: {
+          hostGroupName,
+          materialTitle,
+          scheduledStart: meeting.scheduledStart,
+          scheduledEnd: meeting.scheduledEnd,
+          timezone: meeting.timezone,
+        },
+      });
+    } catch (err) {
+      console.error(
+        "❌ GET /api/court-study/participant-registration/:token error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
+// =====================================================
+// Public: submit Court Study participant registration
+// =====================================================
+app.post(
+  "/api/court-study/participant-registration/:token",
+  async (req, res) => {
+    try {
+      const token = String(req.params.token || "").trim();
+
+      if (!token) {
+        return res.status(400).json({
+          success: false,
+          error: "Participant registration token is required",
+        });
+      }
+
+      const firstName = String(
+        req.body?.firstName || ""
+      ).trim();
+
+      const lastName = String(
+        req.body?.lastName || ""
+      ).trim();
+
+      const rawPreSurveyScore =
+        req.body?.preSurveyScore;
+
+      const preSurveyStatement = String(
+        req.body?.preSurveyStatement || ""
+      ).trim();
+
+      if (!firstName || !lastName) {
+        return res.status(400).json({
+          success: false,
+          error: "First name and last name are required",
+        });
+      }
+
+      let preSurveyScore = null;
+
+      if (
+        rawPreSurveyScore !== undefined &&
+        rawPreSurveyScore !== null &&
+        String(rawPreSurveyScore).trim() !== ""
+      ) {
+        preSurveyScore = Number(rawPreSurveyScore);
+
+        if (
+          !Number.isInteger(preSurveyScore) ||
+          preSurveyScore < 1 ||
+          preSurveyScore > 10
+        ) {
+          return res.status(400).json({
+            success: false,
+            error:
+              "If provided, the Court Study score must be an integer from 1 through 10",
+          });
+        }
+      }
+
+      const participant =
+        await prisma.courtStudyParticipant.findUnique({
+          where: {
+            invitationToken: token,
+          },
+          include: {
+            courtStudyMeeting: true,
+          },
+        });
+
+      if (!participant || !participant.courtStudyMeeting) {
+        return res.status(404).json({
+          success: false,
+          error: "Participant registration invitation not found",
+        });
+      }
+
+      const meeting = participant.courtStudyMeeting;
+
+      const zoomRegistrationUrl = String(
+        meeting.zoomRegistrationUrl || ""
+      ).trim();
+
+      const publicInvitationToken = String(
+        meeting.publicInvitationToken || ""
+      ).trim();
+
+      const usesZoomRegistration =
+        Boolean(zoomRegistrationUrl);
+
+      const nextUrl = usesZoomRegistration
+        ? zoomRegistrationUrl
+        : publicInvitationToken
+          ? `https://courtofcompassion.com/court-study/waiting?token=${encodeURIComponent(publicInvitationToken)}`
+          : "";
+
+      if (!nextUrl) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Meeting access is not yet available for this Court Study",
+        });
+      }
+
+      const now = new Date();
+
+      const surveyResponseProvided =
+        preSurveyScore !== null ||
+        Boolean(preSurveyStatement);
+
+      const updatedParticipant =
+        await prisma.courtStudyParticipant.update({
+          where: {
+            id: participant.id,
+          },
+          data: {
+            firstName,
+            lastName,
+            status: "REGISTERED",
+            registeredAt:
+              participant.registeredAt || now,
+
+            preSurveyScore:
+              preSurveyScore !== null
+                ? preSurveyScore
+                : participant.preSurveyScore,
+
+            preSurveyStatement:
+              preSurveyStatement
+                ? preSurveyStatement
+                : participant.preSurveyStatement,
+
+            preSurveySubmittedAt:
+              surveyResponseProvided
+                ? now
+                : participant.preSurveySubmittedAt,
+          },
+        });
+
+      return res.status(200).json({
+        success: true,
+        participant: {
+          email: updatedParticipant.email,
+          firstName: updatedParticipant.firstName,
+          lastName: updatedParticipant.lastName,
+          status: updatedParticipant.status,
+          registeredAt:
+            updatedParticipant.registeredAt,
+          preSurveyScore:
+            updatedParticipant.preSurveyScore,
+          preSurveyStatement:
+            updatedParticipant.preSurveyStatement,
+        },
+        nextStep: usesZoomRegistration
+          ? "ZOOM_REGISTRATION"
+          : "COURT_WAITING_ROOM",
+        nextUrl,
+      });
+    } catch (err) {
+      console.error(
+        "❌ POST /api/court-study/participant-registration/:token error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: String(err),
+      });
+    }
+  }
+);
+
+
 // ================================================
 // Admin: view Zoom registrants for a Court Study
 // ================================================
