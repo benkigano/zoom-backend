@@ -14672,6 +14672,19 @@ app.post(
         req.body?.postSurveyStatement || ""
       ).trim();
 
+      const postSurveyStatementWordCount =
+  postSurveyStatement
+    ? postSurveyStatement.split(/\s+/).length
+    : 0;
+
+if (postSurveyStatementWordCount > 500) {
+  return res.status(400).json({
+    success: false,
+    error:
+      "The post-session statement must not exceed 500 words",
+  });
+}
+
       let postSurveyScore = null;
 
       if (
