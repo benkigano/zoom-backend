@@ -14051,10 +14051,9 @@ app.post(
   }
 );
 
-
-// ================================================
-// Admin: view Zoom registrants for a Court Study
-// ================================================
+// =====================================================
+// Admin: view registered participants for a Court Study
+// =====================================================
 app.get(
   "/api/court-study-requests/:id/registrants",
   requireAdminToken,
@@ -14077,6 +14076,14 @@ app.get(
           include: {
             courtStudyMeeting: {
               include: {
+                courtParticipants: {
+                  where: {
+                    status: "REGISTERED",
+                  },
+                  orderBy: {
+                    registeredAt: "desc",
+                  },
+                },
                 zoomRegistrants: {
                   orderBy: {
                     registeredAt: "desc",
@@ -14104,23 +14111,128 @@ app.get(
         });
       }
 
-      const registrants = meeting.zoomRegistrants || [];
+      const courtParticipants =
+        meeting.courtParticipants || [];
 
-      const cancelledCount = registrants.filter(
-        (registrant) =>
-          Boolean(registrant.canceledAt) ||
-          registrant.lastEventType ===
-            "meeting.registration_cancelled"
-      ).length;
+      const zoomRegistrants =
+        meeting.zoomRegistrants || [];
+
+      const participantMap = new Map();
+
+      for (const participant of courtParticipants) {
+        const emailKey = String(
+          participant.email || ""
+        )
+          .trim()
+          .toLowerCase();
+
+        const key =
+          emailKey || `court:${participant.id}`;
+
+        participantMap.set(key, {
+          id: participant.id,
+          zoomRegistrantId: null,
+          firstName: participant.firstName,
+          lastName: participant.lastName,
+          email: participant.email,
+          registrationStatus: participant.status,
+          lastEventType:
+            "court.registration_completed",
+          registeredAt: (
+            participant.registeredAt ||
+            participant.invitedAt
+          ).toISOString(),
+          canceledAt: null,
+          source: "COURT",
+          preSurveyScore:
+            participant.preSurveyScore,
+          preSurveyStatement:
+            participant.preSurveyStatement,
+          preSurveySubmittedAt:
+            participant.preSurveySubmittedAt
+              ? participant.preSurveySubmittedAt.toISOString()
+              : null,
+        });
+      }
+
+      for (const registrant of zoomRegistrants) {
+        const emailKey = String(
+          registrant.email || ""
+        )
+          .trim()
+          .toLowerCase();
+
+        const key =
+          emailKey ||
+          `zoom:${registrant.zoomRegistrantId}`;
+
+        const existing =
+          participantMap.get(key);
+
+        const zoomData = {
+          id: existing?.id || registrant.id,
+          zoomRegistrantId:
+            registrant.zoomRegistrantId,
+          firstName:
+            existing?.firstName ||
+            registrant.firstName,
+          lastName:
+            existing?.lastName ||
+            registrant.lastName,
+          email:
+            existing?.email ||
+            registrant.email,
+          registrationStatus:
+            existing?.registrationStatus ||
+            registrant.registrationStatus ||
+            "REGISTERED",
+          lastEventType:
+            registrant.lastEventType,
+          registeredAt:
+            existing?.registeredAt ||
+            registrant.registeredAt.toISOString(),
+          canceledAt: registrant.canceledAt
+            ? registrant.canceledAt.toISOString()
+            : null,
+          source: existing
+            ? "COURT_AND_ZOOM"
+            : "ZOOM",
+          preSurveyScore:
+            existing?.preSurveyScore ?? null,
+          preSurveyStatement:
+            existing?.preSurveyStatement ?? null,
+          preSurveySubmittedAt:
+            existing?.preSurveySubmittedAt ?? null,
+        };
+
+        participantMap.set(key, zoomData);
+      }
+
+      const registrants =
+        Array.from(participantMap.values()).sort(
+          (a, b) =>
+            new Date(b.registeredAt).getTime() -
+            new Date(a.registeredAt).getTime()
+        );
+
+      const cancelledCount =
+        registrants.filter(
+          (registrant) =>
+            Boolean(registrant.canceledAt) ||
+            registrant.lastEventType ===
+              "meeting.registration_cancelled"
+        ).length;
 
       return res.status(200).json({
         success: true,
-        courtStudyRequestId: courtStudyRequest.id,
+        courtStudyRequestId:
+          courtStudyRequest.id,
 
         meeting: {
           id: meeting.id,
           title: meeting.title,
-          zoomMeetingId: meeting.zoomMeetingId,
+          zoomMeetingId:
+            meeting.zoomMeetingId,
           scheduledStart:
             meeting.scheduledStart.toISOString(),
           scheduledEnd:
@@ -14130,26 +14242,13 @@ app.get(
 
         summary: {
           total: registrants.length,
-          active: registrants.length - cancelledCount,
+          active:
+            registrants.length -
+            cancelledCount,
           cancelled: cancelledCount,
         },
 
-        registrants: registrants.map((registrant) => ({
-          id: registrant.id,
-          zoomRegistrantId:
-            registrant.zoomRegistrantId,
-          firstName: registrant.firstName,
-          lastName: registrant.lastName,
-          email: registrant.email,
-          registrationStatus:
-            registrant.registrationStatus,
-          lastEventType: registrant.lastEventType,
-          registeredAt:
-            registrant.registeredAt.toISOString(),
-          canceledAt: registrant.canceledAt
-            ? registrant.canceledAt.toISOString()
-            : null,
-        })),
+        registrants,
       });
     } catch (err) {
       console.error(
