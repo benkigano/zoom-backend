@@ -503,11 +503,16 @@ model CourtStudyParticipant {
   invitedAt           DateTime @default(now())
   registeredAt        DateTime?
 
-  preSurveyScore      Int?
-  preSurveyStatement  String?
+  preSurveyScore       Int?
+  preSurveyStatement   String?
   preSurveySubmittedAt DateTime?
 
-  createdAt           DateTime @default(now())
+  postSurveyScore       Int?
+  postSurveyStatement   String?
+  postSurveyInvitedAt   DateTime?
+  postSurveySubmittedAt DateTime?
+
+  createdAt            DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
   courtStudyMeeting CourtStudyMeeting @relation(fields: [courtStudyMeetingId], references: [id], onDelete: Cascade)
