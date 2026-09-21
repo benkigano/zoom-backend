@@ -151,7 +151,7 @@ model ChurchContact {
   courtStudyApproved          Boolean @default(false)
   church Church @relation(fields: [churchId], references: [id], onDelete: Cascade)
   distributionLogs DistributionLog[]
-  zoomConnection     ChurchContactZoomConnection?
+  zoomConnections ChurchContactZoomConnection[]
   courtStudyMeetings CourtStudyMeeting[]
   oauthInvitations   ZoomOAuthInvitation[]
   createdAt DateTime @default(now())
