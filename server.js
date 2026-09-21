@@ -453,6 +453,19 @@ function requireAdminToken(req, res, next) {
   next();
 }
 
+app.get(
+  "/api/zoom-reviewer/check",
+  requireZoomReviewerToken,
+  (req, res) => {
+    res.set("Cache-Control", "no-store");
+
+    return res.status(200).json({
+      success: true,
+      role: "ZOOM_REVIEWER",
+    });
+  }
+);
+
 async function queryWixCollection(collectionId) {
   const apiKey = process.env.WIX_API_KEY;
   const siteId = process.env.WIX_SITE_ID;
