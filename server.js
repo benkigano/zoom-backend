@@ -653,6 +653,7 @@ function hashZoomOAuthToken(token) {
 async function getCourtStudyHostZoomAccessToken({
   churchContactId = null,
   organizerEmail = null,
+  oauthEnvironment = "PRODUCTION",
 } = {}) {
   const normalizedChurchContactId = churchContactId
     ? String(churchContactId).trim()
@@ -661,6 +662,12 @@ async function getCourtStudyHostZoomAccessToken({
   const normalizedOrganizerEmail = organizerEmail
     ? String(organizerEmail).trim().toLowerCase()
     : "";
+
+  const normalizedOAuthEnvironment = String(
+    oauthEnvironment || "PRODUCTION"
+  )
+    .trim()
+    .toUpperCase();
 
   if (!normalizedChurchContactId && !normalizedOrganizerEmail) {
     throw new Error(
@@ -674,12 +681,27 @@ async function getCourtStudyHostZoomAccessToken({
     );
   }
 
+  if (
+    normalizedOAuthEnvironment !== "PRODUCTION" &&
+    normalizedOAuthEnvironment !== "DEVELOPMENT"
+  ) {
+    throw new Error(
+      "Invalid Zoom OAuth environment"
+    );
+  }
+
   const connectionWhere = normalizedChurchContactId
     ? {
-        churchContactId: normalizedChurchContactId,
+        churchContactId_oauthEnvironment: {
+          churchContactId: normalizedChurchContactId,
+          oauthEnvironment: normalizedOAuthEnvironment,
+        },
       }
     : {
-        organizerEmail: normalizedOrganizerEmail,
+        organizerEmail_oauthEnvironment: {
+          organizerEmail: normalizedOrganizerEmail,
+          oauthEnvironment: normalizedOAuthEnvironment,
+        },
       };
 
   const connection =
@@ -728,14 +750,22 @@ async function getCourtStudyHostZoomAccessToken({
     connection.refreshTokenEncrypted
   );
 
-  const clientId = process.env.ZOOM_CONNECT_CLIENT_ID;
-  const clientSecret = process.env.ZOOM_CONNECT_CLIENT_SECRET;
+  const isDevelopmentOAuth =
+  normalizedOAuthEnvironment === "DEVELOPMENT";
 
-  if (!clientId || !clientSecret) {
-    throw new Error(
-      "ZOOM_CONNECT_CLIENT_ID or ZOOM_CONNECT_CLIENT_SECRET is not configured"
-    );
-  }
+const clientId = isDevelopmentOAuth
+  ? process.env.ZOOM_CONNECT_DEV_CLIENT_ID
+  : process.env.ZOOM_CONNECT_CLIENT_ID;
+
+const clientSecret = isDevelopmentOAuth
+  ? process.env.ZOOM_CONNECT_DEV_CLIENT_SECRET
+  : process.env.ZOOM_CONNECT_CLIENT_SECRET;
+
+if (!clientId || !clientSecret) {
+  throw new Error(
+    `${normalizedOAuthEnvironment} Zoom Connect OAuth credentials are not configured`
+  );
+}
 
   const basicAuthorization = Buffer.from(
     `${clientId}:${clientSecret}`
@@ -2112,26 +2142,51 @@ app.get("/court-study/zoom/connect/:churchContactId", async (req, res) => {
       });
     }
 
-    const clientId = process.env.ZOOM_CONNECT_CLIENT_ID;
-    const redirectUri = process.env.ZOOM_CONNECT_REDIRECT_URL;
+    const oauthEnvironment = String(
+  req.query.oauthEnvironment || "PRODUCTION"
+)
+  .trim()
+  .toUpperCase();
 
-    if (!clientId || !redirectUri) {
-      return res.status(500).json({
-        success: false,
-        error: "Zoom OAuth is not fully configured.",
-      });
-    }
+if (
+  oauthEnvironment !== "PRODUCTION" &&
+  oauthEnvironment !== "DEVELOPMENT"
+) {
+  return res.status(400).json({
+    success: false,
+    error: "Invalid Zoom OAuth environment.",
+  });
+}
+
+const isDevelopmentOAuth =
+  oauthEnvironment === "DEVELOPMENT";
+
+const clientId = isDevelopmentOAuth
+  ? process.env.ZOOM_CONNECT_DEV_CLIENT_ID
+  : process.env.ZOOM_CONNECT_CLIENT_ID;
+
+const redirectUri = isDevelopmentOAuth
+  ? process.env.ZOOM_CONNECT_DEV_REDIRECT_URL
+  : process.env.ZOOM_CONNECT_REDIRECT_URL;
+
+if (!clientId || !redirectUri) {
+  return res.status(500).json({
+    success: false,
+    error: `${oauthEnvironment} Zoom OAuth is not fully configured.`,
+  });
+}
 
     const invitationToken = crypto.randomBytes(32).toString("hex");
     const tokenHash = hashZoomOAuthToken(invitationToken);
 
     await prisma.zoomOAuthInvitation.create({
-      data: {
-        churchContactId,
-        tokenHash,
-        expiresAt: new Date(Date.now() + 15 * 60 * 1000),
-      },
-    });
+  data: {
+    churchContactId,
+    oauthEnvironment,
+    tokenHash,
+    expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+  },
+});
 
     const state = Buffer.from(
       JSON.stringify({
@@ -2498,15 +2553,39 @@ app.get(
         });
       }
 
-      const clientId = process.env.ZOOM_CONNECT_CLIENT_ID;
-      const redirectUri = process.env.ZOOM_CONNECT_REDIRECT_URL;
+      const oauthEnvironment = String(
+  req.query.oauthEnvironment || "PRODUCTION"
+)
+  .trim()
+  .toUpperCase();
 
-      if (!clientId || !redirectUri) {
-        return res.status(500).json({
-          success: false,
-          error: "Zoom OAuth is not fully configured.",
-        });
-      }
+if (
+  oauthEnvironment !== "PRODUCTION" &&
+  oauthEnvironment !== "DEVELOPMENT"
+) {
+  return res.status(400).json({
+    success: false,
+    error: "Invalid Zoom OAuth environment.",
+  });
+}
+
+const isDevelopmentOAuth =
+  oauthEnvironment === "DEVELOPMENT";
+
+const clientId = isDevelopmentOAuth
+  ? process.env.ZOOM_CONNECT_DEV_CLIENT_ID
+  : process.env.ZOOM_CONNECT_CLIENT_ID;
+
+const redirectUri = isDevelopmentOAuth
+  ? process.env.ZOOM_CONNECT_DEV_REDIRECT_URL
+  : process.env.ZOOM_CONNECT_REDIRECT_URL;
+
+if (!clientId || !redirectUri) {
+  return res.status(500).json({
+    success: false,
+    error: `${oauthEnvironment} Zoom OAuth is not fully configured.`,
+  });
+}
 
       const invitationToken =
         crypto.randomBytes(32).toString("hex");
@@ -2517,6 +2596,7 @@ app.get(
       await prisma.zoomOAuthInvitation.create({
         data: {
           organizerEmail,
+          oauthEnvironment,
           tokenHash,
           expiresAt: new Date(
             Date.now() + 15 * 60 * 1000
@@ -2578,7 +2658,12 @@ app.get(
 // =====================================================
 // COURT STUDY ZOOM CONNECT — OAUTH CALLBACK
 // =====================================================
-app.get("/court-study/zoom/callback", async (req, res) => {
+app.get(
+  [
+    "/court-study/zoom/callback",
+    "/court-study/zoom/callback/dev",
+  ],
+  async (req, res) => {
   try {
     const code = String(req.query.code || "").trim();
     const state = String(req.query.state || "").trim();
@@ -2670,17 +2755,41 @@ const invitation =
 
     // IMPORTANT:
     // Court Study Zoom Connect has its own OAuth credentials.
-    const clientId = process.env.ZOOM_CONNECT_CLIENT_ID;
-    const clientSecret =
-      process.env.ZOOM_CONNECT_CLIENT_SECRET;
-    const redirectUri =
-      process.env.ZOOM_CONNECT_REDIRECT_URL;
+    const callbackOAuthEnvironment = String(
+  invitation.oauthEnvironment || "PRODUCTION"
+)
+  .trim()
+  .toUpperCase();
 
-    if (!clientId || !clientSecret || !redirectUri) {
-      throw new Error(
-        "Court Study Zoom Connect OAuth is not fully configured"
-      );
-    }
+   if (
+  callbackOAuthEnvironment !== "PRODUCTION" &&
+  callbackOAuthEnvironment !== "DEVELOPMENT"
+) {
+  throw new Error(
+    "Invalid Zoom OAuth environment"
+  );
+} 
+
+const isDevelopmentOAuth =
+  callbackOAuthEnvironment === "DEVELOPMENT";
+
+const clientId = isDevelopmentOAuth
+  ? process.env.ZOOM_CONNECT_DEV_CLIENT_ID
+  : process.env.ZOOM_CONNECT_CLIENT_ID;
+
+const clientSecret = isDevelopmentOAuth
+  ? process.env.ZOOM_CONNECT_DEV_CLIENT_SECRET
+  : process.env.ZOOM_CONNECT_CLIENT_SECRET;
+
+const redirectUri = isDevelopmentOAuth
+  ? process.env.ZOOM_CONNECT_DEV_REDIRECT_URL
+  : process.env.ZOOM_CONNECT_REDIRECT_URL;
+
+if (!clientId || !clientSecret || !redirectUri) {
+  throw new Error(
+    `${callbackOAuthEnvironment} Court Study Zoom Connect OAuth is not fully configured`
+  );
+}
 
     const basicAuthorization = Buffer.from(
       `${clientId}:${clientSecret}`
@@ -3048,18 +3157,36 @@ if (!zoomEmailMatchesOrganizer) {
 
     // Save the connected Zoom account securely.
     
-    const zoomConnectionWhere = churchContactId
-  ? { churchContactId }
-  : { organizerEmail };
+    const oauthEnvironment = String(
+  invitation.oauthEnvironment || "PRODUCTION"
+)
+  .trim()
+  .toUpperCase();
+
+const zoomConnectionWhere = churchContactId
+  ? {
+      churchContactId_oauthEnvironment: {
+        churchContactId,
+        oauthEnvironment,
+      },
+    }
+  : {
+      organizerEmail_oauthEnvironment: {
+        organizerEmail,
+        oauthEnvironment,
+      },
+    };
 
 const zoomConnectionIdentity = churchContactId
   ? {
       churchContactId,
       organizerEmail: null,
+      oauthEnvironment,
     }
   : {
       churchContactId: null,
       organizerEmail,
+      oauthEnvironment,
     };
     
     await prisma.$transaction([
