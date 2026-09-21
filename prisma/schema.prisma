@@ -346,14 +346,18 @@ model DistributionLog {
   @@index([status])
   @@index([toEmail])
 }
+
 model ChurchContactZoomConnection {
-  id                String               @id @default(cuid())
+  id                String   @id @default(cuid())
 
   // Pastor/church host connection.
-  churchContactId   String?              @unique
+  churchContactId   String?
 
   // Inclusive non-church/community organizer connection.
-  organizerEmail    String?              @unique
+  organizerEmail    String?
+
+  // Keeps Development and Production OAuth connections separate.
+  oauthEnvironment  String   @default("PRODUCTION")
 
   zoomUserId        String
   zoomAccountId     String?
@@ -365,12 +369,21 @@ model ChurchContactZoomConnection {
   authorizedScopes      String?
   status                ZoomConnectionStatus @default(CONNECTED)
 
-  connectedAt       DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
+  connectedAt       DateTime @default(now())
+  updatedAt         DateTime @updatedAt
   disconnectedAt    DateTime?
 
-churchContact ChurchContact? @relation(fields: [churchContactId], references: [id], onDelete: Cascade)  
+  churchContact ChurchContact? @relation(
+    fields: [churchContactId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  @@unique([churchContactId, oauthEnvironment])
+  @@unique([organizerEmail, oauthEnvironment])
+  @@index([oauthEnvironment])
 }
+
 model ZoomOAuthInvitation {
   id              String   @id @default(cuid())
 
@@ -380,15 +393,23 @@ model ZoomOAuthInvitation {
   // Inclusive non-church/community organizer authorization.
   organizerEmail  String?
 
+  // Records which Zoom OAuth environment issued this invitation.
+  oauthEnvironment String @default("PRODUCTION")
+
   tokenHash       String   @unique
   expiresAt       DateTime
   usedAt          DateTime?
   createdAt       DateTime @default(now())
 
-  churchContact ChurchContact? @relation(fields: [churchContactId], references: [id], onDelete: Cascade)
+  churchContact ChurchContact? @relation(
+    fields: [churchContactId],
+    references: [id],
+    onDelete: Cascade
+  )
 
   @@index([churchContactId])
   @@index([organizerEmail])
+  @@index([oauthEnvironment])
   @@index([expiresAt])
 }
 
