@@ -373,11 +373,7 @@ model ChurchContactZoomConnection {
   updatedAt         DateTime @updatedAt
   disconnectedAt    DateTime?
 
-  churchContact ChurchContact? @relation(
-    fields: [churchContactId],
-    references: [id],
-    onDelete: Cascade
-  )
+  churchContact ChurchContact? @relation(fields: [churchContactId], references: [id], onDelete: Cascade)
 
   @@unique([churchContactId, oauthEnvironment])
   @@unique([organizerEmail, oauthEnvironment])
@@ -401,11 +397,7 @@ model ZoomOAuthInvitation {
   usedAt          DateTime?
   createdAt       DateTime @default(now())
 
-  churchContact ChurchContact? @relation(
-    fields: [churchContactId],
-    references: [id],
-    onDelete: Cascade
-  )
+  churchContact ChurchContact? @relation(fields: [churchContactId], references: [id], onDelete: Cascade)
 
   @@index([churchContactId])
   @@index([organizerEmail])
