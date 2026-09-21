@@ -87,6 +87,97 @@ function verifyAdminSessionToken(token) {
 }
 
 // ============================================================
+// ZOOM MARKETPLACE REVIEWER AUTHENTICATION
+// ============================================================
+
+const ZOOM_REVIEWER_SESSION_TTL_MS =
+  24 * 60 * 60 * 1000; // 24 hours
+
+function createZoomReviewerSessionToken() {
+  const sessionSecret =
+    process.env.ZOOM_REVIEWER_SESSION_SECRET;
+
+  if (!sessionSecret) {
+    throw new Error(
+    "ZOOM_REVIEWER_SESSION_SECRET is not configured"  
+    );
+  }
+
+  const payload = Buffer.from(
+    JSON.stringify({
+      exp:
+        Date.now() +
+        ZOOM_REVIEWER_SESSION_TTL_MS,
+      nonce:
+        crypto.randomBytes(16).toString("hex"),
+      role: "ZOOM_REVIEWER",
+    })
+  ).toString("base64url");
+
+  const signature = crypto
+    .createHmac("sha256", sessionSecret)
+    .update(payload)
+    .digest("hex");
+
+  return `${payload}.${signature}`;
+}
+
+function verifyZoomReviewerSessionToken(token) {
+  const sessionSecret =
+  process.env.ZOOM_REVIEWER_SESSION_SECRET;  
+
+  if (!sessionSecret || !token) {
+    return false;
+  }
+
+  try {
+    const [payload, providedSignature] =
+      String(token).split(".");
+
+    if (!payload || !providedSignature) {
+      return false;
+    }
+
+    const expectedSignature = crypto
+      .createHmac("sha256", sessionSecret)
+      .update(payload)
+      .digest("hex");
+
+    const providedBuffer =
+      Buffer.from(providedSignature, "hex");
+
+    const expectedBuffer =
+      Buffer.from(expectedSignature, "hex");
+
+    if (
+      providedBuffer.length !==
+        expectedBuffer.length ||
+      !crypto.timingSafeEqual(
+        providedBuffer,
+        expectedBuffer
+      )
+    ) {
+      return false;
+    }
+
+    const sessionData = JSON.parse(
+      Buffer.from(
+        payload,
+        "base64url"
+      ).toString("utf8")
+    );
+
+    return (
+      Number.isFinite(sessionData.exp) &&
+      sessionData.exp > Date.now() &&
+      sessionData.role === "ZOOM_REVIEWER"
+    );
+  } catch {
+    return false;
+  }
+}
+
+// ============================================================
 // MYZOOM BACKEND AUTHENTICATION
 // ============================================================
 
@@ -286,6 +377,39 @@ function requireMyZoomSession(requiredPermission = null) {
     req.myZoomSession = session;
     next();
   };
+}
+
+function requireZoomReviewerToken(req, res, next) {
+  const cookieHeader = String(
+    req.headers.cookie || ""
+  );
+
+  const sessionCookie = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) =>
+      part.startsWith("zoom_reviewer_session=")
+    );
+
+  const sessionToken = sessionCookie
+    ? decodeURIComponent(
+        sessionCookie.slice(
+          "zoom_reviewer_session=".length
+        )
+      )
+    : "";
+
+  if (
+    sessionToken &&
+    verifyZoomReviewerSessionToken(sessionToken)
+  ) {
+    return next();
+  }
+
+  return res.status(401).json({
+    success: false,
+    error: "Reviewer authentication required",
+  });
 }
 
 function requireAdminToken(req, res, next) {
@@ -6211,6 +6335,90 @@ return res.json({
     return res.status(500).json({
       success: false,
       error: "Unable to create admin session",
+    });
+  }
+});
+
+// ============================================================
+// ZOOM MARKETPLACE REVIEWER SESSION
+// ============================================================
+
+app.post("/api/zoom-reviewer/session", (req, res) => {
+  res.set("Cache-Control", "no-store");
+
+  const providedToken = String(
+    req.body?.token || ""
+  );
+
+  const expectedToken =
+    process.env.ZOOM_REVIEWER_ACCESS_TOKEN;
+
+  if (!expectedToken) {
+    console.error(
+      "❌ ZOOM_REVIEWER_ACCESS_TOKEN is not configured"
+    );
+
+    return res.status(500).json({
+      success: false,
+      error:
+        "Zoom reviewer access is not configured",
+    });
+  }
+
+  const providedBuffer =
+    Buffer.from(providedToken);
+
+  const expectedBuffer =
+    Buffer.from(expectedToken);
+
+  const tokenMatches =
+    providedBuffer.length ===
+      expectedBuffer.length &&
+    crypto.timingSafeEqual(
+      providedBuffer,
+      expectedBuffer
+    );
+
+  if (!tokenMatches) {
+    return res.status(401).json({
+      success: false,
+      error: "Unauthorized",
+    });
+  }
+
+  try {
+    const sessionToken =
+      createZoomReviewerSessionToken();
+
+    res.cookie(
+      "zoom_reviewer_session",
+      sessionToken,
+      {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        maxAge:
+          ZOOM_REVIEWER_SESSION_TTL_MS,
+        path: "/",
+      }
+    );
+
+    return res.json({
+      success: true,
+      expiresInSeconds:
+        ZOOM_REVIEWER_SESSION_TTL_MS /
+        1000,
+    });
+  } catch (err) {
+    console.error(
+      "❌ Failed to create Zoom reviewer session:",
+      err
+    );
+
+    return res.status(500).json({
+      success: false,
+      error:
+        "Unable to create reviewer session",
     });
   }
 });
