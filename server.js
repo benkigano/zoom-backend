@@ -3271,8 +3271,11 @@ const zoomConnectionIdentity = churchContactId
     where: {
       id: requestId,
     },
+    
     data: {
-      status: "ZOOM_CONNECTED",
+  status: "ZOOM_CONNECTED",
+  zoomOAuthEnvironment: oauthEnvironment,
+
     },
   });
 
@@ -3771,9 +3774,12 @@ app.post(
       }
 
       const accessToken =
-        await getCourtStudyHostZoomAccessToken({
-          organizerEmail,
-        });
+  await getCourtStudyHostZoomAccessToken({
+    organizerEmail,
+    oauthEnvironment:
+      courtStudyRequest.zoomOAuthEnvironment ||
+      "PRODUCTION",
+  });
 
       const testTimeZone =
         courtStudyRequest.timezone ||
@@ -13083,13 +13089,16 @@ async function createCourtStudyZoomInternal({
       "COMMUNITY_HOSTED"
     ) {
       accessToken =
-        await getCourtStudyHostZoomAccessToken({
-          organizerEmail: String(
-            courtStudyRequest.organizerEmail || ""
-          )
-            .trim()
-            .toLowerCase(),
-        });
+  await getCourtStudyHostZoomAccessToken({
+    organizerEmail: String(
+      courtStudyRequest.organizerEmail || ""
+    )
+      .trim()
+      .toLowerCase(),
+    oauthEnvironment:
+      courtStudyRequest.zoomOAuthEnvironment ||
+      "PRODUCTION",
+  });
     } else {
       accessToken = await getS2SAccessToken();
     }
@@ -15116,6 +15125,141 @@ app.get(
         participantMap.set(key, zoomData);
       }
 
+      // For COMMUNITY_HOSTED sessions, also read the current
+// registrant list directly from the organizer's Zoom account.
+// This exercises the Zoom OAuth
+// meeting:read:list_registrants scope while preserving the
+// Court-side participant records above.
+if (
+  courtStudyRequest.meetingFormat === "COMMUNITY_HOSTED" &&
+  meeting.zoomMeetingId
+) {
+  try {
+    const accessToken =
+      await getCourtStudyHostZoomAccessToken({
+        organizerEmail: String(
+          courtStudyRequest.organizerEmail || ""
+        )
+          .trim()
+          .toLowerCase(),
+        oauthEnvironment:
+          courtStudyRequest.zoomOAuthEnvironment ||
+          "PRODUCTION",
+      });
+
+    let nextPageToken = "";
+
+    do {
+      const zoomUrl = new URL(
+        `https://api.zoom.us/v2/meetings/${encodeURIComponent(
+          String(meeting.zoomMeetingId)
+        )}/registrants`
+      );
+
+      zoomUrl.searchParams.set("page_size", "300");
+
+      if (nextPageToken) {
+        zoomUrl.searchParams.set(
+          "next_page_token",
+          nextPageToken
+        );
+      }
+
+      const zoomResponse = await fetch(
+        zoomUrl.toString(),
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      const zoomData = await zoomResponse
+        .json()
+        .catch(() => ({}));
+
+      if (!zoomResponse.ok) {
+        console.warn(
+          "⚠️ ZOOM LIVE REGISTRANTS LOOKUP FAILED:",
+          zoomData
+        );
+
+        break;
+      }
+
+      if (Array.isArray(zoomData.registrants)) {
+        for (const registrant of zoomData.registrants) {
+          const email = String(
+            registrant.email || ""
+          )
+            .trim()
+            .toLowerCase();
+
+          const key =
+            email ||
+            `zoom-live:${String(
+              registrant.id || ""
+            ).trim()}`;
+
+          const existing =
+            participantMap.get(key);
+
+          participantMap.set(key, {
+            id: existing?.id || null,
+            zoomRegistrantId:
+              registrant.id ||
+              existing?.zoomRegistrantId ||
+              null,
+            firstName:
+              existing?.firstName ||
+              registrant.first_name ||
+              null,
+            lastName:
+              existing?.lastName ||
+              registrant.last_name ||
+              null,
+            email:
+              existing?.email ||
+              registrant.email ||
+              null,
+            registrationStatus:
+              existing?.registrationStatus ||
+              registrant.status ||
+              "REGISTERED",
+            lastEventType:
+              existing?.lastEventType ||
+              "zoom.live_registrant",
+            registeredAt:
+              existing?.registeredAt ||
+              registrant.create_time ||
+              new Date().toISOString(),
+            canceledAt:
+              existing?.canceledAt || null,
+            source: existing
+              ? "COURT_AND_ZOOM"
+              : "ZOOM",
+            preSurveyScore:
+              existing?.preSurveyScore ?? null,
+            preSurveyStatement:
+              existing?.preSurveyStatement ?? null,
+            preSurveySubmittedAt:
+              existing?.preSurveySubmittedAt ?? null,
+          });
+        }
+      }
+
+      nextPageToken = String(
+        zoomData.next_page_token || ""
+      ).trim();
+    } while (nextPageToken);
+  } catch (zoomRegistrantError) {
+    console.warn(
+      "⚠️ ZOOM LIVE REGISTRANTS LOOKUP ERROR:",
+      zoomRegistrantError
+    );
+  }
+}
+      
       const registrants =
         Array.from(participantMap.values()).sort(
           (a, b) =>
@@ -15232,7 +15376,26 @@ app.get(
         });
       }
 
-      const accessToken = await getS2SAccessToken();
+      let accessToken;
+
+if (
+  courtStudyRequest.meetingFormat ===
+  "COMMUNITY_HOSTED"
+) {
+  accessToken =
+    await getCourtStudyHostZoomAccessToken({
+      organizerEmail: String(
+        courtStudyRequest.organizerEmail || ""
+      )
+        .trim()
+        .toLowerCase(),
+      oauthEnvironment:
+        courtStudyRequest.zoomOAuthEnvironment ||
+        "PRODUCTION",
+    });
+} else {
+  accessToken = await getS2SAccessToken();
+}
 
       const meetingIdentifier = zoomMeetingUuid
         ? encodeURIComponent(
