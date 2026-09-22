@@ -6299,6 +6299,110 @@ app.get(
   }
 );
 
+app.get(
+  "/api/zoom-reviewer/seed",
+  requireZoomReviewerToken,
+  async (req, res) => {
+    res.set("Cache-Control", "no-store");
+
+    try {
+      const requestId =
+        "cmtqr6xmi0000ob2asyrjbqhz";
+
+      const courtStudyRequest =
+        await prisma.courtStudyRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+          include: {
+            courtStudyMeeting: {
+              include: {
+                zoomRegistrants: {
+                  orderBy: {
+                    registeredAt: "asc",
+                  },
+                },
+              },
+            },
+          },
+        });
+
+      if (
+        !courtStudyRequest ||
+        !courtStudyRequest.courtStudyMeeting
+      ) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "Zoom reviewer seed Court Study was not found",
+        });
+      }
+
+      const meeting =
+        courtStudyRequest.courtStudyMeeting;
+
+      return res.status(200).json({
+        success: true,
+
+        courtStudy: {
+          requestId:
+            courtStudyRequest.id,
+          meetingFormat:
+            courtStudyRequest.meetingFormat,
+          status:
+            courtStudyRequest.status,
+          zoomOAuthEnvironment:
+            courtStudyRequest.zoomOAuthEnvironment,
+        },
+
+        meeting: {
+          databaseId: meeting.id,
+          title: meeting.title,
+          zoomMeetingId:
+            meeting.zoomMeetingId,
+          zoomMeetingUuid:
+            meeting.zoomMeetingUuid,
+          scheduledStart:
+            meeting.scheduledStart,
+          scheduledEnd:
+            meeting.scheduledEnd,
+          timezone:
+            meeting.timezone,
+        },
+
+        registrants:
+          meeting.zoomRegistrants.map(
+            (registrant) => ({
+              zoomRegistrantId:
+                registrant.zoomRegistrantId,
+              firstName:
+                registrant.firstName,
+              lastName:
+                registrant.lastName,
+              email:
+                registrant.email,
+              registrationStatus:
+                registrant.registrationStatus,
+              registeredAt:
+                registrant.registeredAt,
+            })
+          ),
+      });
+    } catch (err) {
+      console.error(
+        "❌ GET /api/zoom-reviewer/seed error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "Unable to load Zoom reviewer seed data",
+      });
+    }
+  }
+);
+
 // Exchange the permanent admin credential for a short-lived admin session token
 app.post("/api/admin/session", (req, res) => {
   res.set("Cache-Control", "no-store");
