@@ -6693,6 +6693,332 @@ app.get(
 );
 
 // ============================================================
+// ZOOM MARKETPLACE REVIEWER — REMAINING OAUTH SCOPE TESTS
+// ============================================================
+app.post(
+  "/api/zoom-reviewer/scope-test",
+  requireZoomReviewerToken,
+  async (req, res) => {
+    res.set("Cache-Control", "no-store");
+
+    try {
+      const requestId =
+        "cmtqr6xmi0000ob2asyrjbqhz";
+
+      const courtStudyRequest =
+        await prisma.courtStudyRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+        });
+
+      if (!courtStudyRequest) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "Zoom reviewer seed Court Study was not found",
+        });
+      }
+
+      const organizerEmail = String(
+        courtStudyRequest.organizerEmail || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      if (!organizerEmail) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "The reviewer seed Court Study does not have an organizer email",
+        });
+      }
+
+      const accessToken =
+        await getCourtStudyHostZoomAccessToken({
+          organizerEmail,
+          oauthEnvironment:
+            courtStudyRequest.zoomOAuthEnvironment ||
+            "PRODUCTION",
+        });
+
+      // ======================================================
+      // 1. Read connected Zoom user
+      // Exercises user:read:user
+      // ======================================================
+
+      const userResponse = await fetch(
+        "https://api.zoom.us/v2/users/me",
+        {
+          headers: {
+            Authorization:
+              `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      const zoomUser = await userResponse
+        .json()
+        .catch(() => ({}));
+
+      if (!userResponse.ok) {
+        return res
+          .status(userResponse.status)
+          .json({
+            success: false,
+            stage: "user:read:user",
+            error:
+              zoomUser?.message ||
+              "Unable to retrieve connected Zoom user",
+          });
+      }
+
+      // ======================================================
+      // 2. Create temporary reviewer meeting
+      // Exercises meeting:write:meeting
+      // ======================================================
+
+      const startTime = new Date(
+        Date.now() + 60 * 60 * 1000
+      )
+        .toISOString()
+        .replace(/\.\d{3}Z$/, "Z");
+
+      const originalTopic =
+        "Court of Compassion — Zoom Marketplace Functional Review";
+
+      const createResponse = await fetch(
+        "https://api.zoom.us/v2/users/me/meetings",
+        {
+          method: "POST",
+          headers: {
+            Authorization:
+              `Bearer ${accessToken}`,
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            topic: originalTopic,
+            type: 2,
+            start_time: startTime,
+            duration: 15,
+            agenda:
+              "Temporary meeting created for Zoom Marketplace functional review.",
+            settings: {
+              join_before_host: false,
+              waiting_room: true,
+            },
+          }),
+        }
+      );
+
+      const createdMeeting =
+        await createResponse
+          .json()
+          .catch(() => ({}));
+
+      if (!createResponse.ok) {
+        return res
+          .status(createResponse.status)
+          .json({
+            success: false,
+            stage: "meeting:write:meeting",
+            error:
+              createdMeeting?.message ||
+              "Unable to create reviewer Zoom meeting",
+          });
+      }
+
+      const createdMeetingId = String(
+        createdMeeting.id || ""
+      ).trim();
+
+      if (!createdMeetingId) {
+        return res.status(502).json({
+          success: false,
+          stage: "meeting:write:meeting",
+          error:
+            "Zoom created the reviewer meeting without returning a meeting ID",
+        });
+      }
+
+      const encodedMeetingId =
+        encodeURIComponent(createdMeetingId);
+
+      // ======================================================
+      // 3. Read temporary reviewer meeting
+      // Exercises meeting:read:meeting
+      // ======================================================
+
+      const readResponse = await fetch(
+        `https://api.zoom.us/v2/meetings/${encodedMeetingId}`,
+        {
+          headers: {
+            Authorization:
+              `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      const readMeeting =
+        await readResponse
+          .json()
+          .catch(() => ({}));
+
+      if (!readResponse.ok) {
+        return res
+          .status(readResponse.status)
+          .json({
+            success: false,
+            stage: "meeting:read:meeting",
+            error:
+              readMeeting?.message ||
+              "Unable to read reviewer Zoom meeting",
+          });
+      }
+
+      // ======================================================
+      // 4. Update temporary reviewer meeting
+      // Exercises meeting:update:meeting
+      // ======================================================
+
+      const updatedTopic =
+        `${originalTopic} — Updated`;
+
+      const updateResponse = await fetch(
+        `https://api.zoom.us/v2/meetings/${encodedMeetingId}`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization:
+              `Bearer ${accessToken}`,
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            topic: updatedTopic,
+            agenda:
+              "Temporary meeting updated during Zoom Marketplace functional review.",
+          }),
+        }
+      );
+
+      if (!updateResponse.ok) {
+        const updateError =
+          await updateResponse
+            .json()
+            .catch(() => ({}));
+
+        return res
+          .status(updateResponse.status)
+          .json({
+            success: false,
+            stage: "meeting:update:meeting",
+            error:
+              updateError?.message ||
+              "Unable to update reviewer Zoom meeting",
+          });
+      }
+
+      // Read once more so the reviewer can see
+      // that the update actually took effect.
+      const verifyResponse = await fetch(
+        `https://api.zoom.us/v2/meetings/${encodedMeetingId}`,
+        {
+          headers: {
+            Authorization:
+              `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      const verifiedMeeting =
+        await verifyResponse
+          .json()
+          .catch(() => ({}));
+
+      if (!verifyResponse.ok) {
+        return res
+          .status(verifyResponse.status)
+          .json({
+            success: false,
+            stage:
+              "meeting:read:meeting-after-update",
+            error:
+              verifiedMeeting?.message ||
+              "Unable to verify updated reviewer Zoom meeting",
+          });
+      }
+
+      return res.status(200).json({
+        success: true,
+        requestId,
+
+        scopeTests: {
+          "user:read:user": {
+            success: true,
+            method: "GET",
+            endpoint: "/v2/users/me",
+            user: {
+              id: zoomUser.id || null,
+              email: zoomUser.email || null,
+              firstName:
+                zoomUser.first_name || null,
+              lastName:
+                zoomUser.last_name || null,
+            },
+          },
+
+          "meeting:write:meeting": {
+            success: true,
+            method: "POST",
+            endpoint:
+              "/v2/users/me/meetings",
+            meetingId: createdMeetingId,
+            topic:
+              createdMeeting.topic || null,
+          },
+
+          "meeting:read:meeting": {
+            success: true,
+            method: "GET",
+            endpoint:
+              `/v2/meetings/${createdMeetingId}`,
+            meetingId: createdMeetingId,
+            topic:
+              readMeeting.topic || null,
+          },
+
+          "meeting:update:meeting": {
+            success: true,
+            method: "PATCH",
+            endpoint:
+              `/v2/meetings/${createdMeetingId}`,
+            meetingId: createdMeetingId,
+            updatedTopic:
+              verifiedMeeting.topic || null,
+          },
+        },
+
+        note:
+          "A temporary Zoom meeting was created and updated solely for Marketplace functional review.",
+      });
+    } catch (err) {
+      console.error(
+        "❌ POST /api/zoom-reviewer/scope-test error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "Unable to complete Zoom reviewer scope tests",
+      });
+    }
+  }
+);
+
+// ============================================================
 // Zoom Marketplace reviewer browser page
 // ============================================================
 app.get("/zoom-reviewer", (req, res) => {
