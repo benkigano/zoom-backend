@@ -6691,6 +6691,406 @@ app.get(
   }
 );
 
+// ============================================================
+// Zoom Marketplace reviewer browser page
+// ============================================================
+app.get("/zoom-reviewer", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.set("X-Robots-Tag", "noindex, nofollow");
+
+  return res.status(200).send(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
+  <meta name="robots" content="noindex,nofollow" />
+
+  <title>Zoom Marketplace Reviewer | Court of Compassion</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 32px 16px;
+      background: #061b33;
+      color: #ffffff;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    main {
+      width: 100%;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: #15345a;
+      border: 1px solid #d9b84f;
+      border-radius: 14px;
+      padding: 28px;
+      margin-bottom: 22px;
+    }
+
+    h1,
+    h2 {
+      color: #e5c35b;
+      margin-top: 0;
+    }
+
+    p {
+      line-height: 1.55;
+    }
+
+    label {
+      display: block;
+      margin: 18px 0 8px;
+      font-weight: 700;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #c9d2df;
+      border-radius: 7px;
+      font: inherit;
+    }
+
+    button {
+      margin-top: 16px;
+      border: 0;
+      border-radius: 7px;
+      padding: 12px 18px;
+      background: #e5c35b;
+      color: #071a31;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: transparent;
+      border: 1px solid #e5c35b;
+      color: #ffffff;
+      margin-right: 10px;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 7px;
+      background: #0d2747;
+    }
+
+    .error {
+      color: #ffd1d1;
+    }
+
+    .success {
+      color: #d8ffd8;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      background: #071a31;
+      border: 1px solid #46617f;
+      border-radius: 8px;
+      padding: 16px;
+      color: #f5f7fa;
+      overflow-x: auto;
+    }
+
+    .note {
+      color: #dce4ee;
+      font-size: 14px;
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <section class="card">
+      <h1>Zoom Marketplace Reviewer</h1>
+
+      <p>
+        This restricted review environment provides access only
+        to the Court of Compassion test data prepared for
+        Zoom Marketplace functional review.
+      </p>
+
+      <div id="loginSection">
+        <label for="reviewerToken">
+          Reviewer Access Credential
+        </label>
+
+        <input
+          id="reviewerToken"
+          type="password"
+          autocomplete="off"
+          spellcheck="false"
+        />
+
+        <button id="loginButton" type="button">
+          Sign In
+        </button>
+
+        <div
+          id="loginStatus"
+          class="status hidden"
+          aria-live="polite"
+        ></div>
+      </div>
+    </section>
+
+    <section
+      id="reviewSection"
+      class="card hidden"
+    >
+      <h2>Reviewer Test Environment</h2>
+
+      <p>
+        The designated test Court Study contains a real Zoom
+        meeting, an approved registrant, and past-participant
+        history.
+      </p>
+
+      <button
+        id="seedButton"
+        class="secondary"
+        type="button"
+      >
+        View Test Court Study
+      </button>
+
+      <button
+        id="zoomDataButton"
+        type="button"
+      >
+        Retrieve Live Zoom Data
+      </button>
+
+      <p class="note">
+        “Retrieve Live Zoom Data” makes live Zoom API requests
+        for meeting registrants and past meeting participants.
+      </p>
+    </section>
+
+    <section
+      id="resultSection"
+      class="card hidden"
+    >
+      <h2 id="resultTitle">
+        Reviewer Data
+      </h2>
+
+      <pre id="resultOutput"></pre>
+    </section>
+  </main>
+
+  <script>
+    const loginSection =
+      document.getElementById("loginSection");
+
+    const reviewSection =
+      document.getElementById("reviewSection");
+
+    const resultSection =
+      document.getElementById("resultSection");
+
+    const reviewerToken =
+      document.getElementById("reviewerToken");
+
+    const loginButton =
+      document.getElementById("loginButton");
+
+    const loginStatus =
+      document.getElementById("loginStatus");
+
+    const seedButton =
+      document.getElementById("seedButton");
+
+    const zoomDataButton =
+      document.getElementById("zoomDataButton");
+
+    const resultTitle =
+      document.getElementById("resultTitle");
+
+    const resultOutput =
+      document.getElementById("resultOutput");
+
+    function showLoginStatus(message, isError) {
+      loginStatus.textContent = message;
+
+      loginStatus.classList.remove(
+        "hidden",
+        "error",
+        "success"
+      );
+
+      loginStatus.classList.add(
+        isError ? "error" : "success"
+      );
+    }
+
+    function showResult(title, data) {
+      resultTitle.textContent = title;
+
+      resultOutput.textContent =
+        JSON.stringify(data, null, 2);
+
+      resultSection.classList.remove("hidden");
+    }
+
+    async function reviewerFetch(url, options = {}) {
+      const response = await fetch(url, {
+        ...options,
+        credentials: "include",
+        headers: {
+          ...(options.headers || {}),
+        },
+      });
+
+      const data = await response
+        .json()
+        .catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+          "The reviewer request could not be completed."
+        );
+      }
+
+      return data;
+    }
+
+    loginButton.addEventListener(
+      "click",
+      async () => {
+        const token = reviewerToken.value.trim();
+
+        if (!token) {
+          showLoginStatus(
+            "Enter the reviewer access credential.",
+            true
+          );
+
+          return;
+        }
+
+        loginButton.disabled = true;
+
+        try {
+          await reviewerFetch(
+            "/api/zoom-reviewer/session",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                token,
+              }),
+            }
+          );
+
+          reviewerToken.value = "";
+
+          showLoginStatus(
+            "Reviewer authentication successful.",
+            false
+          );
+
+          reviewSection.classList.remove(
+            "hidden"
+          );
+        } catch (err) {
+          showLoginStatus(
+            err.message,
+            true
+          );
+        } finally {
+          loginButton.disabled = false;
+        }
+      }
+    );
+
+    seedButton.addEventListener(
+      "click",
+      async () => {
+        seedButton.disabled = true;
+
+        try {
+          const data = await reviewerFetch(
+            "/api/zoom-reviewer/seed"
+          );
+
+          showResult(
+            "Designated Test Court Study",
+            data
+          );
+        } catch (err) {
+          showResult(
+            "Unable to Load Test Court Study",
+            {
+              success: false,
+              error: err.message,
+            }
+          );
+        } finally {
+          seedButton.disabled = false;
+        }
+      }
+    );
+
+    zoomDataButton.addEventListener(
+      "click",
+      async () => {
+        zoomDataButton.disabled = true;
+
+        try {
+          const data = await reviewerFetch(
+            "/api/zoom-reviewer/zoom-data"
+          );
+
+          showResult(
+            "Live Zoom API Results",
+            data
+          );
+        } catch (err) {
+          showResult(
+            "Unable to Retrieve Zoom Data",
+            {
+              success: false,
+              error: err.message,
+            }
+          );
+        } finally {
+          zoomDataButton.disabled = false;
+        }
+      }
+    );
+  </script>
+</body>
+</html>
+  `);
+});
+
 // Exchange the permanent admin credential for a short-lived admin session token
 app.post("/api/admin/session", (req, res) => {
   res.set("Cache-Control", "no-store");
