@@ -7211,10 +7211,20 @@ app.get("/zoom-reviewer", (req, res) => {
         Retrieve Live Zoom Data
       </button>
 
+       <button
+  id="scopeTestButton"
+  class="secondary"
+  type="button"
+>
+  Test Meeting & User Scopes
+</button>     
+
       <p class="note">
-        “Retrieve Live Zoom Data” makes live Zoom API requests
-        for meeting registrants and past meeting participants.
-      </p>
+  “Retrieve Live Zoom Data” tests meeting registrants and
+  past meeting participants. “Test Meeting & User Scopes”
+  retrieves the connected Zoom user, creates a temporary
+  meeting, reads it, updates it, and verifies the update.
+</p>
     </section>
 
     <section
@@ -7253,6 +7263,9 @@ app.get("/zoom-reviewer", (req, res) => {
 
     const zoomDataButton =
       document.getElementById("zoomDataButton");
+
+    const scopeTestButton =
+  document.getElementById("scopeTestButton");
 
     const resultTitle =
       document.getElementById("resultTitle");
@@ -7412,6 +7425,38 @@ app.get("/zoom-reviewer", (req, res) => {
         }
       }
     );
+
+scopeTestButton.addEventListener(
+  "click",
+  async () => {
+    scopeTestButton.disabled = true;
+
+    try {
+      const data = await reviewerFetch(
+        "/api/zoom-reviewer/scope-test",
+        {
+          method: "POST",
+        }
+      );
+
+      showResult(
+        "Meeting & User Scope Results",
+        data
+      );
+    } catch (err) {
+      showResult(
+        "Unable to Test Meeting & User Scopes",
+        {
+          success: false,
+          error: err.message,
+        }
+      );
+    } finally {
+      scopeTestButton.disabled = false;
+    }
+  }
+);
+    
   </script>
 </body>
 </html>
