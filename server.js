@@ -557,6 +557,7 @@ const apiRateLimiter = rateLimit({
 const allowedCorsOrigins = [
   "https://courtofcompassion.com",
   "https://www.courtofcompassion.com",
+  "https://api.courtofcompassion.com",
 ];
 
 app.use(cors({
