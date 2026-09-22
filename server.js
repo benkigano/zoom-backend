@@ -6403,6 +6403,294 @@ app.get(
   }
 );
 
+app.get(
+  "/api/zoom-reviewer/zoom-data",
+  requireZoomReviewerToken,
+  async (req, res) => {
+    res.set("Cache-Control", "no-store");
+
+    try {
+      const requestId =
+        "cmtqr6xmi0000ob2asyrjbqhz";
+
+      const courtStudyRequest =
+        await prisma.courtStudyRequest.findUnique({
+          where: {
+            id: requestId,
+          },
+          include: {
+            courtStudyMeeting: true,
+          },
+        });
+
+      if (
+        !courtStudyRequest ||
+        !courtStudyRequest.courtStudyMeeting
+      ) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "Zoom reviewer seed Court Study was not found",
+        });
+      }
+
+      const meeting =
+        courtStudyRequest.courtStudyMeeting;
+
+      const zoomMeetingId = String(
+        meeting.zoomMeetingId || ""
+      ).trim();
+
+      const zoomMeetingUuid = String(
+        meeting.zoomMeetingUuid || ""
+      ).trim();
+
+      if (!zoomMeetingId) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "The reviewer seed Court Study does not have a Zoom meeting ID",
+        });
+      }
+
+      const accessToken =
+        await getCourtStudyHostZoomAccessToken({
+          organizerEmail: String(
+            courtStudyRequest.organizerEmail || ""
+          )
+            .trim()
+            .toLowerCase(),
+          oauthEnvironment:
+            courtStudyRequest.zoomOAuthEnvironment ||
+            "PRODUCTION",
+        });
+
+      // ======================================================
+      // Zoom registrants
+      // Exercises meeting:read:list_registrants
+      // ======================================================
+
+      const registrants = [];
+      let registrantNextPageToken = "";
+
+      do {
+        const zoomUrl = new URL(
+          `https://api.zoom.us/v2/meetings/${encodeURIComponent(
+            zoomMeetingId
+          )}/registrants`
+        );
+
+        zoomUrl.searchParams.set(
+          "page_size",
+          "300"
+        );
+
+        if (registrantNextPageToken) {
+          zoomUrl.searchParams.set(
+            "next_page_token",
+            registrantNextPageToken
+          );
+        }
+
+        const zoomResponse = await fetch(
+          zoomUrl.toString(),
+          {
+            headers: {
+              Authorization:
+                `Bearer ${accessToken}`,
+            },
+          }
+        );
+
+        const zoomData = await zoomResponse
+          .json()
+          .catch(() => ({}));
+
+        if (!zoomResponse.ok) {
+          return res
+            .status(zoomResponse.status)
+            .json({
+              success: false,
+              stage: "registrants",
+              error:
+                zoomData?.message ||
+                "Unable to retrieve Zoom registrants",
+            });
+        }
+
+        if (
+          Array.isArray(zoomData.registrants)
+        ) {
+          registrants.push(
+            ...zoomData.registrants
+          );
+        }
+
+        registrantNextPageToken =
+          String(
+            zoomData.next_page_token || ""
+          ).trim();
+      } while (registrantNextPageToken);
+
+      // ======================================================
+      // Zoom past participants
+      // Exercises meeting:read:list_past_participants
+      // ======================================================
+
+      const meetingIdentifier =
+        zoomMeetingUuid
+          ? encodeURIComponent(
+              encodeURIComponent(
+                zoomMeetingUuid
+              )
+            )
+          : encodeURIComponent(
+              zoomMeetingId
+            );
+
+      const participants = [];
+      let participantNextPageToken = "";
+
+      do {
+        const zoomUrl = new URL(
+          `https://api.zoom.us/v2/past_meetings/${meetingIdentifier}/participants`
+        );
+
+        zoomUrl.searchParams.set(
+          "page_size",
+          "300"
+        );
+
+        if (participantNextPageToken) {
+          zoomUrl.searchParams.set(
+            "next_page_token",
+            participantNextPageToken
+          );
+        }
+
+        const zoomResponse = await fetch(
+          zoomUrl.toString(),
+          {
+            headers: {
+              Authorization:
+                `Bearer ${accessToken}`,
+            },
+          }
+        );
+
+        const zoomData = await zoomResponse
+          .json()
+          .catch(() => ({}));
+
+        if (!zoomResponse.ok) {
+          return res
+            .status(zoomResponse.status)
+            .json({
+              success: false,
+              stage: "past-participants",
+              error:
+                zoomData?.message ||
+                "Unable to retrieve Zoom past participants",
+            });
+        }
+
+        if (
+          Array.isArray(zoomData.participants)
+        ) {
+          participants.push(
+            ...zoomData.participants
+          );
+        }
+
+        participantNextPageToken =
+          String(
+            zoomData.next_page_token || ""
+          ).trim();
+      } while (participantNextPageToken);
+
+      return res.status(200).json({
+        success: true,
+
+        meeting: {
+          requestId:
+            courtStudyRequest.id,
+          zoomMeetingId,
+          zoomMeetingUuid:
+            zoomMeetingUuid || null,
+          oauthEnvironment:
+            courtStudyRequest.zoomOAuthEnvironment ||
+            "PRODUCTION",
+        },
+
+        registrants: {
+          total: registrants.length,
+          items: registrants.map(
+            (registrant) => ({
+              id:
+                registrant.id || null,
+              firstName:
+                registrant.first_name ||
+                null,
+              lastName:
+                registrant.last_name ||
+                null,
+              email:
+                registrant.email || null,
+              status:
+                registrant.status || null,
+              createTime:
+                registrant.create_time ||
+                null,
+            })
+          ),
+        },
+
+        pastParticipants: {
+          total: participants.length,
+          items: participants.map(
+            (participant) => ({
+              id:
+                participant.id || null,
+              userId:
+                participant.user_id ||
+                null,
+              name:
+                participant.name || null,
+              email:
+                participant.user_email ||
+                null,
+              joinTime:
+                participant.join_time ||
+                null,
+              leaveTime:
+                participant.leave_time ||
+                null,
+              durationSeconds:
+                participant.duration !==
+                undefined
+                  ? Number(
+                      participant.duration
+                    )
+                  : null,
+            })
+          ),
+        },
+      });
+    } catch (err) {
+      console.error(
+        "❌ GET /api/zoom-reviewer/zoom-data error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "Unable to retrieve Zoom reviewer data",
+      });
+    }
+  }
+);
+
 // Exchange the permanent admin credential for a short-lived admin session token
 app.post("/api/admin/session", (req, res) => {
   res.set("Cache-Control", "no-store");
