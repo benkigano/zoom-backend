@@ -61,6 +61,7 @@ enum CourtStudyMeetingStatus {
 enum CourtStudyDiscussionType {
   RULES_OF_PROCEDURE
   INTERVIEW_RECORDING
+  BOOK_STUDY
 }
 
 enum GuestDistributionCampaignStatus {
@@ -609,6 +610,14 @@ model CourtStudyRequest {
   // Study material
   studyFocusType       CourtStudyDiscussionType?
   selectedRulesSections Json?
+
+  // Book Study material
+  bookExcerptId       String?
+  bookPartNumber      Int?
+  bookPartTitle       String?
+  bookChapterNumber   Int?
+  bookExcerptHtml     String?
+  durationMinutes     Int?
 
   // Requested session details
   preferredStart      DateTime?
