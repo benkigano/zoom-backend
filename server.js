@@ -12889,6 +12889,12 @@ app.post(
         body.meetingFormat ?? body.format
       );
 
+      const requestedFocusKey =
+  cleanText(body.studyFocusType).toUpperCase();
+
+const isBookStudyRequest =
+  requestedFocusKey === "BOOK_STUDY";
+      
       const normalizedHostMode = rawHostMode
         ? rawHostMode
             .toUpperCase()
@@ -12908,15 +12914,15 @@ app.post(
       }
 
       if (
-        !organizerName ||
-        !organizerEmail ||
-        !hostGroupName ||
-        !hostGroupType ||
-        !preferredDate ||
-        !preferredTime ||
-        !timezoneInput ||
-        !rawSessionFormat
-      ) {
+  !organizerName ||
+  !organizerEmail ||
+  (!isBookStudyRequest &&
+    (!hostGroupName || !hostGroupType)) ||
+  !preferredDate ||
+  !preferredTime ||
+  !timezoneInput ||
+  !rawSessionFormat
+) {
         return res.status(400).json({
           success: false,
           error:
@@ -12958,15 +12964,17 @@ app.post(
         cleanText(body.studyFocusType).toUpperCase();
 
       const focusMap = {
-        RULES_OF_COURT_PROCEDURE:
-          "RULES_OF_PROCEDURE",
-        RULES_OF_PROCEDURE:
-          "RULES_OF_PROCEDURE",
-        INTERVIEW_RECORDING:
-          "INTERVIEW_RECORDING",
-        COMPLETED_INTERVIEW:
-          "INTERVIEW_RECORDING",
-      };
+  RULES_OF_COURT_PROCEDURE:
+    "RULES_OF_PROCEDURE",
+  RULES_OF_PROCEDURE:
+    "RULES_OF_PROCEDURE",
+  INTERVIEW_RECORDING:
+    "INTERVIEW_RECORDING",
+  COMPLETED_INTERVIEW:
+    "INTERVIEW_RECORDING",
+  BOOK_STUDY:
+    "BOOK_STUDY",
+};
 
       const studyFocusType = focusMap[focusKey];
 
