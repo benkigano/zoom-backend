@@ -13031,6 +13031,54 @@ const isBookStudyRequest =
         });
       }
 
+      let bookExcerptId = null;
+let bookPartNumber = null;
+let bookPartTitle = null;
+let bookChapterNumber = null;
+let bookExcerptHtml = null;
+let durationMinutes = null;
+
+if (isBookStudyRequest) {
+  bookExcerptId = cleanText(body.bookExcerptId);
+  bookPartTitle = cleanText(body.bookPartTitle);
+  bookExcerptHtml = cleanText(body.bookExcerptHtml);
+
+  bookPartNumber = Number.parseInt(
+    String(body.bookPartNumber ?? ""),
+    10
+  );
+
+  bookChapterNumber = Number.parseInt(
+    String(body.bookChapterNumber ?? ""),
+    10
+  );
+
+  durationMinutes = Number.parseInt(
+    String(body.durationMinutes ?? ""),
+    10
+  );
+
+  const allowedBookStudyDurations =
+    new Set([30, 40, 45, 60, 90]);
+
+  if (
+    !bookExcerptId ||
+    !Number.isInteger(bookPartNumber) ||
+    bookPartNumber < 1 ||
+    !bookPartTitle ||
+    !Number.isInteger(bookChapterNumber) ||
+    bookChapterNumber < 1 ||
+    !bookExcerptHtml ||
+    !allowedBookStudyDurations.has(durationMinutes)
+  ) {
+    return res.status(400).json({
+      success: false,
+      error:
+        "Book Study requires a valid excerpt, Part, Chapter, excerpt text, and duration of 30, 40, 45, 60, or 90 minutes.",
+    });
+  }
+} 
+      
       const formatKey = rawSessionFormat
         .toUpperCase()
         .replace(/[\s-]+/g, "_");
@@ -13134,6 +13182,13 @@ const initialRequestStatus =
             // Study material.
             studyFocusType,
             selectedRulesSections,
+
+            bookExcerptId,
+            bookPartNumber,
+            bookPartTitle,
+            bookChapterNumber,
+            bookExcerptHtml,
+            durationMinutes,
 
             // Requested session details.
             preferredStart,
