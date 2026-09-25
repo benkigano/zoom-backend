@@ -14285,6 +14285,9 @@ async function scheduleCourtStudyInternal({
   const isRulesStudy =
     courtStudyRequest.studyFocusType === "RULES_OF_PROCEDURE";
 
+  const isBookStudy =
+  courtStudyRequest.studyFocusType === "BOOK_STUDY";
+  
   const organizerDisplayName =
     courtStudyRequest.organizerName ||
     courtStudyRequest.pastorName ||
@@ -14296,20 +14299,38 @@ async function scheduleCourtStudyInternal({
     "host group";
 
   const studyMaterialTitle = isRulesStudy
-    ? "Rules of Court Procedure"
+  ? "Rules of Court Procedure"
+  : isBookStudy
+    ? [
+        "Emet the Amicus",
+        courtStudyRequest.bookPartNumber
+          ? `Part ${courtStudyRequest.bookPartNumber}`
+          : null,
+        courtStudyRequest.bookPartTitle || null,
+        courtStudyRequest.bookChapterNumber
+          ? `Chapter ${courtStudyRequest.bookChapterNumber}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" — ")
     : courtStudyRequest.recording?.title ||
       "Court of Compassion Interview";
 
   const meetingTitle =
     title && String(title).trim()
       ? String(title).trim()
-      : `Court Study - ${studyMaterialTitle}`;
+
+   : isBookStudy
+  ? `Book Study - ${studyMaterialTitle}`
+  : `Court Study - ${studyMaterialTitle}`; 
 
   const meetingDescription =
-    description && String(description).trim()
-      ? String(description).trim()
-      : isRulesStudy
-        ? `Court Study session requested by ${organizerDisplayName} of ${hostDisplayName}, based on the Rules of Court Procedure.`
+  description && String(description).trim()
+    ? String(description).trim()
+    : isRulesStudy
+      ? `Court Study session requested by ${organizerDisplayName} of ${hostDisplayName}, based on the Rules of Court Procedure.`
+      : isBookStudy
+        ? `Book Study session requested by ${organizerDisplayName}, based on the selected excerpt from Emet the Amicus.`
         : `Court Study session requested by ${organizerDisplayName} of ${hostDisplayName}, based on the recorded interview "${studyMaterialTitle}".`;
 
   const result = await prisma.$transaction(async (tx) => {
@@ -14322,16 +14343,19 @@ async function scheduleCourtStudyInternal({
         title: meetingTitle,
         description: meetingDescription,
 
-        discussionType: isRulesStudy
-          ? "RULES_OF_PROCEDURE"
-          : "INTERVIEW_RECORDING",
+       discussionType: isRulesStudy
+  ? "RULES_OF_PROCEDURE"
+  : isBookStudy
+    ? "BOOK_STUDY"
+    : "INTERVIEW_RECORDING", 
 
         selectedChapter: null,
         selectedSection: null,
 
-        selectedRecordingId: isRulesStudy
-          ? null
-          : courtStudyRequest.recordingId,
+        selectedRecordingId:
+  isRulesStudy || isBookStudy
+    ? null
+    : courtStudyRequest.recordingId,
 
         scheduledStart: parsedStart,
         scheduledEnd: parsedEnd,
