@@ -13086,12 +13086,17 @@ const isBookStudyRequest =
         }
       }
 
-      const isActiveSubscriber =
-  await isActiveSubscriberEmail(organizerEmail);
+      const isActiveSubscriber = isBookStudyRequest
+  ? false
+  : await isActiveSubscriberEmail(organizerEmail);
 
-const initialRequestStatus = isActiveSubscriber
-  ? "APPROVED"
-  : "PENDING";
+const bypassCourtStudyPayment =
+  isBookStudyRequest;
+
+const initialRequestStatus =
+  bypassCourtStudyPayment || isActiveSubscriber
+    ? "APPROVED"
+    : "PENDING";
       
       const request =
         await prisma.courtStudyRequest.create({
@@ -13145,7 +13150,7 @@ const initialRequestStatus = isActiveSubscriber
           },
         });
 
-      if (!isActiveSubscriber) {
+     if (!bypassCourtStudyPayment && !isActiveSubscriber) { 
   const confirmationEmailSent =
     await sendCourtStudyRequestReceivedEmail({
       organizerName,
