@@ -3430,9 +3430,20 @@ if (
     );
   }
 
-  // Match the present Court Study scheduling default: 60 minutes.
-  const preferredEnd =
-    new Date(preferredStart.getTime() + 60 * 60 * 1000);
+  const automaticDurationMinutes =
+  courtStudyRequest.studyFocusType === "BOOK_STUDY" &&
+  Number.isInteger(courtStudyRequest.durationMinutes) &&
+  [30, 40, 45, 60, 90].includes(
+    courtStudyRequest.durationMinutes
+  )
+    ? courtStudyRequest.durationMinutes
+    : 60;
+
+const preferredEnd =
+  new Date(
+    preferredStart.getTime() +
+      automaticDurationMinutes * 60 * 1000
+  );
 
   const formatLocalDateTime = (date, timeZone) => {
     const parts = Object.fromEntries(
