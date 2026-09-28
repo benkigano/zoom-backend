@@ -2983,6 +2983,11 @@ if (!clientId || !clientSecret || !redirectUri) {
       );
     }
 
+    const zoomUserType = Number(zoomUser.type);
+
+const isZoomBasicUser =
+  zoomUserType === 1;
+    
     const connectedZoomEmail = String(
   zoomUser.email || ""
 )
@@ -3372,6 +3377,8 @@ const zoomConnectionIdentity = churchContactId
       }),
     ]);
 
+     let connectedRequestIsBookStudy = false;
+    
     if (requestId) {
   const courtStudyRequest =
     await prisma.courtStudyRequest.findUnique({
@@ -3392,6 +3399,21 @@ const zoomConnectionIdentity = churchContactId
     );
   }
 
+  connectedRequestIsBookStudy =
+  courtStudyRequest.studyFocusType === "BOOK_STUDY";
+      
+  const isBookStudyRequest =
+  courtStudyRequest.studyFocusType === "BOOK_STUDY";
+
+const requestedBookStudyDuration =
+  Number(courtStudyRequest.durationMinutes);
+
+const bookStudyNeedsBasicDurationChoice =
+  isZoomBasicUser &&
+  isBookStudyRequest &&
+  Number.isInteger(requestedBookStudyDuration) &&
+  requestedBookStudyDuration > 40;
+      
   await prisma.courtStudyRequest.update({
     where: {
       id: requestId,
@@ -3404,6 +3426,89 @@ const zoomConnectionIdentity = churchContactId
     },
   });
 
+if (bookStudyNeedsBasicDurationChoice) {
+  const continuationToken =
+    createCourtStudyContinuationToken(requestId);
+
+  return res.status(200).type("html").send(`
+    <!doctype html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+      />
+      <title>Book Study Duration</title>
+    </head>
+    <body>
+      <h1>Zoom Basic Meeting Limit</h1>
+
+      <p>
+        Your connected Zoom account is a Basic account.
+        Your Book Study was requested for
+        ${requestedBookStudyDuration} minutes.
+      </p>
+
+      <p>
+        Zoom Basic meetings are limited to 40 minutes.
+      </p>
+
+      <form
+        method="post"
+        action="/api/book-study/use-basic-duration"
+      >
+        <input
+          type="hidden"
+          name="requestId"
+          value="${escapeHtml(requestId)}"
+        />
+
+        <input
+          type="hidden"
+          name="token"
+          value="${escapeHtml(continuationToken)}"
+        />
+
+        <button type="submit">
+          Continue with 40 Minutes
+        </button>
+      </form>
+
+    <p>
+  If you expect to need more than 40 minutes,
+  you may upgrade your Zoom account to a paid plan.
+</p>
+
+<p>
+  <a
+    href="https://zoom.us/pricing?plan=personal"
+    target="_blank"
+    rel="noopener noreferrer"
+  >
+    Click Here to Upgrade Your Zoom Plan
+  </a>
+</p>
+
+<p>
+  After upgrading, return to this page and have
+  Court of Compassion check your Zoom account again.
+</p>
+
+<p>
+  <a
+    href="/court-study/zoom/authorize-organizer/${encodeURIComponent(
+      requestId
+    )}"
+  >
+    Recheck My Zoom Account
+  </a>
+</p>  
+    </body>
+    </html>
+  `);
+}
+      
 // ==========================================================
 // COMMUNITY-HOSTED COURT STUDY:
 // automatically schedule and create Zoom after OAuth success
@@ -3552,8 +3657,11 @@ if (
     name="viewport"
     content="width=device-width, initial-scale=1"
   />
-  <title>Court Study Setup Complete</title>
 
+  <title>${connectedRequestIsBookStudy
+  ? "Book Study Setup Complete"
+  : "Court Study Setup Complete"}</title>
+  
   <style>
     body {
       margin: 0;
@@ -3665,8 +3773,11 @@ if (
         <div class="success">✓</div>
 
         <p>
-          Your Zoom account has been connected and your
-          Court Study meeting has been created successfully.
+         
+  ${connectedRequestIsBookStudy
+    ? "Your Zoom account has been connected and your Book Study meeting has been created successfully."
+    : "Your Zoom account has been connected and your Court Study meeting has been created successfully."}
+
         </p>
 
         <p>
@@ -3676,14 +3787,16 @@ if (
 
         <p>
           We have sent your
-          <strong>Court Study Session Ready</strong>
+          <strong>${connectedRequestIsBookStudy
+  ? "Book Study Session Ready"
+  : "Court Study Session Ready"}</strong>
           email to you.
         </p>
 
         <div class="notice">
-          That email contains your Court Study material,
-          meeting registration information, and instructions
-          for inviting participants.
+         ${connectedRequestIsBookStudy
+  ? "That email contains your Book Study material, meeting registration information, and instructions for inviting participants."
+  : "That email contains your Court Study material, meeting registration information, and instructions for inviting participants."} 
         </div>
 
         <p class="continue">
@@ -3718,6 +3831,169 @@ if (
   .send("Unable to connect the Zoom account. Please try again.");
   }
 });
+
+// ============================================================
+// BOOK STUDY — CONTINUE WITH ZOOM BASIC 40-MINUTE LIMIT
+// ============================================================
+app.post(
+  "/api/book-study/use-basic-duration",
+  express.urlencoded({ extended: false }),
+  async (req, res) => {
+    try {
+      const requestId = String(
+        req.body?.requestId || ""
+      ).trim();
+
+      const continuationToken = String(
+        req.body?.token || ""
+      ).trim();
+
+      if (!requestId || !continuationToken) {
+        return res.status(400).send(
+          "Book Study request ID and continuation token are required."
+        );
+      }
+
+      if (
+        !verifyCourtStudyContinuationToken(
+          requestId,
+          continuationToken
+        )
+      ) {
+        return res.status(403).send(
+          "Invalid Book Study continuation link."
+        );
+      }
+
+     const courtStudyRequest =
+  await prisma.courtStudyRequest.findUnique({
+    where: {
+      id: requestId,
+    },
+  });
+
+if (!courtStudyRequest) {
+  return res.status(404).send(
+    "Book Study request not found."
+  );
+}
+
+if (
+  courtStudyRequest.studyFocusType !== "BOOK_STUDY" ||
+  courtStudyRequest.meetingFormat !== "COMMUNITY_HOSTED"
+) {
+  return res.status(400).send(
+    "This continuation is only available for a community-hosted Book Study."
+  );
+}
+
+if (courtStudyRequest.status !== "ZOOM_CONNECTED") {
+  return res.status(409).send(
+    "This Book Study is not currently waiting for the Zoom Basic duration decision."
+  );
+}
+
+const requestedDuration =
+  Number(courtStudyRequest.durationMinutes);
+
+if (
+  !Number.isInteger(requestedDuration) ||
+  requestedDuration <= 40
+) {
+  return res.status(409).send(
+    "This Book Study does not require the Zoom Basic 40-minute adjustment."
+  );
+}
+
+await prisma.courtStudyRequest.update({
+  where: {
+    id: requestId,
+  },
+  data: {
+    durationMinutes: 40,
+  },
+});
+
+const preferredStart =
+  new Date(courtStudyRequest.preferredStart);
+
+if (Number.isNaN(preferredStart.getTime())) {
+  return res.status(400).send(
+    "This Book Study does not have a valid preferred start time."
+  );
+}
+
+const requestTimeZone =
+  courtStudyRequest.timezone ||
+  "America/Los_Angeles";
+
+const preferredEnd =
+  new Date(
+    preferredStart.getTime() +
+      40 * 60 * 1000
+  );
+
+const formatLocalDateTime = (date, timeZone) => {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(date)
+      .filter(
+        (part) => part.type !== "literal"
+      )
+      .map((part) => [
+        part.type,
+        part.value,
+      ])
+  );
+
+  return (
+    `${parts.year}-${parts.month}-${parts.day}` +
+    `T${parts.hour}:${parts.minute}`
+  );
+};
+
+const scheduleResult =
+  await scheduleCourtStudyInternal({
+    requestId,
+    scheduledStart: formatLocalDateTime(
+      preferredStart,
+      requestTimeZone
+    ),
+    scheduledEnd: formatLocalDateTime(
+      preferredEnd,
+      requestTimeZone
+    ),
+    timezone: requestTimeZone,
+  });
+
+if (!scheduleResult.success) {
+  throw new Error(
+    scheduleResult.responseBody?.error ||
+    scheduleResult.error ||
+    "Unable to schedule the 40-minute Book Study."
+  );
+}
+      
+    } catch (error) {
+      console.error(
+        "❌ BOOK STUDY BASIC DURATION CONTINUATION ERROR:",
+        error
+      );
+
+      return res.status(500).send(
+        "Unable to continue the Book Study."
+      );
+    }
+  }
+);
 
 // ============================================================
 // COURT STUDY ZOOM CONNECT — TEST CREATE MEETING
@@ -15048,6 +15324,193 @@ const interviewTitle = isRulesStudy
 );
 
 // =====================================================
+// Public: display full Book Study excerpt by invitation token
+// =====================================================
+app.get(
+  "/book-study/excerpt/:token",
+  async (req, res) => {
+    try {
+      const token = String(
+        req.params.token || ""
+      ).trim();
+
+      if (!token) {
+        return res.status(400).send(
+          "Book Study invitation token is required."
+        );
+      }
+
+      const meeting =
+        await prisma.courtStudyMeeting.findUnique({
+          where: {
+            publicInvitationToken: token,
+          },
+          include: {
+            courtStudyRequest: true,
+          },
+        });
+
+      if (
+        !meeting ||
+        !meeting.courtStudyRequest
+      ) {
+        return res.status(404).send(
+          "Book Study excerpt not found."
+        );
+      }
+
+      const courtStudyRequest =
+        meeting.courtStudyRequest;
+
+      if (
+        String(
+          courtStudyRequest.studyFocusType || ""
+        )
+          .trim()
+          .toUpperCase() !== "BOOK_STUDY"
+      ) {
+        return res.status(404).send(
+          "Book Study excerpt not found."
+        );
+      }
+
+      const bookExcerptText = String(
+        courtStudyRequest.bookExcerptHtml || ""
+      )
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<\/p>/gi, "\n\n")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "&")
+        .replace(/&lt;/gi, "<")
+        .replace(/&gt;/gi, ">")
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;|&#039;/gi, "'")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+
+      if (!bookExcerptText) {
+        return res.status(404).send(
+          "The selected Book Study excerpt is unavailable."
+        );
+      }
+
+      const materialTitle = [
+        "Emet the Amicus",
+        courtStudyRequest.bookPartNumber
+          ? `Part ${courtStudyRequest.bookPartNumber}`
+          : null,
+        courtStudyRequest.bookPartTitle || null,
+        courtStudyRequest.bookChapterNumber
+          ? `Chapter ${courtStudyRequest.bookChapterNumber}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" — ");
+
+      return res
+        .status(200)
+        .type("html")
+        .send(`
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  />
+  <title>${escapeHtml(materialTitle)}</title>
+</head>
+
+<body
+  style="
+    margin:0;
+    background:#f7f2e9;
+    font-family:Arial,Helvetica,sans-serif;
+    color:#172554;
+  "
+>
+  <main
+    style="
+      max-width:760px;
+      margin:40px auto;
+      padding:32px;
+      background:#ffffff;
+      border:1px solid #e5e7eb;
+      border-top:5px solid #d8b24c;
+      border-radius:12px;
+    "
+  >
+    <div
+      style="
+        color:#0b2a68;
+        font-size:13px;
+        font-weight:700;
+        letter-spacing:2px;
+        margin-bottom:12px;
+      "
+    >
+      COURT OF COMPASSION
+    </div>
+
+    <h1
+      style="
+        color:#0b2a68;
+        margin:0 0 8px 0;
+      "
+    >
+      Book Study
+    </h1>
+
+    <h2
+      style="
+        margin:0 0 28px 0;
+        font-size:20px;
+        font-weight:600;
+      "
+    >
+      ${escapeHtml(materialTitle)}
+    </h2>
+
+    <div
+      style="
+        white-space:pre-wrap;
+        font-size:17px;
+        line-height:1.75;
+      "
+    >${escapeHtml(bookExcerptText)}</div>
+
+    <div
+      style="
+        margin-top:36px;
+        padding:18px;
+        background:#fff8df;
+        border-left:4px solid #d8b24c;
+      "
+    >
+      <strong>Finished reading?</strong><br>
+      Close this page and return to your
+      Book Study invitation email to continue.
+    </div>
+  </main>
+</body>
+</html>
+        `);
+    } catch (error) {
+      console.error(
+        "❌ BOOK STUDY FULL EXCERPT ERROR:",
+        error
+      );
+
+      return res.status(500).send(
+        "Unable to load the Book Study excerpt."
+      );
+    }
+  }
+);
+
+// =====================================================
 // Public: get Court Study participant invitation by token
 // =====================================================
 app.get(
@@ -17121,6 +17584,11 @@ const isRulesStudy =
     .toUpperCase() === "RULES_OF_PROCEDURE" ||
   Boolean(selectedRulesSection);
 
+const isBookStudy =
+  String(courtStudyRequest.studyFocusType || "")
+    .trim()
+    .toUpperCase() === "BOOK_STUDY";
+      
 const rulesVideoUrl = String(
   selectedRulesSection?.videoUrl || ""
 ).trim();
@@ -17131,13 +17599,43 @@ const interviewRecordingUrl = String(
 
 const recordingUrl = isRulesStudy
   ? rulesVideoUrl
-  : interviewRecordingUrl;
+  : isBookStudy
+    ? ""
+    : interviewRecordingUrl;
 
-const podcastUrl = isRulesStudy
-  ? ""
-  : String(recording?.podcastUrl || "").trim();
+const podcastUrl =
+  isRulesStudy || isBookStudy
+    ? ""
+    : String(recording?.podcastUrl || "").trim();
 
-      const registrationUrl = String(
+const bookExcerptText = isBookStudy
+  ? String(courtStudyRequest.bookExcerptHtml || "")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>/gi, "\n\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;|&#039;/gi, "'")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  : "";
+
+const bookExcerptPreviewText =
+  isBookStudy && bookExcerptText
+    ? (
+        bookExcerptText.length > 1000
+          ? `${bookExcerptText
+              .slice(0, 1000)
+              .replace(/\s+\S*$/, "")
+              .trim()}…`
+          : bookExcerptText
+      )
+    : "";
+      
+const registrationUrl = String(
   meeting.zoomRegistrationUrl || ""
 ).trim();
 
@@ -17157,7 +17655,11 @@ if (!pastorEmail) {
   missingFields.push("pastorEmail");
 }
 
-if (!isRulesStudy && !recordingUrl) {
+if (
+  !isRulesStudy &&
+  !isBookStudy &&
+  !recordingUrl
+) {
   missingFields.push("recordingUrl");
 }
 
@@ -17215,10 +17717,59 @@ if (!participantZoomUrl) {
       .join(" — ") ||
     meeting.title ||
     "Rules of Court Procedure"
-  : recording?.title ||
-    meeting.title ||
-    "Court of Compassion Interview";
+  : isBookStudy
+    ? [
+        "Emet the Amicus",
+        courtStudyRequest.bookPartNumber
+          ? `Part ${courtStudyRequest.bookPartNumber}`
+          : null,
+        courtStudyRequest.bookPartTitle || null,
+        courtStudyRequest.bookChapterNumber
+          ? `Chapter ${courtStudyRequest.bookChapterNumber}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" — ")
+    : recording?.title ||
+      meeting.title ||
+      "Court of Compassion Interview";
 
+      let publicInvitationToken = String(
+  meeting.publicInvitationToken || ""
+).trim();
+
+if (!publicInvitationToken) {
+  publicInvitationToken = crypto.randomBytes(32).toString("hex");
+
+  await prisma.courtStudyMeeting.update({
+    where: {
+      id: meeting.id,
+    },
+    data: {
+      publicInvitationToken,
+    },
+  });
+
+  meeting.publicInvitationToken = publicInvitationToken;
+}
+
+const participantInviteComposerUrl = publicInvitationToken
+  ? `https://www.courtofcompassion.com/court-study-participant-invitation?token=${encodeURIComponent(publicInvitationToken)}`
+  : "";
+
+const safeParticipantInviteComposerUrl =
+  safeEmailHtml(participantInviteComposerUrl);
+
+const bookExcerptUrl =
+  isBookStudy && publicInvitationToken
+    ? `https://api.courtofcompassion.com/book-study/excerpt/${encodeURIComponent(
+        publicInvitationToken
+      )}`
+    : "";
+
+const safeBookExcerptUrl =
+  safeEmailWebUrl(bookExcerptUrl);
+      
 const memberInvitationText = isRulesStudy
   ? [
       `You are invited to participate in a Court of Compassion Court Study session hosted by ${churchName}.`,
@@ -17248,7 +17799,37 @@ const memberInvitationText = isRulesStudy
       "Important: This meeting does not use Zoom participant registration. Use the Zoom join link above to enter the Court Study session.",
     ]),
      ]
-    : [
+    : isBookStudy
+  ? [
+      "You are invited to participate in a Court of Compassion Book Study session.",
+      "",
+      `Study Material: ${interviewTitle}`,
+      "",
+      "Selected Excerpt:",
+      bookExcerptPreviewText,
+
+      "",
+"Read Full Excerpt:",
+bookExcerptUrl,
+    
+      "",
+      `Session: ${readableSessionTime}`,
+      "",
+      ...(usesZoomRegistration
+        ? [
+            "Register for the Zoom Book Study Session:",
+            registrationUrl,
+            "",
+            "Important: Each participant must register separately using the registration link above. Zoom will send each registered participant a personal confirmation email with a unique personal join link.",
+          ]
+        : [
+            "Join the Zoom Book Study Session:",
+            participantZoomUrl,
+            "",
+            "Important: This meeting does not use Zoom participant registration. Use the Zoom join link above to enter the Book Study session.",
+          ]),
+    ]
+  : [
       `You are invited to participate in a Court of Compassion Court Study session hosted by ${churchName}.`,
       "",
       `Interview: ${interviewTitle}`,
@@ -17279,8 +17860,9 @@ const memberInvitationText = isRulesStudy
     ]),
     ].join("\n");
 
-      const subject =
-        `Court Study Session Ready — ${interviewTitle}`;
+      const subject = isBookStudy
+  ? `Book Study Session Ready — ${interviewTitle}`
+  : `Court Study Session Ready — ${interviewTitle}`;
 
       const isCommunityHosted =
   courtStudyRequest.meetingFormat === "COMMUNITY_HOSTED";
@@ -17355,7 +17937,49 @@ const hostDisplayName = isCommunityHosted
       "",
       "Court of Compassion",
     ].join("\n")
+
+    : isBookStudy
+  ? [
+      `Dear ${recipientName},`,
+      "",
+      "Your Court of Compassion Book Study session is ready.",
+      "",
+      `Study Material: ${interviewTitle}`,
+      `Session: ${readableSessionTime}`,
+      "",
+      "Selected Excerpt:",
+      bookExcerptPreviewText,
+
+      "",
+"Read Full Excerpt:",
+bookExcerptUrl,
+    
+      "",
+      ...(usesZoomRegistration
+        ? [
+            "Public Zoom Registration:",
+            registrationUrl,
+            "",
+            "FOR THE ORGANIZER AND PARTICIPANTS:",
+            "Each person—including the organizer—must register separately using the public Zoom Registration link above. After registration, Zoom will email that person a unique personal join link.",
+          ]
+        : [
+            "Zoom Meeting Join Link:",
+            participantZoomUrl,
+            "",
+            "FOR THE ORGANIZER AND PARTICIPANTS:",
+            "This meeting does not use Zoom participant registration. Use the Zoom join link above to enter the Book Study session.",
+          ]),
+      "",
+      "READY-MADE PARTICIPANT INVITATION",
+      "---------------------------------",
+      "",
+      memberInvitationText,
+      "",
+      "Court of Compassion",
+    ].join("\n")
   : [
+        
       `Dear ${recipientName},`,
       "",
       "Your Court of Compassion Court Study session is ready.",
@@ -17411,8 +18035,9 @@ const hostDisplayName = isCommunityHosted
         const safeParticipantZoomUrl =
   safeEmailWebUrl(participantZoomUrl);
 
-      const memberEmailSubject =
-  `Invitation: Court Study — ${interviewTitle}`;
+      const memberEmailSubject = isBookStudy
+  ? `Invitation: Book Study — ${interviewTitle}`
+  : `Invitation: Court Study — ${interviewTitle}`;
 
       
 
@@ -17428,7 +18053,9 @@ const hostDisplayName = isCommunityHosted
       
       const memberEmailBody = isCommunityHosted
   ? [
-      "Dear Court Study Participants,",
+      isBookStudy
+  ? "Dear Book Study Participants,"
+  : "Dear Court Study Participants,",
       "",
       memberInvitationText,
       "",
@@ -17437,7 +18064,9 @@ const hostDisplayName = isCommunityHosted
       hostGroupName,
     ].join("\n")
   : [
-     "Dear Court Study Participants,", 
+     isBookStudy
+  ? "Dear Book Study Participants,"
+  : "Dear Court Study Participants,", 
       "",
       memberInvitationText,
       "",
@@ -17452,31 +18081,8 @@ const memberMailtoUrl =
 
 const safeMemberMailtoUrl =
   safeEmailHtml(memberMailtoUrl);
-let publicInvitationToken = String(
-  meeting.publicInvitationToken || ""
-).trim();
 
-if (!publicInvitationToken) {
-  publicInvitationToken = crypto.randomBytes(32).toString("hex");
-
-  await prisma.courtStudyMeeting.update({
-    where: {
-      id: meeting.id,
-    },
-    data: {
-      publicInvitationToken,
-    },
-  });
-
-  meeting.publicInvitationToken = publicInvitationToken;
-}
-
-const participantInviteComposerUrl = publicInvitationToken
-  ? `https://www.courtofcompassion.com/court-study-participant-invitation?token=${encodeURIComponent(publicInvitationToken)}`
-  : "";
-
-const safeParticipantInviteComposerUrl =
-  safeEmailHtml(participantInviteComposerUrl);      
+      
          const htmlBody = `
         <!doctype html>
         <html lang="en">
@@ -17573,7 +18179,9 @@ const safeParticipantInviteComposerUrl =
                             font-weight:700;
                           "
                         >
-                          Court Study Session Ready
+                          ${isBookStudy
+  ? "Book Study Session Ready"
+  : "Court Study Session Ready"}
                         </div>
                       </td>
                     </tr>
@@ -17606,15 +18214,21 @@ const safeParticipantInviteComposerUrl =
                         </p>
 
                         <p style="margin:0 0 18px 0;">
-                          Your Court of Compassion Court Study session is ready.
+                         ${isBookStudy
+  ? "Your Court of Compassion Book Study session is ready."
+  : "Your Court of Compassion Court Study session is ready."} 
                         </p>
 
                         <p style="margin:0 0 20px 0;">
-                          <strong>${safeEmailHtml(hostLabel)}:</strong>
-                          ${safeEmailHtml(hostDisplayName)}
-                          <br>
+                          ${!isBookStudy
+  ? `
+    <strong>${safeEmailHtml(hostLabel)}:</strong>
+    ${safeEmailHtml(hostDisplayName)}
+    <br>
+  `
+  : ""}
 
-                          <strong>${isRulesStudy ? "Study Material" : "Interview"}:</strong>
+                          <strong>${isRulesStudy || isBookStudy ? "Study Material" : "Interview"}:</strong>
                           ${safeEmailHtml(interviewTitle)}
                           <br>
 
@@ -17622,52 +18236,94 @@ const safeParticipantInviteComposerUrl =
                           ${safeEmailHtml(readableSessionTime)}
                         </p>
 
-                        <!-- MEDIA BUTTONS -->
-                        <p style="margin:0 0 22px 0;">
-                          <a
-                            href="${safeRecordingUrl}"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style="
-                              display:inline-block;
-                              padding:11px 17px;
-                              margin:4px 8px 4px 0;
-                              background:#0b2a68;
-                              color:#ffffff;
-                              text-decoration:none;
-                              border-radius:4px;
-                              font-weight:bold;
-                            "
-                          >
-                            ${isRulesStudy
-                              ? "Watch Selected Court Study Video"
-                              : "Watch Interview Recording"}
-                          </a>
+                         ${isBookStudy
+  ? `
+    <div
+      style="
+        margin:0 0 22px 0;
+        padding:16px;
+        background:#f7f2e9;
+        border-left:4px solid #d8b24c;
+        color:#172554;
+      "
+    >
+      <strong>Selected Excerpt:</strong>
+      <div style="margin-top:10px;line-height:22px;">
+       ${safeEmailHtml(bookExcerptPreviewText).replace(/\n/g, "<br>")}
 
-                          ${
-                            podcastUrl
-                              ? `
-                                <a
-                                  href="${safePodcastUrl}"
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  style="
-                                    display:inline-block;
-                                    padding:11px 17px;
-                                    margin:4px 8px 4px 0;
-                                    background:#1976D2;
-                                    color:#ffffff;
-                                    text-decoration:none;
-                                    border-radius:4px;
-                                    font-weight:bold;
-                                  "
-                                >
-                                  Listen to Podcast
-                                </a>
-                              `
-                              : ""
-                          }
-                        </p>
+<div style="margin-top:16px;">
+  <a
+    href="${safeBookExcerptUrl}"
+    target="_blank"
+    rel="noopener noreferrer"
+    style="
+      display:inline-block;
+      padding:11px 17px;
+      background:#8a6500;
+      color:#ffffff;
+      text-decoration:none;
+      border-radius:4px;
+      font-weight:bold;
+    "
+  >
+    Read Full Excerpt
+  </a>
+</div> 
+      </div>
+    </div>
+  `
+  : ""}
+
+                        <!-- MEDIA BUTTONS -->
+${!isBookStudy
+  ? `
+    <p style="margin:0 0 22px 0;">
+      <a
+        href="${safeRecordingUrl}"
+        target="_blank"
+        rel="noopener noreferrer"
+        style="
+          display:inline-block;
+          padding:11px 17px;
+          margin:4px 8px 4px 0;
+          background:#0b2a68;
+          color:#ffffff;
+          text-decoration:none;
+          border-radius:4px;
+          font-weight:bold;
+        "
+      >
+        ${isRulesStudy
+          ? "Watch Selected Court Study Video"
+          : "Watch Interview Recording"}
+      </a>
+
+      ${
+        podcastUrl
+          ? `
+            <a
+              href="${safePodcastUrl}"
+              target="_blank"
+              rel="noopener noreferrer"
+              style="
+                display:inline-block;
+                padding:11px 17px;
+                margin:4px 8px 4px 0;
+                background:#1976D2;
+                color:#ffffff;
+                text-decoration:none;
+                border-radius:4px;
+                font-weight:bold;
+              "
+            >
+              Listen to Podcast
+            </a>
+          `
+          : ""
+      }
+    </p>
+  `
+  : ""}
 
                         <!-- REGISTRATION SECTION -->
                         <h3
