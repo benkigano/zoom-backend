@@ -2395,6 +2395,9 @@ app.get(
         );
       }
 
+       const isBookStudyRequest =
+  courtStudyRequest.studyFocusType === "BOOK_STUDY";
+      
       const expectedZoomEmail = escapeHtml(
   String(courtStudyRequest.organizerEmail || "")
     .trim()
@@ -2517,26 +2520,33 @@ app.get(
           COURT OF COMPASSION
         </div>
 
-        <h1>
-          Connect the Zoom Account That Will Host This Court Study
-        </h1>
+       <h1>
+  ${isBookStudyRequest
+    ? "Connect the Zoom Account That Will Host This Book Study"
+    : "Connect the Zoom Account That Will Host This Court Study"}
+</h1> 
       </div>
 
       <div class="content">
 
-        <p>
-          Your Court Study request has been approved.
-        </p>
+       <p>
+  ${isBookStudyRequest
+    ? "Your Book Study request has been approved."
+    : "Your Court Study request has been approved."}
+</p> 
 
-        <p>
-          The next step is to authorize the Zoom account
-          that should host this Court Study session.
-        </p>
+      <p>
+  ${isBookStudyRequest
+    ? "The next step is to authorize the Zoom account that should host this Book Study session."
+    : "The next step is to authorize the Zoom account that should host this Court Study session."}
+</p> 
 
        <div class="notice">
   <div class="important">
-    Zoom account expected for this Court Study
-  </div>
+  ${isBookStudyRequest
+    ? "Zoom account expected for this Book Study"
+    : "Zoom account expected for this Court Study"}
+</div>
 
   <p style="font-size:18px;font-weight:700;">
     ${expectedZoomEmail}
@@ -2556,10 +2566,12 @@ app.get(
   </p>
 
   <p>
-    Check the email shown in your Zoom profile.
-    If it is not the account you want to use for this Court Study,
-    use Zoom's <strong>Switch Account</strong> option before continuing.
-  </p>
+  Check the email shown in your Zoom profile.
+  ${isBookStudyRequest
+    ? "If it is not the account you want to use for this Book Study,"
+    : "If it is not the account you want to use for this Court Study,"}
+  use Zoom's <strong>Switch Account</strong> option before continuing.
+</p>
 
   <p>
     If Zoom opens under a different account, Court of Compassion
@@ -2580,10 +2592,12 @@ app.get(
   Continue to Zoom
 </a>
 
-<div class="small">
+ <div class="small">
   Court of Compassion will verify the Zoom account email
-  before saving the connection or creating the Court Study meeting.
-</div> 
+  ${isBookStudyRequest
+    ? "before saving the connection or creating the Book Study meeting."
+    : "before saving the connection or creating the Court Study meeting."}
+</div>
 
       </div>
 
@@ -13569,8 +13583,9 @@ paymentRequired: true,
       return res.status(201).json({
         success: true,
         streamlined: true,
-        message:
-          "Court Study request created and ready for Zoom authorization.",
+        message: isBookStudyRequest
+  ? "Book Study request created and ready to connect the hosting Zoom account."
+  : "Court Study request created and ready for Zoom authorization.",
         request: {
           id: request.id,
           status: request.status,
@@ -13579,10 +13594,13 @@ paymentRequired: true,
           sessionFormat:
             request.sessionFormat,
         },
-        zoomAuthorizationPath:
-          `/court-study/zoom/authorize-organizer/${encodeURIComponent(
-            request.id
-          )}`,
+       zoomAuthorizationPath: isBookStudyRequest
+  ? `/court-study/zoom/connect-organizer/${encodeURIComponent(
+      request.id
+    )}`
+  : `/court-study/zoom/authorize-organizer/${encodeURIComponent(
+      request.id
+    )}`, 
       });
     } catch (error) {
       console.error(
