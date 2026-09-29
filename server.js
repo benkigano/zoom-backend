@@ -13573,6 +13573,18 @@ paymentRequired: true,
     },
   });
 }
+
+      if (isBookStudyRequest) {
+  await sendCommunityHostedZoomApprovalEmail({
+    requestId: request.id,
+    organizerName,
+    organizerEmail,
+    hostGroupName: null,
+    preferredStart: request.preferredStart,
+    timezone: request.timezone,
+    isBookStudy: true,
+  });
+}
       
       console.log(
         "✅ STREAMLINED COURT STUDY REQUEST CREATED:",
@@ -13716,10 +13728,13 @@ async function sendCommunityHostedZoomApprovalEmail({
   hostGroupName,
   preferredStart,
   timezone,
+  isBookStudy = false,
 }) {
+  
   const safeOrganizerName =
-    String(organizerName || "").trim() || "Court Study Organizer";
-
+  String(organizerName || "").trim() ||
+  (isBookStudy ? "Book Study Organizer" : "Court Study Organizer");
+  
   const safeOrganizerEmail =
     String(organizerEmail || "").trim();
 
@@ -13764,17 +13779,25 @@ async function sendCommunityHostedZoomApprovalEmail({
   const text = [
     `Dear ${safeOrganizerName},`,
     "",
-    "Your Court of Compassion Court Study request has been approved.",
+    isBookStudy
+  ? "Your Court of Compassion Book Study request has been approved."
+  : "Your Court of Compassion Court Study request has been approved.",
     "",
-    `Host group or community: ${safeHostGroupName}`,
+   isBookStudy
+  ? "Study Material: Emet the Amicus"
+  : `Host group or community: ${safeHostGroupName}`, 
     `Approved session: ${readableSessionTime}`,
   "",
-"Before you continue, open Zoom in a new browser tab and sign in to the Zoom account you want to use to host this Court Study.",
+isBookStudy
+  ? "Before you continue, open Zoom in a new browser tab and sign in to the Zoom account you want to use to host this Book Study."
+  : "Before you continue, open Zoom in a new browser tab and sign in to the Zoom account you want to use to host this Court Study.",
 "",
-"Leave that Zoom account signed in, return to this email, and then select Continue to Zoom below. When the Zoom connection is complete, Zoom will automatically return you to Court of Compassion, where your Court Study setup will continue.",
-"",
-"Important: Keep the Zoom account you want to use signed in while you continue. Do not switch Zoom accounts until Zoom returns you to Court of Compassion. Court of Compassion will then create and configure the Court Study meeting in the Zoom account you connected. You do not need to create the meeting yourself.",
-"",
+isBookStudy
+  ? "Leave that Zoom account signed in, return to this email, and then select Continue to Zoom below. When the Zoom connection is complete, Zoom will automatically return you to Court of Compassion, where your Book Study setup will continue."
+  : "Leave that Zoom account signed in, return to this email, and then select Continue to Zoom below. When the Zoom connection is complete, Zoom will automatically return you to Court of Compassion, where your Court Study setup will continue.",
+isBookStudy
+  ? "Important: Keep the Zoom account you want to use signed in while you continue. Do not switch Zoom accounts until Zoom returns you to Court of Compassion. Court of Compassion will then create and configure the Book Study meeting in the Zoom account you connected. You do not need to create the meeting yourself."
+  : "Important: Keep the Zoom account you want to use signed in while you continue. Do not switch Zoom accounts until Zoom returns you to Court of Compassion. Court of Compassion will then create and configure the Court Study meeting in the Zoom account you connected. You do not need to create the meeting yourself.",
     `Continue to Zoom: ${connectZoomUrl}`,
     "",
     "Court of Compassion",
@@ -13801,7 +13824,9 @@ async function sendCommunityHostedZoomApprovalEmail({
                 COURT OF COMPASSION
               </div>
               <div style="font-size:26px;line-height:34px;color:#ffffff;font-weight:700;">
-                Court Study Approved
+                ${isBookStudy
+  ? "Book Study Approved"
+  : "Court Study Approved"}
               </div>
             </td>
           </tr>
@@ -13817,27 +13842,39 @@ async function sendCommunityHostedZoomApprovalEmail({
               <p>Dear ${safeOrganizerName},</p>
 
               <p>
-                Your Court of Compassion Court Study request has been
-                <strong>approved</strong>.
-              </p>
+  ${isBookStudy
+    ? "Your Court of Compassion Book Study request has been"
+    : "Your Court of Compassion Court Study request has been"}
+  <strong>approved</strong>.
+</p>
+
+            <p>
+  ${isBookStudy
+    ? `<strong>Study Material:</strong> Emet the Amicus<br />`
+    : `<strong>Host Group or Community:</strong> ${safeHostGroupName}<br />`}
+  <strong>Approved Session:</strong> ${readableSessionTime}
+</p>  
 
               <p>
-                <strong>Host Group or Community:</strong> ${safeHostGroupName}<br />
-                <strong>Approved Session:</strong> ${readableSessionTime}
-              </p>
+  ${isBookStudy
+    ? "The next step is to connect the Zoom account that will host this Book Study."
+    : "The next step is to connect the Zoom account that will host this Court Study."}
+</p>
 
               <p>
-                The next step is to connect the Zoom account that will host
-                this Court Study.
-              </p>
-
-              <p>
-  Before you continue, open Zoom in a new browser tab and sign in to
-  the Zoom account you want to use to host this Court Study.
-  Leave that Zoom account signed in, return to this email, and then
-  click Continue to Zoom below. When the Zoom connection is complete,
-  Zoom will automatically return you to Court of Compassion, where
-  your Court Study setup will continue.
+  ${isBookStudy
+    ? `Before you continue, open Zoom in a new browser tab and sign in to
+       the Zoom account you want to use to host this Book Study.
+       Leave that Zoom account signed in, return to this email, and then
+       click Continue to Zoom below. When the Zoom connection is complete,
+       Zoom will automatically return you to Court of Compassion, where
+       your Book Study setup will continue.`
+    : `Before you continue, open Zoom in a new browser tab and sign in to
+       the Zoom account you want to use to host this Court Study.
+       Leave that Zoom account signed in, return to this email, and then
+       click Continue to Zoom below. When the Zoom connection is complete,
+       Zoom will automatically return you to Court of Compassion, where
+       your Court Study setup will continue.`}
 </p>
 
               <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0;">
@@ -13857,7 +13894,7 @@ async function sendCommunityHostedZoomApprovalEmail({
   <strong>Important:</strong> Keep the Zoom account you want to use
   signed in while you click Continue to Zoom. Do not switch Zoom accounts
   until Zoom returns you to Court of Compassion. Court of Compassion will
-  then create and configure the Court Study meeting in the Zoom account
+  then create and configure the ${isBookStudy ? "Book Study" : "Court Study"} meeting in the Zoom account
   you connected. You do not need to create the meeting yourself.
 </p>
 
@@ -13890,15 +13927,19 @@ async function sendCommunityHostedZoomApprovalEmail({
   await transporter.sendMail({
     from: `"Court of Compassion" <${process.env.GMAIL_USER}>`,
     to: safeOrganizerEmail,
-    subject: "Court Study Approved — Connect Your Zoom Account",
+    subject: isBookStudy
+  ? "Book Study Approved — Connect Your Zoom Account"
+  : "Court Study Approved — Connect Your Zoom Account",
     text,
     html,
     replyTo: process.env.GMAIL_USER,
   });
 
   console.log(
-    `✅ Court Study Zoom connection email sent for request ${requestId}`
-  );
+  isBookStudy
+    ? `✅ Book Study Zoom connection email sent for request ${requestId}`
+    : `✅ Court Study Zoom connection email sent for request ${requestId}`
+);
 }
 
 async function sendCourtStudyPostSurveyInvitations({
