@@ -412,6 +412,33 @@ function requireZoomReviewerToken(req, res, next) {
   });
 }
 
+function hasValidZoomReviewerSession(req) {
+  const cookieHeader = String(
+    req.headers.cookie || ""
+  );
+
+  const sessionCookie = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) =>
+      part.startsWith("zoom_reviewer_session=")
+    );
+
+  if (!sessionCookie) {
+    return false;
+  }
+
+  const sessionToken = decodeURIComponent(
+    sessionCookie.slice(
+      "zoom_reviewer_session=".length
+    )
+  );
+
+  return verifyZoomReviewerSessionToken(
+    sessionToken
+  );
+}
+
 function requireAdminToken(req, res, next) {
   const cookieHeader = String(req.headers.cookie || "");
 
@@ -13435,12 +13462,19 @@ if (isBookStudyRequest) {
         }
       }
 
-      const isActiveSubscriber = isBookStudyRequest
-  ? false
-  : await isActiveSubscriberEmail(organizerEmail);
+   const isZoomReviewerSession =
+  hasValidZoomReviewerSession(req);
+
+const isActiveSubscriber =
+  isBookStudyRequest || isZoomReviewerSession
+    ? false
+    : await isActiveSubscriberEmail(
+        organizerEmail
+      );
 
 const bypassCourtStudyPayment =
-  isBookStudyRequest;
+  isBookStudyRequest ||
+  isZoomReviewerSession;   
 
 const initialRequestStatus =
   bypassCourtStudyPayment || isActiveSubscriber
