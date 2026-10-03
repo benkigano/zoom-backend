@@ -4278,6 +4278,175 @@ if (!scheduleResult.success) {
     "Unable to schedule the 40-minute Book Study."
   );
 }
+
+const zoomResult =
+  await createCourtStudyZoomInternal({
+    requestId,
+  });
+
+if (!zoomResult.responseBody?.success) {
+  throw new Error(
+    zoomResult.responseBody?.error ||
+      "Unable to create the 40-minute Book Study Zoom meeting."
+  );
+}
+
+const invitationResult =
+  await sendCourtStudyInvitationInternal({
+    requestId,
+  });
+
+if (
+  !invitationResult.success ||
+  !invitationResult.responseBody?.success
+) {
+  throw new Error(
+    invitationResult.responseBody?.error ||
+      "Unable to send the Book Study session invitation."
+  );
+}
+
+console.log(
+  "✅ BOOK STUDY BASIC 40-MINUTE FLOW COMPLETED:",
+  {
+    requestId,
+    scheduled: true,
+    zoomCreated: true,
+    invitationSent: true,
+  }
+);
+
+return res.status(200).type("html").send(`
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  />
+  <title>Book Study Scheduled | Court of Compassion</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #f7f2e9;
+      color: #14285c;
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.55;
+    }
+
+    .page {
+      min-height: 100vh;
+      padding: 48px 20px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 700px;
+      margin: 0 auto;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 12px 32px rgba(15, 35, 80, 0.08);
+    }
+
+    .header {
+      background: #0b2a68;
+      color: #ffffff;
+      text-align: center;
+      padding: 30px 32px 26px;
+      border-bottom: 4px solid #d6ad2f;
+    }
+
+    .court-name {
+      margin: 0 0 8px;
+      color: #f2c94c;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 30px;
+    }
+
+    .content {
+      padding: 34px;
+    }
+
+    .success-box {
+      background: #ecfdf3;
+      border: 1px solid #abefc6;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+
+    .success-box strong {
+      display: block;
+      margin-bottom: 6px;
+      color: #067647;
+      font-size: 18px;
+    }
+
+    p {
+      margin: 0 0 16px;
+      color: #475467;
+    }
+
+    .footer {
+      padding: 20px 34px 28px;
+      text-align: center;
+      color: #667085;
+      font-size: 12px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <main class="card">
+
+      <header class="header">
+        <div class="court-name">Court of Compassion</div>
+        <h1>Book Study Scheduled</h1>
+      </header>
+
+      <div class="content">
+
+        <div class="success-box">
+          <strong>Your Book Study meeting has been created.</strong>
+          Court of Compassion created the Zoom meeting for 40 minutes.
+        </div>
+
+        <p>
+          The Book Study session information has been sent by email.
+        </p>
+
+        <p>
+          You do not need to create or configure the Zoom meeting yourself.
+        </p>
+
+      </div>
+
+      <footer class="footer">
+        Court of Compassion &nbsp;•&nbsp;
+        Justice • Truth • Social Relevance
+      </footer>
+
+    </main>
+  </div>
+</body>
+</html>
+`);
       
     } catch (error) {
       console.error(
