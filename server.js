@@ -18463,7 +18463,9 @@ const hostDisplayName = isCommunityHosted
 
     : isBookStudy
   ? [
-      `Dear ${recipientName},`,
+      `Dear ${String(recipientName || "")
+  .trim()
+  .replace(/\b\w/g, (char) => char.toUpperCase())},`,
       "",
       "Your Court of Compassion Book Study session is ready.",
       "",
@@ -18733,7 +18735,11 @@ const safeMemberMailtoUrl =
                       >
 
                         <p style="margin:0 0 16px 0;">
-                          Dear ${safeEmailHtml(recipientName)},
+                        Dear ${safeEmailHtml(
+  String(recipientName || "")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+)},  
                         </p>
 
                         <p style="margin:0 0 18px 0;">
@@ -18772,7 +18778,11 @@ const safeMemberMailtoUrl =
     >
       <strong>Selected Excerpt:</strong>
       <div style="margin-top:10px;line-height:22px;">
-       ${safeEmailHtml(bookExcerptPreviewText).replace(/\n/g, "<br>")}
+       ${safeEmailHtml(
+  bookExcerptPreviewText.length > 260
+    ? `${bookExcerptPreviewText.slice(0, 260).trim()}…`
+    : bookExcerptPreviewText
+).replace(/\n/g, "<br>")}
 
 <div style="margin-top:16px;">
   <a
