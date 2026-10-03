@@ -3472,82 +3472,338 @@ if (bookStudyNeedsBasicDurationChoice) {
     createCourtStudyContinuationToken(requestId);
 
   return res.status(200).type("html").send(`
-    <!doctype html>
-    <html lang="en">
-    <head>
-      <meta charset="utf-8" />
-      <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1"
-      />
-      <title>Book Study Duration</title>
-    </head>
-    <body>
-      <h1>Zoom Basic Meeting Limit</h1>
+  <!doctype html>
+  <html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
+    <title>Book Study Duration | Court of Compassion</title>
 
-      <p>
-        Your connected Zoom account is a Basic account.
-        Your Book Study was requested for
-        ${requestedBookStudyDuration} minutes.
-      </p>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
 
-      <p>
-        Zoom Basic meetings are limited to 40 minutes.
-      </p>
+      body {
+        margin: 0;
+        background: #f7f2e9;
+        color: #14285c;
+        font-family: Arial, Helvetica, sans-serif;
+        line-height: 1.55;
+      }
 
-      <form
-        method="post"
-        action="/api/book-study/use-basic-duration"
-      >
-        <input
-          type="hidden"
-          name="requestId"
-          value="${escapeHtml(requestId)}"
-        />
+      .page {
+        min-height: 100vh;
+        padding: 48px 20px;
+      }
 
-        <input
-          type="hidden"
-          name="token"
-          value="${escapeHtml(continuationToken)}"
-        />
+      .card {
+        width: 100%;
+        max-width: 760px;
+        margin: 0 auto;
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 12px 32px rgba(15, 35, 80, 0.08);
+      }
 
-        <button type="submit">
-          Continue with 40 Minutes
-        </button>
-      </form>
+      .header {
+        background: #0b2a68;
+        color: #ffffff;
+        text-align: center;
+        padding: 30px 32px 26px;
+        border-bottom: 4px solid #d6ad2f;
+      }
 
-    <p>
-  If you expect to need more than 40 minutes,
-  you may upgrade your Zoom account to a paid plan.
-</p>
+      .court-name {
+        margin: 0 0 8px;
+        color: #f2c94c;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+      }
 
-<p>
-  <a
-    href="https://zoom.us/pricing?plan=personal"
-    target="_blank"
-    rel="noopener noreferrer"
-  >
-    Click Here to Upgrade Your Zoom Plan
-  </a>
-</p>
+      .header h1 {
+        margin: 0;
+        font-size: 30px;
+        line-height: 1.2;
+      }
 
-<p>
-  After upgrading, return to this page and have
-  Court of Compassion check your Zoom account again.
-</p>
+      .content {
+        padding: 34px;
+      }
 
-<p>
-  <a
-    href="/court-study/zoom/authorize-organizer/${encodeURIComponent(
-      requestId
-    )}"
-  >
-    Recheck My Zoom Account
-  </a>
-</p>  
-    </body>
-    </html>
-  `);
+      .intro {
+        margin: 0 0 28px;
+        font-size: 17px;
+        color: #344054;
+      }
+
+      .duration-box {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        margin-bottom: 30px;
+      }
+
+      .duration-item {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 18px;
+      }
+
+      .duration-label {
+        display: block;
+        margin-bottom: 5px;
+        color: #667085;
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .6px;
+      }
+
+      .duration-value {
+        color: #0b2a68;
+        font-size: 22px;
+        font-weight: 700;
+      }
+
+      .option {
+        border-top: 1px solid #e5e7eb;
+        padding: 27px 0;
+      }
+
+      .option:first-of-type {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      .option h2 {
+        margin: 0 0 8px;
+        color: #0b2a68;
+        font-size: 20px;
+      }
+
+      .option p {
+        margin: 0 0 18px;
+        color: #475467;
+      }
+
+      .primary-button,
+      .secondary-button,
+      .link-button {
+        display: inline-block;
+        border: 0;
+        border-radius: 7px;
+        padding: 13px 22px;
+        font-size: 15px;
+        font-weight: 700;
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      .primary-button {
+        background: #0b2a68;
+        color: #ffffff;
+      }
+
+      .secondary-button {
+        background: #b58a12;
+        color: #ffffff;
+      }
+
+      .link-button {
+        background: #ffffff;
+        color: #0b2a68;
+        border: 2px solid #0b2a68;
+      }
+
+      .note {
+        margin-top: 28px;
+        padding: 16px 18px;
+        background: #fff8df;
+        border-left: 4px solid #d6ad2f;
+        color: #5c4a12;
+        font-size: 14px;
+      }
+
+      .footer {
+        padding: 20px 34px 28px;
+        text-align: center;
+        color: #667085;
+        font-size: 12px;
+      }
+
+      @media (max-width: 600px) {
+        .page {
+          padding: 20px 12px;
+        }
+
+        .content {
+          padding: 25px 20px;
+        }
+
+        .header {
+          padding: 25px 20px;
+        }
+
+        .header h1 {
+          font-size: 25px;
+        }
+
+        .duration-box {
+          grid-template-columns: 1fr;
+        }
+
+        .primary-button,
+        .secondary-button,
+        .link-button {
+          display: block;
+          width: 100%;
+          text-align: center;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="page">
+      <main class="card">
+
+        <header class="header">
+          <div class="court-name">Court of Compassion</div>
+          <h1>Book Study Duration</h1>
+        </header>
+
+        <div class="content">
+
+          <p class="intro">
+            Your connected Zoom account is a
+            <strong>Basic account</strong>.
+            Your Book Study was requested for
+            <strong>${requestedBookStudyDuration} minutes</strong>.
+            Zoom Basic group meetings are limited to
+            <strong>40 minutes</strong>.
+          </p>
+
+          <div class="duration-box">
+            <div class="duration-item">
+              <span class="duration-label">
+                Requested Duration
+              </span>
+              <span class="duration-value">
+                ${requestedBookStudyDuration} minutes
+              </span>
+            </div>
+
+            <div class="duration-item">
+              <span class="duration-label">
+                Basic Account Limit
+              </span>
+              <span class="duration-value">
+                40 minutes
+              </span>
+            </div>
+          </div>
+
+          <section class="option">
+            <h2>Continue with 40 Minutes</h2>
+
+            <p>
+              Court of Compassion will create your Book Study
+              meeting for 40 minutes using the Zoom account
+              you just authorized.
+            </p>
+
+            <form
+              method="post"
+              action="/api/book-study/use-basic-duration"
+            >
+              <input
+                type="hidden"
+                name="requestId"
+                value="${escapeHtml(requestId)}"
+              />
+
+              <input
+                type="hidden"
+                name="token"
+                value="${escapeHtml(continuationToken)}"
+              />
+
+              <button
+                class="primary-button"
+                type="submit"
+              >
+                Continue with 40 Minutes
+              </button>
+            </form>
+          </section>
+
+          <section class="option">
+            <h2>Keep Your Requested Duration</h2>
+
+            <p>
+              If you want the full
+              ${requestedBookStudyDuration}-minute session,
+              you may upgrade the Zoom account you just
+              authorized to a paid Zoom plan.
+            </p>
+
+            <a
+              class="secondary-button"
+              href="https://zoom.us/pricing?plan=personal"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View Zoom Upgrade Options
+            </a>
+          </section>
+
+          <section class="option">
+            <h2>Already Upgraded?</h2>
+
+            <p>
+              After upgrading, return here and ask
+              Court of Compassion to check your Zoom
+              account again before creating the meeting.
+            </p>
+
+            <a
+              class="link-button"
+              href="/court-study/zoom/authorize-organizer/${encodeURIComponent(
+                requestId
+              )}"
+            >
+              Recheck My Zoom Account
+            </a>
+          </section>
+
+          <div class="note">
+            <strong>No meeting has been created yet.</strong>
+            Court of Compassion will create the Book Study
+            meeting only after you choose how you want to
+            proceed.
+          </div>
+
+        </div>
+
+        <footer class="footer">
+          Court of Compassion &nbsp;•&nbsp;
+          Justice • Truth • Social Relevance
+        </footer>
+
+      </main>
+    </div>
+  </body>
+  </html>
+`);
 }
       
 // ==========================================================
