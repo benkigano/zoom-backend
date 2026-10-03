@@ -16005,17 +16005,45 @@ app.get(
     >${escapeHtml(bookExcerptText)}</div>
 
     <div
+  style="
+    margin-top:36px;
+    padding:18px;
+    background:#fff8df;
+    border-left:4px solid #d8b24c;
+  "
+>
+  <strong>Finished reading?</strong><br>
+  Return to your Book Study email to continue setting up your session.
+
+  <div style="margin-top:16px;">
+    <button
+      type="button"
+      onclick="window.close();"
       style="
-        margin-top:36px;
-        padding:18px;
-        background:#fff8df;
-        border-left:4px solid #d8b24c;
+        display:inline-block;
+        padding:11px 18px;
+        background:#8a6500;
+        color:#ffffff;
+        border:0;
+        border-radius:4px;
+        font-weight:bold;
+        cursor:pointer;
       "
     >
-      <strong>Finished reading?</strong><br>
-      Close this page and return to your
-      Book Study invitation email to continue.
-    </div>
+      Return to Book Study Email
+    </button>
+  </div>
+
+  <div
+    style="
+      margin-top:12px;
+      font-size:13px;
+      color:#667085;
+    "
+  >
+    If this page does not close automatically, close this tab to return to your email.
+  </div>
+</div>
   </main>
 </body>
 </html>
