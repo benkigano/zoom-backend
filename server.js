@@ -13823,16 +13823,16 @@ async function sendCommunityHostedZoomApprovalEmail({
     `Approved session: ${readableSessionTime}`,
   "",
 isBookStudy
-  ? "Before you continue, open Zoom in a new browser tab and sign in to the Zoom account you want to use to host this Book Study."
+  ? "Remember to keep the Zoom account you just confirmed signed in. Return to this email and select Continue to Zoom below."
   : "Before you continue, open Zoom in a new browser tab and sign in to the Zoom account you want to use to host this Court Study.",
 "",
 isBookStudy
-  ? "Leave that Zoom account signed in, return to this email, and then select Continue to Zoom below. When the Zoom connection is complete, Zoom will automatically return you to Court of Compassion, where your Book Study setup will continue."
+  ? "Court of Compassion will verify the Zoom account you authorize. After authorization, you will return to Court of Compassion, where your Book Study setup will continue. You do not need to create or schedule the Zoom meeting yourself."
   : "Leave that Zoom account signed in, return to this email, and then select Continue to Zoom below. When the Zoom connection is complete, Zoom will automatically return you to Court of Compassion, where your Court Study setup will continue.",
+"",
 isBookStudy
-  ? "Important: Keep the Zoom account you want to use signed in while you continue. Do not switch Zoom accounts until Zoom returns you to Court of Compassion. Court of Compassion will then create and configure the Book Study meeting in the Zoom account you connected. You do not need to create the meeting yourself."
-  : "Important: Keep the Zoom account you want to use signed in while you continue. Do not switch Zoom accounts until Zoom returns you to Court of Compassion. Court of Compassion will then create and configure the Court Study meeting in the Zoom account you connected. You do not need to create the meeting yourself.",
-    `Continue to Zoom: ${connectZoomUrl}`,
+  ? "Important: If Zoom opens under a different account, switch to the correct Zoom account before continuing with authorization."
+  : "Important: Keep the Zoom account you want to use signed in while you continue. Do not switch Zoom accounts until Zoom returns you to Court of Compassion. Court of Compassion will then create and configure the Court Study meeting.",
     "",
     "Court of Compassion",
   ].join("\n");
@@ -13897,18 +13897,18 @@ isBookStudy
 
               <p>
   ${isBookStudy
-    ? `Before you continue, open Zoom in a new browser tab and sign in to
-       the Zoom account you want to use to host this Book Study.
-       Leave that Zoom account signed in, return to this email, and then
-       click Continue to Zoom below. When the Zoom connection is complete,
-       Zoom will automatically return you to Court of Compassion, where
-       your Book Study setup will continue.`
-    : `Before you continue, open Zoom in a new browser tab and sign in to
-       the Zoom account you want to use to host this Court Study.
-       Leave that Zoom account signed in, return to this email, and then
-       click Continue to Zoom below. When the Zoom connection is complete,
-       Zoom will automatically return you to Court of Compassion, where
-       your Court Study setup will continue.`}
+  ? `Remember to keep the Zoom account you just confirmed signed in.
+     Return to this email and then click Continue to Zoom below.
+     Court of Compassion will verify the Zoom account you authorize.
+     After authorization, you will return to Court of Compassion, where
+     your Book Study setup will continue.
+     You do not need to create or schedule the Zoom meeting yourself.`
+  : `Before you continue, open Zoom in a new browser tab and sign in to
+     the Zoom account you want to use to host this Court Study.
+     Leave that Zoom account signed in, return to this email, and then
+     click Continue to Zoom below. When the Zoom connection is complete,
+     Zoom will automatically return you to Court of Compassion, where
+     your Court Study setup will continue.`}
 </p>
 
               <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0;">
@@ -13924,12 +13924,17 @@ isBookStudy
                 </tr>
               </table>
 
-              <p style="font-size:13px;color:#667085;">
-  <strong>Important:</strong> Keep the Zoom account you want to use
-  signed in while you click Continue to Zoom. Do not switch Zoom accounts
-  until Zoom returns you to Court of Compassion. Court of Compassion will
-  then create and configure the ${isBookStudy ? "Book Study" : "Court Study"} meeting in the Zoom account
-  you connected. You do not need to create the meeting yourself.
+              <p style="margin-top:18px;font-size:13px;color:#667085;">
+  ${isBookStudy
+    ? `<strong>Important:</strong> If Zoom opens under a different account,
+       switch to the correct Zoom account before continuing with authorization.
+       Court of Compassion will then create and configure the Book Study meeting.
+       You do not need to create the meeting yourself.`
+    : `<strong>Important:</strong> Keep the Zoom account you want to use
+       signed in while you click Continue to Zoom. Do not switch Zoom accounts
+       until Zoom returns you to Court of Compassion. Court of Compassion will
+       then create and configure the Court Study meeting in the Zoom account
+       you connected. You do not need to create the meeting yourself.`}
 </p>
 
               <hr style="border:0;border-top:1px solid #e5e7eb;margin:26px 0 18px;" />
