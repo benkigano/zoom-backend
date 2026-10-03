@@ -18883,9 +18883,13 @@ ${!isBookStudy
                               font-weight:bold;
                             "
                           >
-                            ${usesZoomRegistration
-  ? "Register for the Court Study Session"
-  : "Join the Court Study Session"}
+                            ${isBookStudy
+  ? usesZoomRegistration
+    ? "Register for the Book Study Session"
+    : "Join the Book Study Session"
+  : usesZoomRegistration
+    ? "Register for the Court Study Session"
+    : "Join the Court Study Session"}
                           </a>
                         </p>
 
@@ -18898,20 +18902,30 @@ ${!isBookStudy
                             color:#172554;
                           "
                         >
-                          <strong>
-                            ${isCommunityHosted
-                              ? "For the organizer and participants:"
-                              : "For the Court Study organizer and participants:"}
-                          </strong>
+                         <strong>
+  ${
+    isBookStudy
+      ? "For the Book Study organizer and participants:"
+      : isCommunityHosted
+        ? "For the organizer and participants:"
+        : "For the Court Study organizer and participants:"
+  }
+</strong>
 
-                         ${
-  isCommunityHosted
+${
+  isBookStudy
     ? (
         usesZoomRegistration
-          ? "Each person—including the organizer—must register separately using the gold Register for the Court Study Session button. After registration, Zoom will email that person a unique personal join link."
-          : "This meeting does not use Zoom participant registration. The organizer and participants should use the gold Join the Court Study Session button above to enter the meeting."
+          ? "Each person—including the Book Study organizer—must register separately using the gold Register for the Book Study Session button. After registration, Zoom will email that person a unique personal join link."
+          : "This meeting does not use Zoom participant registration. The organizer and participants should use the gold Join the Book Study Session button above to enter the meeting."
       )
-    : "Each person—including the Court Study organizer—must register separately using the gold Register for the Court Study Session button. After registration, Zoom will email that person a unique personal join link."
+    : isCommunityHosted
+      ? (
+          usesZoomRegistration
+            ? "Each person—including the organizer—must register separately using the gold Register for the Court Study Session button. After registration, Zoom will email that person a unique personal join link."
+            : "This meeting does not use Zoom participant registration. The organizer and participants should use the gold Join the Court Study Session button above to enter the meeting."
+        )
+      : "Each person—including the Court Study organizer—must register separately using the gold Register for the Court Study Session button. After registration, Zoom will email that person a unique personal join link."
 } 
                         </div>
 
@@ -18924,12 +18938,17 @@ ${!isBookStudy
                             line-height:24px;
                           "
                         >
-                          Invite Court Study Participants
+                          ${isBookStudy
+  ? "Invite Book Study Participants"
+  : "Invite Court Study Participants"}
                         </h3>
 
                     <p style="margin:0 0 14px 0;">
-  Review the Court Study participant invitation, enter the participants’
-  email addresses, and send the invitation from the Court Study invitation page.
+  ${
+  isBookStudy
+    ? "Review the Book Study participant invitation, enter the participants’ email addresses, and send the invitation from the Book Study invitation page."
+    : "Review the Court Study participant invitation, enter the participants’ email addresses, and send the invitation from the Court Study invitation page."
+}
 </p> 
 
                         ${participantInviteComposerUrl
@@ -18949,7 +18968,9 @@ ${!isBookStudy
           font-weight:bold;
         "
       >
-        Invite Court Study Participants
+       ${isBookStudy
+  ? "Invite Book Study Participants"
+  : "Invite Court Study Participants"} 
       </a>
     </p>
   `
@@ -18967,8 +18988,11 @@ ${!isBookStudy
                             color:#555555;
                           "
                         >
-                          For privacy, participant email addresses are used only to send
-the Court Study invitation and are not saved to the Court Study database.
+                          ${
+  isBookStudy
+    ? "For privacy, participant email addresses are used only to send the Book Study invitation and are not saved to the database."
+    : "For privacy, participant email addresses are used only to send the Court Study invitation and are not saved to the Court Study database."
+}
                         </p>
 
                       </td>
@@ -19013,8 +19037,11 @@ the Court Study invitation and are not saved to the Court Study database.
                               margin-top:10px;
                             "
                           >
-                            This is the finalized Court Study session package
-                            prepared for the Court Study organizer.
+                           ${
+  isBookStudy
+    ? "This is the finalized Book Study session package prepared for the Book Study organizer."
+    : "This is the finalized Court Study session package prepared for the Court Study organizer."
+} 
                           </div>
                         </div>
                       </td>
