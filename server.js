@@ -16136,7 +16136,12 @@ app.get(
 
       const isRulesStudy = Boolean(selectedRulesSection);
 
-      const recordingUrl = isRulesStudy
+const isBookStudy =
+  String(courtStudyRequest.studyFocusType || "")
+    .trim()
+    .toUpperCase() === "BOOK_STUDY";
+
+const recordingUrl = isRulesStudy
         ? String(selectedRulesSection?.videoUrl || "").trim()
         : String(recording?.recordingUrl || "").trim();
 
@@ -16253,7 +16258,11 @@ const canJoinNow =
         invitation: {
           hostGroupName,
           materialTitle,
-          studyType: isRulesStudy ? "RULES" : "INTERVIEW",
+          studyType: isBookStudy
+  ? "BOOK_STUDY"
+  : isRulesStudy
+    ? "RULES"
+    : "INTERVIEW",
           readableSessionTime,
           scheduledStart: scheduledStart.toISOString(),
           joinWindowOpensAt: joinWindowOpensAt.toISOString(),
