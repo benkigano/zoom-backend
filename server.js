@@ -15885,6 +15885,11 @@ app.get(
       const courtStudyRequest =
         meeting.courtStudyRequest;
 
+const isMobileBookStudyReader =
+  /Android|iPhone|iPad|iPod|Mobile/i.test(
+    String(req.get("user-agent") || "")
+  );
+      
       if (
         String(
           courtStudyRequest.studyFocusType || ""
@@ -16018,7 +16023,7 @@ app.get(
   <div style="margin-top:16px;">
     <button
       type="button"
-      onclick="window.close();"
+      onclick="${isMobileBookStudyReader ? "history.back();" : "window.close();"}"
       style="
         display:inline-block;
         padding:11px 18px;
