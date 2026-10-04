@@ -15885,10 +15885,16 @@ app.get(
       const courtStudyRequest =
         meeting.courtStudyRequest;
 
-const isMobileBookStudyReader =
-  /Android|iPhone|iPad|iPod|Mobile/i.test(
-    String(req.get("user-agent") || "")
-  );
+      const registrationUrl = String(
+  meeting.zoomRegistrationUrl || ""
+).trim();
+
+const joinUrl = String(
+  meeting.zoomJoinUrl || ""
+).trim();
+
+const bookStudyContinueUrl =
+  registrationUrl || joinUrl;
       
       if (
         String(
@@ -16021,24 +16027,21 @@ const isMobileBookStudyReader =
   Return to your Book Study email to continue setting up your session.
 
   <div style="margin-top:16px;">
-    <button
-      type="button"
-      onclick="${isMobileBookStudyReader ? "history.back();" : "window.close();"}"
-      style="
-        display:inline-block;
-        padding:11px 18px;
-        background:#8a6500;
-        color:#ffffff;
-        border:0;
-        border-radius:4px;
-        font-weight:bold;
-        cursor:pointer;
-      "
-    >
-      Return to Book Study Email
-    </button>
-  </div>
-
+  <a
+    href="${escapeHtml(bookStudyContinueUrl)}"
+    style="
+      display:inline-block;
+      padding:11px 18px;
+      background:#8a6500;
+      color:#ffffff;
+      text-decoration:none;
+      border-radius:4px;
+      font-weight:bold;
+    "
+  >
+    Continue Book Study
+  </a>
+</div>
   <div
     style="
       margin-top:12px;
@@ -16046,7 +16049,7 @@ const isMobileBookStudyReader =
       color:#667085;
     "
   >
-    If this page does not close automatically, close this tab to return to your email.
+    Continue using the button above.
   </div>
 </div>
   </main>
