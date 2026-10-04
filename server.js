@@ -15884,18 +15884,7 @@ app.get(
 
       const courtStudyRequest =
         meeting.courtStudyRequest;
-
-      const registrationUrl = String(
-  meeting.zoomRegistrationUrl || ""
-).trim();
-
-const joinUrl = String(
-  meeting.zoomJoinUrl || ""
-).trim();
-
-const bookStudyContinueUrl =
-  registrationUrl || joinUrl;
-      
+            
       if (
         String(
           courtStudyRequest.studyFocusType || ""
@@ -16027,20 +16016,22 @@ const bookStudyContinueUrl =
   Return to your Book Study email to continue setting up your session.
 
   <div style="margin-top:16px;">
-  <a
-    href="${escapeHtml(bookStudyContinueUrl)}"
+  <button
+    type="button"
+    onclick="window.close();"
     style="
       display:inline-block;
       padding:11px 18px;
       background:#8a6500;
       color:#ffffff;
-      text-decoration:none;
+      border:0;
       border-radius:4px;
       font-weight:bold;
+      cursor:pointer;
     "
   >
-    Continue Book Study
-  </a>
+    Return to Book Study Email
+  </button>
 </div>
   <div
     style="
@@ -16049,7 +16040,7 @@ const bookStudyContinueUrl =
       color:#667085;
     "
   >
-    Continue using the button above.
+   If this page does not close automatically, close this tab to return to your email. 
   </div>
 </div>
   </main>
