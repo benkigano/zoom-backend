@@ -2770,12 +2770,23 @@ if (!clientId || !redirectUri) {
         },
       });
 
-      const state = Buffer.from(
-  JSON.stringify({
-    requestId,
-    organizerEmail,
-    invitationToken,
-  }),
+     const reauthOnly =
+  String(req.query.reauthOnly || "").trim() === "1"; 
+      
+      const statePayload = reauthOnly
+  ? {
+      organizerEmail,
+      invitationToken,
+      reauthOnly: true,
+    }
+  : {
+      requestId,
+      organizerEmail,
+      invitationToken,
+    };
+
+const state = Buffer.from(
+  JSON.stringify(statePayload),
   "utf8"
 ).toString("base64url");
 
@@ -2867,18 +2878,27 @@ const organizerEmail = String(
   .trim()
   .toLowerCase();
 
+const reauthOnly =
+  stateData?.reauthOnly === true;
+    
 const invitationToken = String(
   stateData?.invitationToken || ""
 ).trim();
 
 if (
-  (!churchContactId && (!requestId || !organizerEmail)) ||
-  !invitationToken
+  !invitationToken ||
+  (
+    !churchContactId &&
+    (
+      !organizerEmail ||
+      (!requestId && !reauthOnly)
+    )
+  )
 ) {
   return res.status(400).send(
     "Invalid Zoom connection request."
   );
-}  
+}
 
 if (churchContactId && organizerEmail) {
   return res.status(400).send(
@@ -3044,6 +3064,30 @@ const isZoomBasicUser =
 // BEFORE the invitation is marked used,
 // BEFORE the request becomes ZOOM_CONNECTED,
 // and BEFORE any Zoom meeting is created.
+
+if (reauthOnly) {
+  if (
+    !connectedZoomEmail ||
+    connectedZoomEmail !== organizerEmail
+  ) {
+    return res
+      .status(409)
+      .type("text/plain")
+      .send(
+        [
+          "Unable to reauthorize this Zoom account.",
+          "",
+          `Expected Zoom account: ${organizerEmail}`,
+          `Connected Zoom account: ${
+            connectedZoomEmail || "Not available"
+          }`,
+          "",
+          "No Zoom connection was saved.",
+        ].join("\n")
+      );
+  }
+}
+    
 if (requestId) {
   if (!connectedZoomEmail) {
     return res
