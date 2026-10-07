@@ -7375,17 +7375,25 @@ app.get(
         });
       }
 
-      const accessToken =
-        await getCourtStudyHostZoomAccessToken({
-          organizerEmail: String(
-            courtStudyRequest.organizerEmail || ""
-          )
-            .trim()
-            .toLowerCase(),
-          oauthEnvironment:
-            courtStudyRequest.zoomOAuthEnvironment ||
-            "PRODUCTION",
-        });
+      const reviewerZoomEmail = String(
+  req.query?.reviewerZoomEmail || ""
+)
+  .trim()
+  .toLowerCase();
+
+if (!reviewerZoomEmail) {
+  return res.status(400).json({
+    success: false,
+    error:
+      "The Zoom reviewer test account email is required.",
+  });
+}
+
+const accessToken =
+  await getCourtStudyHostZoomAccessToken({
+    organizerEmail: reviewerZoomEmail,
+    oauthEnvironment: "PRODUCTION",
+  });
 
       // ======================================================
       // Zoom registrants
@@ -8387,9 +8395,13 @@ if (reviewerQueryParams.get("zoomConnected") === "1") {
         zoomDataButton.disabled = true;
 
         try {
-          const data = await reviewerFetch(
-            "/api/zoom-reviewer/zoom-data"
-          );
+         const data = await reviewerFetch(
+  `/api/zoom-reviewer/zoom-data?reviewerZoomEmail=${encodeURIComponent(
+    String(reviewerZoomEmail.value || "")
+      .trim()
+      .toLowerCase()
+  )}`
+); 
 
           showResult(
             "Live Zoom API Results",
