@@ -7360,9 +7360,7 @@ app.get(
         courtStudyRequest.courtStudyMeeting;
 
       const zoomMeetingId = String(
-  req.query?.reviewerMeetingId ||
-  meeting.zoomMeetingId ||
-  ""
+  meeting.zoomMeetingId || ""
 ).trim();
 
       const zoomMeetingUuid = String(
@@ -8398,12 +8396,7 @@ if (reviewerQueryParams.get("zoomConnected") === "1") {
         zoomDataButton.disabled = true;
 
         try {
- const reviewerMeetingId =
-  String(
-    sessionStorage.getItem("reviewerMeetingId") || ""
-  ).trim();
-
-const reviewerZoomEmailValue =
+          const reviewerZoomEmailValue =
   String(
     reviewerZoomEmail.value || ""
   )
@@ -8413,10 +8406,8 @@ const reviewerZoomEmailValue =
 const data = await reviewerFetch(
   "/api/zoom-reviewer/zoom-data" +
   "?reviewerZoomEmail=" +
-  encodeURIComponent(reviewerZoomEmailValue) +
-  "&reviewerMeetingId=" +
-  encodeURIComponent(reviewerMeetingId)
-);   
+  encodeURIComponent(reviewerZoomEmailValue)
+); 
           showResult(
             "Live Zoom API Results",
             data
@@ -8520,18 +8511,7 @@ scopeTestButton.addEventListener(
 }  
       );
 
-      const reviewerMeetingId =
-  String(
-    data?.scopeTests?.["meeting:write:meeting"]?.meetingId || ""
-  ).trim();
-
-if (reviewerMeetingId) {
-  sessionStorage.setItem(
-    "reviewerMeetingId",
-    reviewerMeetingId
-  );
-}
-
+      
       showResult(
         "Meeting & User Scope Results",
         data
