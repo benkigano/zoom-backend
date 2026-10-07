@@ -2880,6 +2880,9 @@ const organizerEmail = String(
 
 const reauthOnly =
   stateData?.reauthOnly === true;
+
+const reviewerFlow =
+  stateData?.reviewerFlow === true;
     
 const invitationToken = String(
   stateData?.invitationToken || ""
@@ -3462,6 +3465,12 @@ const zoomConnectionIdentity = churchContactId
       }),
     ]);
 
+    if (reviewerFlow) {
+  return res.redirect(
+    "/zoom-reviewer?zoomConnected=1"
+  );
+}
+    
      let connectedRequestIsBookStudy = false;
     
     if (requestId) {
@@ -7097,6 +7106,121 @@ app.get(
   }
 );
 
+app.post(
+  "/api/zoom-reviewer/connect-account",
+  requireZoomReviewerToken,
+  async (req, res) => {
+    res.set("Cache-Control", "no-store");
+
+    try {
+      const organizerEmail = String(
+        req.body?.organizerEmail || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      if (!organizerEmail) {
+        return res.status(400).json({
+          success: false,
+          error: "A Zoom test account email is required.",
+        });
+      }
+
+      const emailPattern =
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      if (!emailPattern.test(organizerEmail)) {
+        return res.status(400).json({
+          success: false,
+          error: "Enter a valid Zoom test account email.",
+        });
+      }
+
+      const clientId =
+        process.env.ZOOM_CONNECT_CLIENT_ID;
+
+      const redirectUri =
+        process.env.ZOOM_CONNECT_REDIRECT_URL;
+
+      if (!clientId || !redirectUri) {
+        return res.status(500).json({
+          success: false,
+          error:
+            "Production Zoom OAuth is not fully configured.",
+        });
+      }
+
+      const invitationToken =
+        crypto.randomBytes(32).toString("hex");
+
+      const tokenHash =
+        hashZoomOAuthToken(invitationToken);
+
+      await prisma.zoomOAuthInvitation.create({
+        data: {
+          organizerEmail,
+          oauthEnvironment: "PRODUCTION",
+          tokenHash,
+          expiresAt: new Date(
+            Date.now() + 15 * 60 * 1000
+          ),
+        },
+      });
+
+      const state = Buffer.from(
+        JSON.stringify({
+          organizerEmail,
+          invitationToken,
+          reauthOnly: true,
+          reviewerFlow: true,
+        }),
+        "utf8"
+      ).toString("base64url");
+
+      const authorizationUrl = new URL(
+        "https://zoom.us/oauth/authorize"
+      );
+
+      authorizationUrl.searchParams.set(
+        "response_type",
+        "code"
+      );
+
+      authorizationUrl.searchParams.set(
+        "client_id",
+        clientId
+      );
+
+      authorizationUrl.searchParams.set(
+        "redirect_uri",
+        redirectUri
+      );
+
+      authorizationUrl.searchParams.set(
+        "state",
+        state
+      );
+
+      return res.status(200).json({
+        success: true,
+        authorizationUrl:
+          authorizationUrl.toString(),
+      });
+    } catch (err) {
+      console.error(
+        "❌ POST /api/zoom-reviewer/connect-account error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "Unable to prepare Zoom reviewer account authorization.",
+      });
+    }
+  }
+);
+
 app.get(
   "/api/zoom-reviewer/seed",
   requireZoomReviewerToken,
@@ -8016,6 +8140,45 @@ app.get("/zoom-reviewer", (req, res) => {
   Test Meeting & User Scopes
 </button>     
 
+<div style="margin-top: 18px; margin-bottom: 18px;">
+  <label
+    for="reviewerZoomEmail"
+    style="display:block; font-weight:700; margin-bottom:8px;"
+  >
+    Zoom Test Account Email
+  </label>
+
+  <input
+    id="reviewerZoomEmail"
+    type="email"
+    autocomplete="email"
+    placeholder="Enter the Zoom review test account email"
+    style="
+      width:100%;
+      max-width:520px;
+      box-sizing:border-box;
+      padding:10px 12px;
+      margin-bottom:10px;
+      border-radius:6px;
+      border:1px solid #8aa0b8;
+    "
+  />
+
+  <button
+    id="connectReviewerZoomButton"
+    class="secondary"
+    type="button"
+  >
+    Connect Zoom Test Account
+  </button>
+
+  <div
+    id="reviewerZoomConnectStatus"
+    class="note"
+    style="margin-top:10px;"
+  ></div>
+</div>
+
       <p class="note">
   “Retrieve Live Zoom Data” tests meeting registrants and
   past meeting participants. “Test Meeting & User Scopes”
@@ -8063,6 +8226,23 @@ app.get("/zoom-reviewer", (req, res) => {
 
     const scopeTestButton =
   document.getElementById("scopeTestButton");
+
+    const reviewerZoomEmail =
+  document.getElementById("reviewerZoomEmail");
+
+const connectReviewerZoomButton =
+  document.getElementById("connectReviewerZoomButton");
+
+const reviewerZoomConnectStatus =
+  document.getElementById("reviewerZoomConnectStatus");
+
+const reviewerQueryParams =
+  new URLSearchParams(window.location.search);
+
+if (reviewerQueryParams.get("zoomConnected") === "1") {
+  reviewerZoomConnectStatus.textContent =
+    "Zoom test account connected successfully. You may now run the reviewer scope tests.";
+}
 
     const resultTitle =
       document.getElementById("resultTitle");
@@ -8222,6 +8402,63 @@ app.get("/zoom-reviewer", (req, res) => {
         }
       }
     );
+
+connectReviewerZoomButton.addEventListener(
+  "click",
+  async () => {
+    const organizerEmail = String(
+      reviewerZoomEmail.value || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    reviewerZoomConnectStatus.textContent = "";
+
+    if (!organizerEmail) {
+      reviewerZoomConnectStatus.textContent =
+        "Enter the Zoom test account email first.";
+      return;
+    }
+
+    connectReviewerZoomButton.disabled = true;
+    reviewerZoomConnectStatus.textContent =
+      "Preparing Zoom authorization...";
+
+    try {
+      const data = await reviewerFetch(
+        "/api/zoom-reviewer/connect-account",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            organizerEmail,
+          }),
+        }
+      );
+
+      if (!data?.authorizationUrl) {
+        throw new Error(
+          "Zoom authorization URL was not returned."
+        );
+      }
+
+      reviewerZoomConnectStatus.textContent =
+        "Opening Zoom authorization...";
+
+      window.location.assign(
+        data.authorizationUrl
+      );
+    } catch (err) {
+      reviewerZoomConnectStatus.textContent =
+        err?.message ||
+        "Unable to start Zoom authorization.";
+
+      connectReviewerZoomButton.disabled = false;
+    }
+  }
+);
 
 scopeTestButton.addEventListener(
   "click",
