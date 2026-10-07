@@ -7733,10 +7733,11 @@ const accessToken =
             duration: 15,
             agenda:
               "Temporary meeting created for Zoom Marketplace functional review.",
-            settings: {
-              join_before_host: false,
-              waiting_room: true,
-            },
+        settings: {
+  join_before_host: false,
+  waiting_room: true,
+  approval_type: 0,
+},    
           }),
         }
       );
