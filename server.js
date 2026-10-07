@@ -8506,6 +8506,18 @@ scopeTestButton.addEventListener(
 }  
       );
 
+      const reviewerMeetingId =
+  String(
+    data?.scopeTests?.["meeting:write:meeting"]?.meetingId || ""
+  ).trim();
+
+if (reviewerMeetingId) {
+  sessionStorage.setItem(
+    "reviewerMeetingId",
+    reviewerMeetingId
+  );
+}
+
       showResult(
         "Meeting & User Scope Results",
         data
