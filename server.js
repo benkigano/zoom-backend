@@ -7641,27 +7641,25 @@ app.post(
         });
       }
 
-      const organizerEmail = String(
-        courtStudyRequest.organizerEmail || ""
-      )
-        .trim()
-        .toLowerCase();
+      const reviewerZoomEmail = String(
+  req.body?.reviewerZoomEmail || ""
+)
+  .trim()
+  .toLowerCase();
 
-      if (!organizerEmail) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "The reviewer seed Court Study does not have an organizer email",
-        });
-      }
+if (!reviewerZoomEmail) {
+  return res.status(400).json({
+    success: false,
+    error:
+      "The Zoom reviewer test account email is required.",
+  });
+}
 
-      const accessToken =
-        await getCourtStudyHostZoomAccessToken({
-          organizerEmail,
-          oauthEnvironment:
-            courtStudyRequest.zoomOAuthEnvironment ||
-            "PRODUCTION",
-        });
+const accessToken =
+  await getCourtStudyHostZoomAccessToken({
+    organizerEmail: reviewerZoomEmail,
+    oauthEnvironment: "PRODUCTION",
+  });
 
       // ======================================================
       // 1. Read connected Zoom user
@@ -8236,6 +8234,14 @@ const connectReviewerZoomButton =
 const reviewerZoomConnectStatus =
   document.getElementById("reviewerZoomConnectStatus");
 
+const storedReviewerZoomEmail =
+  sessionStorage.getItem("reviewerZoomEmail");
+
+if (storedReviewerZoomEmail) {
+  reviewerZoomEmail.value =
+    storedReviewerZoomEmail;
+}
+
 const reviewerQueryParams =
   new URLSearchParams(window.location.search);
 
@@ -8420,6 +8426,11 @@ connectReviewerZoomButton.addEventListener(
       return;
     }
 
+    sessionStorage.setItem(
+  "reviewerZoomEmail",
+  organizerEmail
+);
+
     connectReviewerZoomButton.disabled = true;
     reviewerZoomConnectStatus.textContent =
       "Preparing Zoom authorization...";
@@ -8468,9 +8479,19 @@ scopeTestButton.addEventListener(
     try {
       const data = await reviewerFetch(
         "/api/zoom-reviewer/scope-test",
-        {
-          method: "POST",
-        }
+      {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    reviewerZoomEmail: String(
+      reviewerZoomEmail.value || ""
+    )
+      .trim()
+      .toLowerCase(),
+  }),
+}  
       );
 
       showResult(
