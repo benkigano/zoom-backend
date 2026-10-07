@@ -13626,11 +13626,9 @@ const timezoneInput = cleanText(body.timezone);
         body.meetingFormat ?? body.format
       );
 
-      const normalizedHostMode = rawHostMode
+ const normalizedHostMode = rawHostMode
   ? rawHostMode.toUpperCase().replace(/[\s-]+/g, "_")
-  : hostGroupType.toLowerCase() === "church"
-    ? "PASTOR_HOSTED"
-    : "COMMUNITY_HOSTED";
+  : "COMMUNITY_HOSTED";
 
 const allowedHostModes = new Set([
   "PASTOR_HOSTED",
@@ -13969,12 +13967,10 @@ const isBookStudyRequest =
   requestedFocusKey === "BOOK_STUDY";
       
       const normalizedHostMode = rawHostMode
-        ? rawHostMode
-            .toUpperCase()
-            .replace(/[\s-]+/g, "_")
-        : hostGroupType.toLowerCase() === "church"
-          ? "PASTOR_HOSTED"
-          : "COMMUNITY_HOSTED";
+  ? rawHostMode
+      .toUpperCase()
+      .replace(/[\s-]+/g, "_")
+  : "COMMUNITY_HOSTED";
 
       // This new streamlined route is intentionally
       // limited to COMMUNITY_HOSTED requests.
