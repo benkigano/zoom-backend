@@ -7360,8 +7360,10 @@ app.get(
         courtStudyRequest.courtStudyMeeting;
 
       const zoomMeetingId = String(
-        meeting.zoomMeetingId || ""
-      ).trim();
+  req.query?.reviewerMeetingId ||
+  meeting.zoomMeetingId ||
+  ""
+).trim();
 
       const zoomMeetingUuid = String(
         meeting.zoomMeetingUuid || ""
