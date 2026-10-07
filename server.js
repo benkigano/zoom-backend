@@ -8397,14 +8397,25 @@ if (reviewerQueryParams.get("zoomConnected") === "1") {
         zoomDataButton.disabled = true;
 
         try {
-        const data = await reviewerFetch(
-  "/api/zoom-reviewer/zoom-data?reviewerZoomEmail=" +
-    encodeURIComponent(
-      String(reviewerZoomEmail.value || "")
-        .trim()
-        .toLowerCase()
-    )
-); 
+ const reviewerMeetingId =
+  String(
+    sessionStorage.getItem("reviewerMeetingId") || ""
+  ).trim();
+
+const reviewerZoomEmailValue =
+  String(
+    reviewerZoomEmail.value || ""
+  )
+    .trim()
+    .toLowerCase();
+
+const data = await reviewerFetch(
+  "/api/zoom-reviewer/zoom-data" +
+  "?reviewerZoomEmail=" +
+  encodeURIComponent(reviewerZoomEmailValue) +
+  "&reviewerMeetingId=" +
+  encodeURIComponent(reviewerMeetingId)
+);   
           showResult(
             "Live Zoom API Results",
             data
