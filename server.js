@@ -17290,6 +17290,7 @@ app.get(
         },
         courtStudy: {
           hostGroupName,
+          studyFocusType: courtStudyRequest.studyFocusType,
           materialTitle,
           scheduledStart: meeting.scheduledStart,
           scheduledEnd: meeting.scheduledEnd,
