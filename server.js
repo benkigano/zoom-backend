@@ -16686,6 +16686,17 @@ app.post(
       const courtStudyRequest = meeting.courtStudyRequest;
       const recording = courtStudyRequest.recording;
 
+      const isBookStudy =
+  String(courtStudyRequest.studyFocusType || "")
+    .trim()
+    .toUpperCase() === "BOOK_STUDY";
+
+const bookExcerptUrl = isBookStudy
+  ? `https://api.courtofcompassion.com/book-study/excerpt/${encodeURIComponent(
+      token
+    )}`
+  : "";
+      
       let selectedRulesSections = [];
 
       try {
@@ -16778,47 +16789,83 @@ if (!participantZoomUrl) {
         "Court of Compassion"
       ).trim();
 
-      const materialTitle = isRulesStudy
-        ? [
-            selectedRulesSection?.chapterTitle,
-            selectedRulesSection?.sectionTitle,
-          ]
-            .filter(Boolean)
-            .join(" — ") ||
-          meeting.title ||
-          "Court Study"
-        : recording?.title ||
-          meeting.title ||
-          "Court of Compassion Interview";
+     const materialTitle = isBookStudy
+  ? [
+      "Emet the Amicus",
+      courtStudyRequest.bookPartNumber
+        ? `Part ${courtStudyRequest.bookPartNumber}`
+        : null,
+      courtStudyRequest.bookPartTitle || null,
+      courtStudyRequest.bookChapterNumber
+        ? `Chapter ${courtStudyRequest.bookChapterNumber}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" — ")
+  : isRulesStudy
+    ? [
+        selectedRulesSection?.chapterTitle,
+        selectedRulesSection?.sectionTitle,
+      ]
+        .filter(Boolean)
+        .join(" — ") ||
+      meeting.title ||
+      "Court Study"
+    : recording?.title ||
+      meeting.title ||
+      "Court of Compassion Interview";
 
-     const subject =
-  `Invitation: Court Study — ${materialTitle}`;
+const subject =
+  `Invitation: ${isBookStudy ? "Book Study" : "Court Study"} — ${materialTitle}`; 
 
 const participantRegistrationUrlPlaceholder =
   "__COURT_STUDY_PARTICIPANT_REGISTRATION_URL__";
 
-const plainTextBody = [
-  "Dear Court Study Participant,",
-  "",
-  `You are invited to participate in a Court of Compassion Court Study session hosted by ${hostGroupName}.`,
-  "",
-  `Court Study Material: ${materialTitle}`,
-  `Session: ${readableSessionTime}`,
-  "",
-  ...(recordingUrl
-    ? [
-        "Watch Court Study Video:",
-        recordingUrl,
-        "",
-      ]
-    : []),
-  "Register for Court Study:",
-  participantRegistrationUrlPlaceholder,
-  "",
-  "Complete the Court registration before entering the meeting. After registration, you will be directed to the appropriate Zoom step for this Court Study.",
-  "",
-  "Court of Compassion",
-].join("\n"); 
+const plainTextBody = isBookStudy
+  ? [
+      "Dear Book Study Participant,",
+      "",
+      `You are invited to participate in a Court of Compassion Book Study session hosted by ${hostGroupName}.`,
+      "",
+      `Book Study Material: ${materialTitle}`,
+      `Session: ${readableSessionTime}`,
+      "",
+      ...(bookExcerptUrl
+        ? [
+            "Read Full Excerpt:",
+            bookExcerptUrl,
+            "",
+          ]
+        : []),
+      "Register for Book Study:",
+      participantRegistrationUrlPlaceholder,
+      "",
+      "Complete the Court of Compassion participant registration before joining your Book Study. After registration, follow the instructions to join your Zoom session.",
+      "",
+      "Court of Compassion",
+    ].join("\n")
+  : [
+      "Dear Court Study Participant,",
+      "",
+      `You are invited to participate in a Court of Compassion Court Study session hosted by ${hostGroupName}.`,
+      "",
+      `Court Study Material: ${materialTitle}`,
+      `Session: ${readableSessionTime}`,
+      "",
+      ...(recordingUrl
+        ? [
+            "Watch Court Study Video:",
+            recordingUrl,
+            "",
+          ]
+        : []),
+      "Register for Court Study:",
+      participantRegistrationUrlPlaceholder,
+      "",
+      "Complete the Court registration before entering the meeting. After registration, you will be directed to the appropriate Zoom step for this Court Study.",
+      "",
+      "Court of Compassion",
+    ].join("\n");
       
       const safeHostGroupName =
         safeEmailHtml(hostGroupName);
@@ -16831,6 +16878,9 @@ const plainTextBody = [
 
       const safeRecordingUrl =
         safeEmailWebUrl(recordingUrl);
+
+      const safeBookExcerptUrl =
+        safeEmailWebUrl(bookExcerptUrl);
       
       const htmlBody = `
         <!doctype html>
@@ -16907,7 +16957,7 @@ const plainTextBody = [
                           color:#ffffff;
                           font-weight:700;
                         ">
-                          You Are Invited to a Court Study
+                          ${isBookStudy ? "You Are Invited to a Book Study" : "You Are Invited to a Court Study"}
                         </div>
                       </td>
                     </tr>
@@ -16920,12 +16970,12 @@ const plainTextBody = [
                       ">
 
                         <p style="margin:0 0 18px 0;">
-                          Dear Court Study Participant,
+                        Dear ${isBookStudy ? "Book Study" : "Court Study"} Participant,  
                         </p>
 
                         <p style="margin:0 0 20px 0;">
                           You are invited to participate in a Court of Compassion
-                          Court Study session.
+${isBookStudy ? "Book Study" : "Court Study"} session.
                         </p>
 
                         <p style="margin:0 0 22px 0;">
@@ -16933,7 +16983,7 @@ const plainTextBody = [
                           ${safeHostGroupName}
                           <br>
 
-                          <strong>Court Study Material:</strong>
+                          <strong>${isBookStudy ? "Book Study Material:" : "Court Study Material:"}</strong>
                           ${safeMaterialTitle}
                           <br>
 
@@ -16942,11 +16992,11 @@ const plainTextBody = [
                         </p>
 
                         ${
-                          safeRecordingUrl
+                          (isBookStudy ? safeBookExcerptUrl : safeRecordingUrl)
                             ? `
                               <p style="margin:0 0 12px 0;">
                                 <a
-                                  href="${safeRecordingUrl}"
+                                  href="${isBookStudy ? safeBookExcerptUrl : safeRecordingUrl}"
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   style="
@@ -16959,7 +17009,7 @@ const plainTextBody = [
                                     font-weight:bold;
                                   "
                                 >
-                                  Watch Court Study Video
+                                 ${isBookStudy ? "Read Full Excerpt" : "Watch Court Study Video"} 
                                 </a>
                               </p>
                             `
@@ -16981,7 +17031,7 @@ const plainTextBody = [
       font-weight:bold;
     "
   >
-    Register for Court Study
+    ${isBookStudy ? "Register for Book Study" : "Register for Court Study"}
   </a>
 </p>
 
@@ -16990,9 +17040,9 @@ const plainTextBody = [
   background:#fff7dd;
   border-left:4px solid #8a6500;
 ">
-  Complete the Court registration before entering the meeting.
-  After registration, you will be directed to the appropriate
-  Zoom step for this Court Study.
+  ${isBookStudy
+  ? "Complete the Court of Compassion participant registration before joining your Book Study. After registration, follow the instructions to join your Zoom session."
+  : "Complete the Court registration before entering the meeting. After registration, you will be directed to the appropriate Zoom step for this Court Study."}
 </div>     
 
                       </td>
