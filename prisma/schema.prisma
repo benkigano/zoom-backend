@@ -530,11 +530,33 @@ model CourtStudyParticipant {
   updatedAt           DateTime @updatedAt
 
   courtStudyMeeting CourtStudyMeeting @relation(fields: [courtStudyMeetingId], references: [id], onDelete: Cascade)
-
+  bookStudyReflectionAnswers BookStudyReflectionAnswer[]
   @@unique([courtStudyMeetingId, email])
   @@index([courtStudyMeetingId])
   @@index([email])
   @@index([status])
+}
+
+model BookStudyReflectionAnswer {
+  id                      String   @id @default(cuid())
+  courtStudyParticipantId  String
+  cmsQuestionId            String
+  questionTextSnapshot     String
+  questionSortOrder        Int
+  responseText             String?
+  responseScore            Int?
+  scaleLabelSnapshot       String?
+  submittedAt              DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  participant CourtStudyParticipant @relation(
+    fields: [courtStudyParticipantId],
+    references: [id],
+    onDelete: Cascade
+  )
+
+  @@unique([courtStudyParticipantId, cmsQuestionId])
+  @@index([courtStudyParticipantId])
 }
 
 model GuestDistributionCampaign {
