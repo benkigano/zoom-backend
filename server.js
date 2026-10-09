@@ -15156,10 +15156,15 @@ app.patch(
           where: {
             id: requestId,
           },
-          include: {
-            recording: true,
-            campaign: true,
-          },
+         include: {
+  recording: true,
+  campaign: true,
+  courtStudyMeeting: {
+    select: {
+      scheduledEnd: true,
+    },
+  },
+}, 
         });
 
       if (!existingRequest) {
@@ -15169,6 +15174,37 @@ app.patch(
         });
       }
 
+      // Book Study: prevent completion before the scheduled end.
+if (
+  requestedStatus === "COMPLETED" &&
+  String(existingRequest.studyFocusType || "")
+    .trim()
+    .toUpperCase() === "BOOK_STUDY"
+) {
+  const scheduledEnd =
+    existingRequest.courtStudyMeeting?.scheduledEnd;
+
+  const scheduledEndMs = scheduledEnd
+    ? new Date(scheduledEnd).getTime()
+    : NaN;
+
+  if (!Number.isFinite(scheduledEndMs)) {
+    return res.status(400).json({
+      success: false,
+      error:
+        "Book Study cannot be completed without a valid scheduled end time.",
+    });
+  }
+
+  if (Date.now() < scheduledEndMs) {
+    return res.status(409).json({
+      success: false,
+      error:
+        "Book Study cannot be marked completed before the scheduled session end time.",
+    });
+  }
+}
+      
       const updatedRequest =
         await prisma.courtStudyRequest.update({
           where: {
@@ -17558,6 +17594,29 @@ app.get(
         });
       }
 
+// Book Study: reflections are available only after
+// the scheduled session has ended.
+if (
+  String(courtStudyRequest.studyFocusType || "")
+    .trim()
+    .toUpperCase() === "BOOK_STUDY"
+) {
+  const scheduledEndMs = meeting.scheduledEnd
+    ? new Date(meeting.scheduledEnd).getTime()
+    : NaN;
+
+  if (
+    !Number.isFinite(scheduledEndMs) ||
+    Date.now() < scheduledEndMs
+  ) {
+    return res.status(403).json({
+      success: false,
+      error:
+        "Book Study post-session reflections are not available until the scheduled session has ended.",
+    });
+  }
+}
+      
       let selectedRulesSections = [];
 
       try {
@@ -17786,6 +17845,32 @@ if (postSurveyStatementWordCount > 500) {
         });
       }
 
+      // Book Study: prevent reflection submission
+// before the scheduled session has ended.
+if (
+  String(courtStudyRequest.studyFocusType || "")
+    .trim()
+    .toUpperCase() === "BOOK_STUDY"
+) {
+  const scheduledEnd =
+    participant.courtStudyMeeting?.scheduledEnd;
+
+  const scheduledEndMs = scheduledEnd
+    ? new Date(scheduledEnd).getTime()
+    : NaN;
+
+  if (
+    !Number.isFinite(scheduledEndMs) ||
+    Date.now() < scheduledEndMs
+  ) {
+    return res.status(403).json({
+      success: false,
+      error:
+        "Book Study reflections cannot be submitted before the scheduled session has ended.",
+    });
+  }
+}
+      
       const now = new Date();
 
       const updatedParticipant =
