@@ -17334,6 +17334,7 @@ app.get(
         },
         courtStudy: {
           hostGroupName,
+          ...(courtStudyRequest.studyFocusType === "BOOK_STUDY" ? { organizerName: String(courtStudyRequest.organizerName || "").trim() } : {}),
           studyFocusType: courtStudyRequest.studyFocusType,
           materialTitle,
           scheduledStart: meeting.scheduledStart,
