@@ -17673,9 +17673,36 @@ if (
         "Court of Compassion"
       ).trim();
 
+// Retrieve previously saved Book Study reflection answers.
+// Court Study behavior remains unchanged.
+const isBookStudyReflection =
+  String(courtStudyRequest.studyFocusType || "")
+    .trim()
+    .toUpperCase() === "BOOK_STUDY";
+
+const bookStudyAnswers = isBookStudyReflection
+  ? await prisma.bookStudyReflectionAnswer.findMany({
+      where: {
+        courtStudyParticipantId: participant.id,
+      },
+      orderBy: {
+        questionSortOrder: "asc",
+      },
+      select: {
+        cmsQuestionId: true,
+        questionSortOrder: true,
+        questionTextSnapshot: true,
+        responseText: true,
+        responseScore: true,
+        scaleLabelSnapshot: true,
+        submittedAt: true,
+      },
+    })
+  : [];
+      
       return res.status(200).json({
         success: true,
-
+...(isBookStudyReflection ? { bookStudyAnswers } : {}),
         participant: {
           email: participant.email,
           firstName: participant.firstName,
