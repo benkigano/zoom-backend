@@ -16826,6 +16826,10 @@ if (!participantZoomUrl) {
         "Court of Compassion"
       ).trim();
 
+     const bookStudyOrganizerName =
+  String(courtStudyRequest.organizerName || "").trim() ||
+  "Court of Compassion";
+      
      const materialTitle = isBookStudy
   ? [
       "Emet the Amicus",
@@ -16862,7 +16866,8 @@ const plainTextBody = isBookStudy
   ? [
       "Dear Book Study Participant,",
       "",
-      `You are invited to participate in a Court of Compassion Book Study session hosted by ${hostGroupName}.`,
+      "You are invited to participate in a Court of Compassion Book Study session.",
+`Book Study Organizer: ${bookStudyOrganizerName}`,
       "",
       `Book Study Material: ${materialTitle}`,
       `Session: ${readableSessionTime}`,
@@ -17016,8 +17021,10 @@ ${isBookStudy ? "Book Study" : "Court Study"} session.
                         </p>
 
                         <p style="margin:0 0 22px 0;">
-                          <strong>Host Group or Community:</strong>
-                          ${safeHostGroupName}
+                          <strong>${isBookStudy ? "Book Study Organizer:" : "Host Group or Community:"}</strong>
+${isBookStudy
+  ? safeEmailHtml(bookStudyOrganizerName)
+  : safeHostGroupName}
                           <br>
 
                           <strong>${isBookStudy ? "Book Study Material:" : "Court Study Material:"}</strong>
