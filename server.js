@@ -18045,6 +18045,54 @@ app.post(
         });
       }
 
+      // Load the authoritative Book Study questions from Wix CMS.
+      const wixQuestions = await queryWixCollection(
+        "bookstudyreflectionquestions"
+      );
+
+      const activeWixQuestions = wixQuestions.filter(
+        (question) => question.active === true
+      );
+
+      const wixQuestionsByOrder = new Map();
+      const wixQuestionIds = new Set();
+
+      let invalidWixQuestions =
+        activeWixQuestions.length !== 5;
+
+      for (const question of activeWixQuestions) {
+        const order = Number(question.sortOrder);
+        const id = String(question._id || "").trim();
+        const text = String(question.questionText || "").trim();
+
+        if (
+          !Number.isInteger(order) ||
+          order < 1 ||
+          order > 5 ||
+          !id ||
+          !text ||
+          wixQuestionsByOrder.has(order) ||
+          wixQuestionIds.has(id)
+        ) {
+          invalidWixQuestions = true;
+          break;
+        }
+
+        wixQuestionsByOrder.set(order, { id, text });
+        wixQuestionIds.add(id);
+      }
+
+      if (
+        invalidWixQuestions ||
+        wixQuestionsByOrder.size !== 5
+      ) {
+        return res.status(503).json({
+          success: false,
+          error:
+            "Book Study reflection questions are not correctly configured.",
+        });
+      }
+
       // Scale direction: 1 = strongest, 10 = not at all.
       const scaleLabels = [
         "Very strongly",
@@ -18074,6 +18122,8 @@ app.post(
             ? answer.questionTextSnapshot.trim()
             : "";
 
+        const wixQuestion = wixQuestionsByOrder.get(order);
+        
         if (
           !Number.isInteger(order) ||
           order < 1 ||
@@ -18083,7 +18133,10 @@ app.post(
           !questionText ||
           questionText.length > 4000 ||
           seenOrders.has(order) ||
-          seenIds.has(cmsQuestionId)
+seenIds.has(cmsQuestionId) ||
+!wixQuestion ||
+wixQuestion.id !== cmsQuestionId ||
+wixQuestion.text !== questionText
         ) {
           return res.status(400).json({
             success: false,
@@ -18161,7 +18214,7 @@ app.post(
         validatedAnswers.push({
           cmsQuestionId,
           questionSortOrder: order,
-          questionTextSnapshot: questionText,
+          questionTextSnapshot: wixQuestion.text,
           responseText,
           responseScore,
           scaleLabelSnapshot,
