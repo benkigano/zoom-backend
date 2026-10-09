@@ -549,11 +549,7 @@ model BookStudyReflectionAnswer {
   submittedAt              DateTime @default(now())
   updatedAt                DateTime @updatedAt
 
-  participant CourtStudyParticipant @relation(
-    fields: [courtStudyParticipantId],
-    references: [id],
-    onDelete: Cascade
-  )
+  participant CourtStudyParticipant @relation(fields: [courtStudyParticipantId], references: [id], onDelete: Cascade)
 
   @@unique([courtStudyParticipantId, cmsQuestionId])
   @@index([courtStudyParticipantId])
