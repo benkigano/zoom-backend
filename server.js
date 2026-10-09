@@ -17834,6 +17834,20 @@ if (postSurveyStatementWordCount > 500) {
         });
       }
 
+      // Book Study reflections use their own response-storage endpoint.
+// Preserve the existing Court Study submission workflow.
+if (
+  String(courtStudyRequest.studyFocusType || "")
+    .trim()
+    .toUpperCase() === "BOOK_STUDY"
+) {
+  return res.status(400).json({
+    success: false,
+    error:
+      "Book Study reflections must be submitted through the Book Study reflection endpoint.",
+  });
+}
+      
       if (
         String(courtStudyRequest.status || "")
           .trim()
