@@ -16609,6 +16609,7 @@ const canJoinNow =
         success: true,
         invitation: {
           hostGroupName,
+          ...(isBookStudy ? { organizerName: String(courtStudyRequest.organizerName || "").trim() } : {}),
           materialTitle,
           studyType: isBookStudy
   ? "BOOK_STUDY"
