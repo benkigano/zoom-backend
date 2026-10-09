@@ -17946,6 +17946,336 @@ if (
 );
 
 // =====================================================
+// Public: submit or revise Book Study reflections
+// =====================================================
+app.post(
+  "/api/book-study/post-survey/:token",
+  async (req, res) => {
+    try {
+      const token = String(req.params.token || "").trim();
+
+      if (!token) {
+        return res.status(400).json({
+          success: false,
+          error: "Participant reflection token is required",
+        });
+      }
+
+      // Verify the registered participant and session.
+      const participant =
+        await prisma.courtStudyParticipant.findUnique({
+          where: { invitationToken: token },
+          include: {
+            courtStudyMeeting: {
+              include: {
+                courtStudyRequest: true,
+              },
+            },
+          },
+        });
+
+      if (!participant?.courtStudyMeeting) {
+        return res.status(404).json({
+          success: false,
+          error: "Book Study participant not found",
+        });
+      }
+
+      if (
+        String(participant.status || "")
+          .trim()
+          .toUpperCase() !== "REGISTERED"
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: "Participant registration is required",
+        });
+      }
+
+      const meeting = participant.courtStudyMeeting;
+      const request = meeting.courtStudyRequest;
+
+      if (
+        String(request?.studyFocusType || "")
+          .trim()
+          .toUpperCase() !== "BOOK_STUDY"
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: "This endpoint is for Book Study only",
+        });
+      }
+
+      if (
+        String(request.status || "")
+          .trim()
+          .toUpperCase() !== "COMPLETED"
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: "The Book Study has not been completed",
+        });
+      }
+
+      const scheduledEndMs = meeting.scheduledEnd
+        ? new Date(meeting.scheduledEnd).getTime()
+        : NaN;
+
+      if (
+        !Number.isFinite(scheduledEndMs) ||
+        Date.now() < scheduledEndMs
+      ) {
+        return res.status(403).json({
+          success: false,
+          error:
+            "Reflections are available only after the scheduled session has ended",
+        });
+      }
+
+      // Require exactly five question responses.
+      const incomingAnswers = req.body?.answers;
+
+      if (
+        !Array.isArray(incomingAnswers) ||
+        incomingAnswers.length !== 5
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "Exactly five question entries are required",
+        });
+      }
+
+      // Scale direction: 1 = strongest, 10 = not at all.
+      const scaleLabels = [
+        "Very strongly",
+        "Strongly",
+        "Quite strongly",
+        "Noticeably",
+        "Moderately",
+        "Somewhat",
+        "Mildly",
+        "Slightly",
+        "Barely",
+        "Not at all",
+      ];
+
+      const validatedAnswers = [];
+      const seenOrders = new Set();
+      const seenIds = new Set();
+
+      for (const answer of incomingAnswers) {
+        const order = Number(answer?.questionSortOrder);
+        const cmsQuestionId =
+          typeof answer?.cmsQuestionId === "string"
+            ? answer.cmsQuestionId.trim()
+            : "";
+        const questionText =
+          typeof answer?.questionTextSnapshot === "string"
+            ? answer.questionTextSnapshot.trim()
+            : "";
+
+        if (
+          !Number.isInteger(order) ||
+          order < 1 ||
+          order > 5 ||
+          !cmsQuestionId ||
+          cmsQuestionId.length > 128 ||
+          !questionText ||
+          questionText.length > 4000 ||
+          seenOrders.has(order) ||
+          seenIds.has(cmsQuestionId)
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: "Invalid or duplicate Book Study question",
+          });
+        }
+
+        seenOrders.add(order);
+        seenIds.add(cmsQuestionId);
+
+        if (
+          answer?.responseText != null &&
+          typeof answer.responseText !== "string"
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: `Question ${order} has invalid response text`,
+          });
+        }
+
+        const responseText =
+          String(answer.responseText || "").trim() || null;
+
+        if (
+          responseText &&
+          responseText.split(/\s+/).length > 500
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: `Question ${order} exceeds 500 words`,
+          });
+        }
+
+        const hasScore =
+          answer.responseScore !== undefined &&
+          answer.responseScore !== null &&
+          answer.responseScore !== "";
+
+        let responseScore = null;
+        let scaleLabelSnapshot = null;
+
+        if (order === 5) {
+          if (hasScore) {
+            responseScore = Number(answer.responseScore);
+
+            if (
+              !Number.isInteger(responseScore) ||
+              responseScore < 1 ||
+              responseScore > 10
+            ) {
+              return res.status(400).json({
+                success: false,
+                error: "Question 5 requires a score from 1 to 10",
+              });
+            }
+
+            scaleLabelSnapshot =
+              scaleLabels[responseScore - 1];
+          }
+
+          if (responseText && responseScore === null) {
+            return res.status(400).json({
+              success: false,
+              error:
+                "Select a Question 5 rating before explaining it",
+            });
+          }
+        } else if (hasScore) {
+          return res.status(400).json({
+            success: false,
+            error: `Question ${order} accepts narrative text only`,
+          });
+        }
+
+        validatedAnswers.push({
+          cmsQuestionId,
+          questionSortOrder: order,
+          questionTextSnapshot: questionText,
+          responseText,
+          responseScore,
+          scaleLabelSnapshot,
+        });
+      }
+
+      if (
+        !validatedAnswers.some(
+          (answer) =>
+            answer.responseText ||
+            answer.responseScore !== null
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "Provide at least one reflection answer",
+        });
+      }
+
+      // Save or revise all five answers atomically.
+      const now = new Date();
+
+      await prisma.$transaction(async (tx) => {
+        const existingAnswers =
+          await tx.bookStudyReflectionAnswer.findMany({
+            where: {
+              courtStudyParticipantId: participant.id,
+            },
+            select: {
+              cmsQuestionId: true,
+              questionSortOrder: true,
+            },
+          });
+
+        // Do not silently replace answers with different
+        // CMS question IDs if the questionnaire changes.
+        if (existingAnswers.length > 0) {
+          const incomingByOrder = new Map(
+            validatedAnswers.map((answer) => [
+              answer.questionSortOrder,
+              answer.cmsQuestionId,
+            ])
+          );
+
+          if (
+            existingAnswers.length !== 5 ||
+            existingAnswers.some(
+              (answer) =>
+                incomingByOrder.get(answer.questionSortOrder) !==
+                answer.cmsQuestionId
+            )
+          ) {
+            const error = new Error(
+              "The questionnaire has changed since your earlier submission"
+            );
+            error.httpStatus = 409;
+            throw error;
+          }
+        }
+
+        for (const answer of validatedAnswers) {
+          await tx.bookStudyReflectionAnswer.upsert({
+            where: {
+              courtStudyParticipantId_cmsQuestionId: {
+                courtStudyParticipantId: participant.id,
+                cmsQuestionId: answer.cmsQuestionId,
+              },
+            },
+            create: {
+              courtStudyParticipantId: participant.id,
+              ...answer,
+              submittedAt: now,
+            },
+            update: {
+              questionTextSnapshot:
+                answer.questionTextSnapshot,
+              responseText: answer.responseText,
+              responseScore: answer.responseScore,
+              scaleLabelSnapshot:
+                answer.scaleLabelSnapshot,
+              submittedAt: now,
+            },
+          });
+        }
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Book Study reflections saved successfully",
+        savedAnswerCount: 5,
+        revisionsAllowed: true,
+      });
+    } catch (err) {
+      if (err?.httpStatus === 409) {
+        return res.status(409).json({
+          success: false,
+          error: err.message,
+        });
+      }
+
+      console.error(
+        "Book Study reflection submission error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: "Unable to save Book Study reflections",
+      });
+    }
+  }
+);
+
+// =====================================================
 // Admin: view registered participants for a Court Study
 // =====================================================
 app.get(
