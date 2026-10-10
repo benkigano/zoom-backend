@@ -14828,11 +14828,23 @@ async function sendCourtStudyPostSurveyInvitations({
       meeting.title ||
       "Court of Compassion Interview";
 
+    const isBookStudy =
+    String(courtStudyRequest.studyFocusType || "")
+      .trim()
+      .toUpperCase() === "BOOK_STUDY";
+
   const hostGroupName = String(
-    courtStudyRequest.hostGroupName ||
-    courtStudyRequest.churchName ||
-    "Court of Compassion"
+    isBookStudy
+      ? courtStudyRequest.organizerName ||
+          "Organizer not specified"
+      : courtStudyRequest.hostGroupName ||
+          courtStudyRequest.churchName ||
+          "Court of Compassion"
   ).trim();
+
+  const hostLabel = isBookStudy
+    ? "Book Study Organizer"
+    : "Host Group or Community";
 
   const subject =
     `Post-Session Reflection — ${materialTitle}`;
@@ -14879,20 +14891,24 @@ async function sendCourtStudyPostSurveyInvitations({
       const safeMaterialTitle =
         safeEmailHtml(materialTitle);
 
-      const text = [
+            const text = [
         `Dear ${participantName},`,
         "",
-        "Thank you for participating in this Court of Compassion Court Study.",
+        isBookStudy
+          ? "Thank you for participating in this Court of Compassion Book Study."
+          : "Thank you for participating in this Court of Compassion Court Study.",
         "",
-        `Host Group or Community: ${hostGroupName}`,
-        `Court Study Material: ${materialTitle}`,
+        `${hostLabel}: ${hostGroupName}`,
+        `${isBookStudy ? "Book Study Material" : "Court Study Material"}: ${materialTitle}`,
         "",
         "You are invited to record your post-session reflection.",
         "",
         "Post-Session Reflection:",
         postSurveyUrl,
         "",
-        "Your post-session response is kept separate from any pre-session response so that both can be preserved.",
+        isBookStudy
+          ? "This Book Study includes a post-session reflection only."
+          : "Your post-session response is kept separate from any pre-session response so that both can be preserved.",
         "",
         "Court of Compassion",
       ].join("\n");
@@ -14986,16 +15002,17 @@ async function sendCourtStudyPostSurveyInvitations({
               </p>
 
               <p style="margin:0 0 20px 0;">
-                Thank you for participating in this
-                Court of Compassion Court Study.
-              </p>
+  ${isBookStudy
+    ? "Thank you for participating in this Court of Compassion Book Study."
+    : "Thank you for participating in this Court of Compassion Court Study."}
+</p>
 
               <p style="margin:0 0 22px 0;">
-                <strong>Host Group or Community:</strong>
+                <strong>${hostLabel}:</strong>
                 ${safeHostGroupName}
                 <br>
 
-                <strong>Court Study Material:</strong>
+                <strong>${isBookStudy ? "Book Study Material" : "Court Study Material"}:</strong>
                 ${safeMaterialTitle}
               </p>
 
@@ -15028,9 +15045,9 @@ async function sendCourtStudyPostSurveyInvitations({
                 background:#fff7dd;
                 border-left:4px solid #8a6500;
               ">
-                Your post-session response is kept
-                separate from any pre-session response
-                so that both can be preserved.
+                ${isBookStudy
+  ? "This Book Study includes a post-session reflection only."
+  : "Your post-session response is kept separate from any pre-session response so that both can be preserved."}
               </div>
             </td>
           </tr>
