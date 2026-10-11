@@ -17755,6 +17755,13 @@ const bookStudyAnswers = isBookStudyReflection
         courtStudy: {
           hostGroupName,
           studyFocusType: courtStudyRequest.studyFocusType,
+          ...(isBookStudyReflection
+  ? {
+      organizerName: String(
+        courtStudyRequest.organizerName || ""
+      ).trim(),
+    }
+  : {}),
           materialTitle,
           scheduledStart: meeting.scheduledStart,
           scheduledEnd: meeting.scheduledEnd,
