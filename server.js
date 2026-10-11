@@ -16745,6 +16745,28 @@ app.post(
     .trim()
     .toUpperCase() === "BOOK_STUDY";
 
+// Book Study: stop sending participant invitations
+// once the scheduled meeting start time is reached.
+if (isBookStudy) {
+  const scheduledStartMs =
+    new Date(meeting.scheduledStart).getTime();
+
+  if (!Number.isFinite(scheduledStartMs)) {
+    return res.status(400).json({
+      success: false,
+      error: "Book Study scheduled start time is invalid.",
+    });
+  }
+
+  if (Date.now() >= scheduledStartMs) {
+    return res.status(409).json({
+      success: false,
+      error:
+        "Book Study invitations are closed because the scheduled start time has been reached.",
+    });
+  }
+}
+
 const bookExcerptUrl = isBookStudy
   ? `https://api.courtofcompassion.com/book-study/excerpt/${encodeURIComponent(
       token
