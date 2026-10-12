@@ -10603,6 +10603,8 @@ app.post(
   try {
    let body = {};
 
+function parseZoomWebhookBody() {
+    
 if (Buffer.isBuffer(req.body)) {
   const raw = req.body.toString("utf8");
   body = raw ? JSON.parse(raw) : {};
@@ -10613,7 +10615,8 @@ if (Buffer.isBuffer(req.body)) {
 }
 
     console.log("📩 ZOOM WEBHOOK HIT:", body?.event || "(no event)");
-
+    }
+  
     // Zoom URL validation handshake
     function handleZoomUrlValidation() {
       const plainToken = body?.payload?.plainToken;
@@ -10695,6 +10698,15 @@ if (Buffer.isBuffer(req.body)) {
       });
     }
 
+   try {
+  parseZoomWebhookBody();
+} catch (err) {
+  console.warn("Zoom webhook JSON payload invalid.");
+  return res.status(400).json({
+    error: "Invalid webhook JSON",
+  });
+}
+    
   if (body?.event === "endpoint.url_validation") {
   return handleZoomUrlValidation();
 }
@@ -10900,7 +10912,7 @@ if (Buffer.isBuffer(req.body)) {
     return res.status(200).send("ok");
   } catch (err) {
     console.log("❌ ZOOM WEBHOOK ERROR:", err);
-    return res.status(200).send("ok");
+   return res.status(500).send("Webhook processing failed"); 
   }
 });
 app.get("/zoom/token-scope", (req, res) => {
