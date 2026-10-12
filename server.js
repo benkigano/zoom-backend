@@ -5938,6 +5938,13 @@ app.post(
   }
 );
 
+// Preserve original Zoom webhook request bodies
+// for HMAC signature verification.
+app.use(
+  ["/zoom/webhook", "/zoom/s2s-webhook"],
+  express.raw({ type: "application/json" })
+);
+
 app.use(express.json());
 
 // ============================================================
@@ -10608,7 +10615,7 @@ if (Buffer.isBuffer(req.body)) {
     console.log("📩 ZOOM WEBHOOK HIT:", body?.event || "(no event)");
 
     // Zoom URL validation handshake
-    if (body?.event === "endpoint.url_validation") {
+    function handleZoomUrlValidation() {
       const plainToken = body?.payload?.plainToken;
       const secret =
   req.path === "/zoom/s2s-webhook"
@@ -10628,6 +10635,70 @@ if (Buffer.isBuffer(req.body)) {
       return res.status(200).json({ plainToken, encryptedToken });
     }
 
+    // Verify all Zoom webhook POST requests,
+    // including URL-validation challenges.
+    const webhookSecret =
+      req.path === "/zoom/s2s-webhook"
+        ? process.env.ZOOM_S2S_WEBHOOK_SECRET_TOKEN || ""
+        : process.env.ZOOM_WEBHOOK_SECRET || "";
+
+    if (!webhookSecret) {
+      console.error("Zoom webhook secret is not configured.");
+      return res.status(503).json({
+        error: "Webhook authentication unavailable",
+      });
+    }
+
+    const timestampHeader = String(
+      req.headers["x-zm-request-timestamp"] || ""
+    ).trim();
+
+    const signatureHeader = String(
+      req.headers["x-zm-signature"] || ""
+    ).trim();
+
+    const timestampSeconds = Number(timestampHeader);
+    const rawBody = Buffer.isBuffer(req.body)
+      ? req.body
+      : null;
+
+    if (
+      !rawBody ||
+      !/^\d+$/.test(timestampHeader) ||
+      !Number.isSafeInteger(timestampSeconds) ||
+      Math.abs(Date.now() / 1000 - timestampSeconds) > 300
+    ) {
+      console.warn("Zoom webhook body or timestamp invalid.");
+      return res.status(401).json({
+        error: "Invalid webhook authentication",
+      });
+    }
+
+    const expectedSignature =
+      "v0=" +
+      crypto
+        .createHmac("sha256", webhookSecret)
+        .update(`v0:${timestampHeader}:`)
+        .update(rawBody)
+        .digest("hex");
+
+    const receivedBuffer = Buffer.from(signatureHeader);
+    const expectedBuffer = Buffer.from(expectedSignature);
+
+    if (
+      receivedBuffer.length !== expectedBuffer.length ||
+      !crypto.timingSafeEqual(receivedBuffer, expectedBuffer)
+    ) {
+      console.warn("Zoom webhook signature verification failed.");
+      return res.status(401).json({
+        error: "Invalid webhook signature",
+      });
+    }
+
+  if (body?.event === "endpoint.url_validation") {
+  return handleZoomUrlValidation();
+}
+    
     // Normal events
 
   if (body?.event === "meeting.ended") {
