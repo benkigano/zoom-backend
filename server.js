@@ -19969,7 +19969,7 @@ ${
                           ${
   isBookStudy
     ? "Participant email addresses are used to send invitations and maintain participant registration records for this Book Study."
-    : "For privacy, participant email addresses are used only to send the Court Study invitation and are not saved to the Court Study database."
+    : "Participant email addresses are used to send invitations and maintain participant registration records for this Court Study."
 }
                         </p>
 
