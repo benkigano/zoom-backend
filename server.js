@@ -5941,7 +5941,12 @@ app.post(
 // Preserve original Zoom webhook request bodies
 // for HMAC signature verification.
 app.use(
-  ["/zoom/webhook", "/zoom/s2s-webhook", "/zoom/connect-webhook"],
+  [
+  "/zoom/webhook",
+  "/zoom/s2s-webhook",
+  "/zoom/connect-webhook",
+  "/zoom/connect-webhook/dev",
+],
   express.raw({ type: "application/json" })
 );
 
@@ -8686,6 +8691,7 @@ app.use((req, res, next) => {
     "/zoom/webhook",
     "/zoom/s2s-webhook",
     "/zoom/connect-webhook",
+    "/zoom/connect-webhook/dev",
   ].includes(req.path)
 ) {
     next(); // skip JSON parser for Zoom
@@ -10603,7 +10609,12 @@ app.get("/zoom/webhook", (req, res) => {
 });
 
 app.post(
-  ["/zoom/webhook", "/zoom/s2s-webhook", "/zoom/connect-webhook"],
+  [
+  "/zoom/webhook",
+  "/zoom/s2s-webhook",
+  "/zoom/connect-webhook",
+  "/zoom/connect-webhook/dev",
+],
   express.raw({ type: "application/json" }),
   async (req, res) => {
   try {
@@ -10629,9 +10640,11 @@ if (Buffer.isBuffer(req.body)) {
       const secret =
   req.path === "/zoom/s2s-webhook"
     ? process.env.ZOOM_S2S_WEBHOOK_SECRET_TOKEN || ""
-    : req.path === "/zoom/connect-webhook"
-      ? process.env.ZOOM_CONNECT_WEBHOOK_SECRET_TOKEN || ""
-      : process.env.ZOOM_WEBHOOK_SECRET || "";
+    : req.path === "/zoom/connect-webhook/dev"
+      ? process.env.ZOOM_CONNECT_DEV_WEBHOOK_SECRET_TOKEN || ""
+      : req.path === "/zoom/connect-webhook"
+        ? process.env.ZOOM_CONNECT_WEBHOOK_SECRET_TOKEN || ""
+        : process.env.ZOOM_WEBHOOK_SECRET || "";
 
       if (!plainToken || !secret) {
        console.log("❌ Missing plainToken or Zoom webhook secret"); 
@@ -10651,9 +10664,11 @@ if (Buffer.isBuffer(req.body)) {
     const webhookSecret =
   req.path === "/zoom/s2s-webhook"
     ? process.env.ZOOM_S2S_WEBHOOK_SECRET_TOKEN || ""
-    : req.path === "/zoom/connect-webhook"
-      ? process.env.ZOOM_CONNECT_WEBHOOK_SECRET_TOKEN || ""
-      : process.env.ZOOM_WEBHOOK_SECRET || "";
+    : req.path === "/zoom/connect-webhook/dev"
+      ? process.env.ZOOM_CONNECT_DEV_WEBHOOK_SECRET_TOKEN || ""
+      : req.path === "/zoom/connect-webhook"
+        ? process.env.ZOOM_CONNECT_WEBHOOK_SECRET_TOKEN || ""
+        : process.env.ZOOM_WEBHOOK_SECRET || "";
 
     if (!webhookSecret) {
       console.error("Zoom webhook secret is not configured.");
