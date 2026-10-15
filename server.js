@@ -17395,6 +17395,156 @@ app.get(
   }
 );
 
+
+//
+// Public: registered participant meeting access
+// Uses a participant-specific token, not the organizer token.
+//
+app.get(
+  "/api/court-study/participant-access/:participantToken",
+  async (req, res) => {
+    res.set("Cache-Control", "no-store");
+
+    try {
+      const participantToken = String(
+        req.params.participantToken || ""
+      ).trim();
+
+      if (!/^[a-f0-9]{64}$/i.test(participantToken)) {
+        return res.status(404).json({
+          success: false,
+          error: "Participant access not found",
+        });
+      }
+
+      const participant =
+        await prisma.courtStudyParticipant.findUnique({
+          where: {
+            invitationToken: participantToken,
+          },
+          include: {
+            courtStudyMeeting: {
+              include: {
+                courtStudyRequest: true,
+              },
+            },
+          },
+        });
+
+      if (!participant || !participant.courtStudyMeeting) {
+        return res.status(404).json({
+          success: false,
+          error: "Participant access not found",
+        });
+      }
+
+      if (participant.status !== "REGISTERED") {
+        return res.status(403).json({
+          success: false,
+          error: "Participant registration is required",
+        });
+      }
+
+      const meeting = participant.courtStudyMeeting;
+      const request = meeting.courtStudyRequest;
+
+      if (!request) {
+        return res.status(404).json({
+          success: false,
+          error: "Study session not found",
+        });
+      }
+
+      if (
+        ["CANCELLED", "DECLINED"].includes(
+          String(request.status || "").toUpperCase()
+        )
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: "This study session is unavailable",
+        });
+      }
+
+      const scheduledStart = new Date(
+        meeting.scheduledStart
+      );
+
+      if (!Number.isFinite(scheduledStart.getTime())) {
+        return res.status(500).json({
+          success: false,
+          error: "Invalid scheduled session time",
+        });
+      }
+
+      const joinWindowOpensAt = new Date(
+        scheduledStart.getTime() - 15 * 60 * 1000
+      );
+
+      const joinUrl = String(
+        meeting.zoomJoinUrl || ""
+      ).trim();
+
+      const registrationUrl = String(
+        meeting.zoomRegistrationUrl || ""
+      ).trim();
+
+      const canJoinNow =
+        Boolean(joinUrl || registrationUrl) &&
+        Date.now() >= joinWindowOpensAt.getTime();
+
+      const studyType =
+        request.studyFocusType === "BOOK_STUDY"
+          ? "BOOK_STUDY"
+          : request.studyFocusType === "RULES"
+            ? "RULES"
+            : request.studyFocusType || "COURT_STUDY";
+
+      return res.status(200).json({
+        success: true,
+        participant: {
+          firstName: participant.firstName,
+          lastName: participant.lastName,
+          status: participant.status,
+        },
+        session: {
+          studyType,
+          hostGroupName:
+            request.hostGroupName ||
+            request.churchName ||
+            "Court of Compassion",
+          scheduledStart: scheduledStart.toISOString(),
+          timezone:
+            meeting.timezone ||
+            request.timezone ||
+            "America/Los_Angeles",
+          joinWindowOpensAt:
+            joinWindowOpensAt.toISOString(),
+          canJoinNow,
+          usesZoomRegistration: Boolean(registrationUrl),
+
+          // Never return Zoom access URLs before
+          // the participant entry window opens.
+          joinUrl: canJoinNow ? joinUrl || null : null,
+          registrationUrl:
+            canJoinNow ? registrationUrl || null : null,
+        },
+      });
+    } catch (err) {
+      console.error(
+        "GET participant-access error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: "Unable to load participant access",
+      });
+    }
+  }
+);
+
+
 // =====================================================
 // Public: submit Court Study participant registration
 // =====================================================
