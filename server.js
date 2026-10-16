@@ -6,6 +6,7 @@ import nodemailer from "nodemailer";
 import crypto from "crypto";
 import { prisma } from "./prisma/client.js";
 import escapeHtml from "escape-html";
+import { convert } from "html-to-text";
 import Stripe from "stripe";
 
 const stripe = process.env.STRIPE_SECRET_KEY
@@ -16380,20 +16381,21 @@ app.get(
         );
       }
 
-      const bookExcerptText = String(
-        courtStudyRequest.bookExcerptHtml || ""
-      )
-        .replace(/<br\s*\/?>/gi, "\n")
-        .replace(/<\/p>/gi, "\n\n")
-        .replace(/<[^>]+>/g, "")
-        .replace(/&nbsp;/gi, " ")
-        .replace(/&amp;/gi, "&")
-        .replace(/&lt;/gi, "<")
-        .replace(/&gt;/gi, ">")
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;|&#039;/gi, "'")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
+     const bookExcerptText = convert(
+  String(courtStudyRequest.bookExcerptHtml || ""),
+  {
+    wordwrap: false,
+    selectors: [
+      {
+        selector: "p",
+        options: {
+          leadingLineBreaks: 0,
+          trailingLineBreaks: 2,
+        },
+      },
+    ],
+  }
+).trim(); 
 
       if (!bookExcerptText) {
         return res.status(404).send(
@@ -16507,20 +16509,21 @@ app.get(
         );
       }
 
-      const bookExcerptText = String(
-        courtStudyRequest.bookExcerptHtml || ""
-      )
-        .replace(/<br\s*\/?>/gi, "\n")
-        .replace(/<\/p>/gi, "\n\n")
-        .replace(/<[^>]+>/g, "")
-        .replace(/&nbsp;/gi, " ")
-        .replace(/&amp;/gi, "&")
-        .replace(/&lt;/gi, "<")
-        .replace(/&gt;/gi, ">")
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;|&#039;/gi, "'")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
+      const bookExcerptText = convert(
+  String(courtStudyRequest.bookExcerptHtml || ""),
+  {
+    wordwrap: false,
+    selectors: [
+      {
+        selector: "p",
+        options: {
+          leadingLineBreaks: 0,
+          trailingLineBreaks: 2,
+        },
+      },
+    ],
+  }
+).trim();
 
       if (!bookExcerptText) {
         return res.status(404).send(
