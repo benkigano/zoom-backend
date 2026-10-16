@@ -6,6 +6,7 @@ import nodemailer from "nodemailer";
 import crypto from "crypto";
 import { prisma } from "./prisma/client.js";
 import escapeHtml from "escape-html";
+import { convert } from "html-to-text";
 import Stripe from "stripe";
 
 const stripe = process.env.STRIPE_SECRET_KEY
@@ -16215,96 +16216,8 @@ const interviewTitle = isRulesStudy
   }
 );
 
-// =====================================================
-// Public: display full Book Study excerpt by invitation token
-// =====================================================
-app.get(
-  "/book-study/excerpt/:token",
-  async (req, res) => {
-    try {
-      const token = String(
-        req.params.token || ""
-      ).trim();
-
-      if (!token) {
-        return res.status(400).send(
-          "Book Study invitation token is required."
-        );
-      }
-
-      const meeting =
-        await prisma.courtStudyMeeting.findUnique({
-          where: {
-            publicInvitationToken: token,
-          },
-          include: {
-            courtStudyRequest: true,
-          },
-        });
-
-      if (
-        !meeting ||
-        !meeting.courtStudyRequest
-      ) {
-        return res.status(404).send(
-          "Book Study excerpt not found."
-        );
-      }
-
-      const courtStudyRequest =
-        meeting.courtStudyRequest;
-            
-      if (
-        String(
-          courtStudyRequest.studyFocusType || ""
-        )
-          .trim()
-          .toUpperCase() !== "BOOK_STUDY"
-      ) {
-        return res.status(404).send(
-          "Book Study excerpt not found."
-        );
-      }
-
-      const bookExcerptText = String(
-        courtStudyRequest.bookExcerptHtml || ""
-      )
-        .replace(/<br\s*\/?>/gi, "\n")
-        .replace(/<\/p>/gi, "\n\n")
-        .replace(/<[^>]+>/g, "")
-        .replace(/&nbsp;/gi, " ")
-        .replace(/&amp;/gi, "&")
-        .replace(/&lt;/gi, "<")
-        .replace(/&gt;/gi, ">")
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;|&#039;/gi, "'")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
-
-      if (!bookExcerptText) {
-        return res.status(404).send(
-          "The selected Book Study excerpt is unavailable."
-        );
-      }
-
-      const materialTitle = [
-        "Emet the Amicus",
-        courtStudyRequest.bookPartNumber
-          ? `Part ${courtStudyRequest.bookPartNumber}`
-          : null,
-        courtStudyRequest.bookPartTitle || null,
-        courtStudyRequest.bookChapterNumber
-          ? `Chapter ${courtStudyRequest.bookChapterNumber}`
-          : null,
-      ]
-        .filter(Boolean)
-        .join(" — ");
-
-      return res
-        .status(200)
-        .type("html")
-        .send(`
-<!doctype html>
+function renderBookStudyExcerptHtml(materialTitle, bookExcerptText) {
+ return `<!doctype html> 
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -16414,11 +16327,235 @@ app.get(
 </div>
   </main>
 </body>
-</html>
-        `);
+</html>`;
+}
+
+// =====================================================
+// Public: display full Book Study excerpt by invitation token
+// =====================================================
+app.get(
+  "/book-study/excerpt/:token",
+  async (req, res) => {
+    try {
+      const token = String(
+        req.params.token || ""
+      ).trim();
+
+      if (!token) {
+        return res.status(400).send(
+          "Book Study invitation token is required."
+        );
+      }
+
+      const meeting =
+        await prisma.courtStudyMeeting.findUnique({
+          where: {
+            publicInvitationToken: token,
+          },
+          include: {
+            courtStudyRequest: true,
+          },
+        });
+
+      if (
+        !meeting ||
+        !meeting.courtStudyRequest
+      ) {
+        return res.status(404).send(
+          "Book Study excerpt not found."
+        );
+      }
+
+      const courtStudyRequest =
+        meeting.courtStudyRequest;
+            
+      if (
+        String(
+          courtStudyRequest.studyFocusType || ""
+        )
+          .trim()
+          .toUpperCase() !== "BOOK_STUDY"
+      ) {
+        return res.status(404).send(
+          "Book Study excerpt not found."
+        );
+      }
+
+     const bookExcerptText = convert(
+  String(courtStudyRequest.bookExcerptHtml || ""),
+  {
+    wordwrap: false,
+    selectors: [
+      {
+        selector: "p",
+        options: {
+          leadingLineBreaks: 0,
+          trailingLineBreaks: 2,
+        },
+      },
+    ],
+  }
+).trim(); 
+
+      if (!bookExcerptText) {
+        return res.status(404).send(
+          "The selected Book Study excerpt is unavailable."
+        );
+      }
+
+      const materialTitle = [
+        "Emet the Amicus",
+        courtStudyRequest.bookPartNumber
+          ? `Part ${courtStudyRequest.bookPartNumber}`
+          : null,
+        courtStudyRequest.bookPartTitle || null,
+        courtStudyRequest.bookChapterNumber
+          ? `Chapter ${courtStudyRequest.bookChapterNumber}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" — ");
+
+    return res
+  .status(200)
+  .type("html")
+  .send(
+    renderBookStudyExcerptHtml(materialTitle, bookExcerptText)
+  );
+      
     } catch (error) {
       console.error(
         "❌ BOOK STUDY FULL EXCERPT ERROR:",
+        error
+      );
+
+      return res.status(500).send(
+        "Unable to load the Book Study excerpt."
+      );
+    }
+  }
+);
+
+// =====================================================
+// Book Study: full excerpt for a registered participant
+// =====================================================
+app.get(
+  "/book-study/participant-excerpt/:participantToken",
+  async (req, res) => {
+    res.set("Cache-Control", "no-store");
+
+    try {
+      const participantToken = String(
+        req.params.participantToken || ""
+      ).trim();
+
+      if (!/^[a-f0-9]{64}$/i.test(participantToken)) {
+        return res.status(404).send(
+          "Book Study excerpt not found."
+        );
+      }
+
+      const participant =
+        await prisma.courtStudyParticipant.findUnique({
+          where: {
+            invitationToken: participantToken,
+          },
+          include: {
+            courtStudyMeeting: {
+              include: {
+                courtStudyRequest: true,
+              },
+            },
+          },
+        });
+
+      if (
+        !participant ||
+        !participant.courtStudyMeeting ||
+        !participant.courtStudyMeeting.courtStudyRequest
+      ) {
+        return res.status(404).send(
+          "Book Study excerpt not found."
+        );
+      }
+
+      if (participant.status !== "REGISTERED") {
+        return res.status(403).send(
+          "Participant registration is required."
+        );
+      }
+
+      const courtStudyRequest =
+        participant.courtStudyMeeting.courtStudyRequest;
+
+      if (
+        ["CANCELLED", "DECLINED"].includes(
+          String(courtStudyRequest.status || "")
+            .toUpperCase()
+        )
+      ) {
+        return res.status(403).send(
+          "This Book Study session is unavailable."
+        );
+      }
+
+      if (
+        String(courtStudyRequest.studyFocusType || "")
+          .trim()
+          .toUpperCase() !== "BOOK_STUDY"
+      ) {
+        return res.status(404).send(
+          "Book Study excerpt not found."
+        );
+      }
+
+      const bookExcerptText = convert(
+  String(courtStudyRequest.bookExcerptHtml || ""),
+  {
+    wordwrap: false,
+    selectors: [
+      {
+        selector: "p",
+        options: {
+          leadingLineBreaks: 0,
+          trailingLineBreaks: 2,
+        },
+      },
+    ],
+  }
+).trim();
+
+      if (!bookExcerptText) {
+        return res.status(404).send(
+          "The selected Book Study excerpt is unavailable."
+        );
+      }
+
+      const materialTitle = [
+        "Emet the Amicus",
+        courtStudyRequest.bookPartNumber
+          ? `Part ${courtStudyRequest.bookPartNumber}`
+          : null,
+        courtStudyRequest.bookPartTitle || null,
+        courtStudyRequest.bookChapterNumber
+          ? `Chapter ${courtStudyRequest.bookChapterNumber}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" — ");
+
+      return res
+        .status(200)
+        .type("html")
+        .send(
+          renderBookStudyExcerptHtml(
+            materialTitle,
+            bookExcerptText
+          )
+        );
+    } catch (error) {
+      console.error(
+        "BOOK STUDY PARTICIPANT EXCERPT ERROR:",
         error
       );
 
@@ -17394,6 +17531,229 @@ app.get(
     }
   }
 );
+
+
+//
+// Public: registered participant meeting access
+// Uses a participant-specific token, not the organizer token.
+//
+app.get(
+  "/api/court-study/participant-access/:participantToken",
+  async (req, res) => {
+    res.set("Cache-Control", "no-store");
+
+    try {
+      const participantToken = String(
+        req.params.participantToken || ""
+      ).trim();
+
+      if (!/^[a-f0-9]{64}$/i.test(participantToken)) {
+        return res.status(404).json({
+          success: false,
+          error: "Participant access not found",
+        });
+      }
+
+      const participant =
+        await prisma.courtStudyParticipant.findUnique({
+          where: {
+            invitationToken: participantToken,
+          },
+          include: {
+            courtStudyMeeting: {
+              include: {
+               courtStudyRequest: {
+                include: {
+                 recording: true,
+                 },
+               }, 
+              },
+            },
+          },
+        });
+
+      if (!participant || !participant.courtStudyMeeting) {
+        return res.status(404).json({
+          success: false,
+          error: "Participant access not found",
+        });
+      }
+
+      if (participant.status !== "REGISTERED") {
+        return res.status(403).json({
+          success: false,
+          error: "Participant registration is required",
+        });
+      }
+
+      const meeting = participant.courtStudyMeeting;
+      const request = meeting.courtStudyRequest;
+
+      if (!request) {
+        return res.status(404).json({
+          success: false,
+          error: "Study session not found",
+        });
+      }
+
+      if (
+        ["CANCELLED", "DECLINED"].includes(
+          String(request.status || "").toUpperCase()
+        )
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: "This study session is unavailable",
+        });
+      }
+
+      const scheduledStart = new Date(
+        meeting.scheduledStart
+      );
+
+      if (!Number.isFinite(scheduledStart.getTime())) {
+        return res.status(500).json({
+          success: false,
+          error: "Invalid scheduled session time",
+        });
+      }
+
+      const joinWindowOpensAt = new Date(
+        scheduledStart.getTime() - 15 * 60 * 1000
+      );
+
+      const joinUrl = String(
+        meeting.zoomJoinUrl || ""
+      ).trim();
+
+      const registrationUrl = String(
+        meeting.zoomRegistrationUrl || ""
+      ).trim();
+
+      const canJoinNow =
+        Boolean(joinUrl || registrationUrl) &&
+        Date.now() >= joinWindowOpensAt.getTime();
+
+      const studyType =
+        request.studyFocusType === "BOOK_STUDY"
+          ? "BOOK_STUDY"
+          : request.studyFocusType === "RULES"
+            ? "RULES"
+            : request.studyFocusType || "COURT_STUDY";
+
+      const selectedRulesSections = (() => {
+  try {
+    const raw = request.selectedRulesSections;
+    const parsed =
+      typeof raw === "string" ? JSON.parse(raw) : raw;
+    return Array.isArray(parsed) ? parsed : parsed ? [parsed] : [];
+  } catch {
+    return [];
+  }
+})();
+
+const selectedRulesSection =
+  selectedRulesSections.find(
+    (section) => String(section?.videoUrl || "").trim()
+  ) ||
+  selectedRulesSections[0] ||
+  null;
+
+const materialTitle =
+  studyType === "BOOK_STUDY"
+    ? [
+        "Emet the Amicus",
+        request.bookPartNumber
+          ? `Part ${request.bookPartNumber}`
+          : null,
+        request.bookPartTitle || null,
+        request.bookChapterNumber
+          ? `Chapter ${request.bookChapterNumber}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" — ")
+    : selectedRulesSection
+      ? [
+          selectedRulesSection.chapterTitle,
+          selectedRulesSection.sectionTitle,
+        ]
+          .filter(Boolean)
+          .join(" — ") ||
+        meeting.title ||
+        "Court Study"
+      : request.recording?.title ||
+        meeting.title ||
+        "Court of Compassion Interview";
+
+  const timezone =
+  meeting.timezone ||
+  request.timezone ||
+  "America/Los_Angeles";
+
+const formattedDateTime = new Intl.DateTimeFormat("en-US", {
+  timeZone: timezone,
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+}).format(scheduledStart);
+
+const timezoneLabel =
+  timezone === "America/Los_Angeles"
+    ? "Pacific Time"
+    : timezone;
+
+const readableSessionTime =
+  `${formattedDateTime} (${timezoneLabel})`;
+      
+      return res.status(200).json({
+        success: true,
+        participant: {
+          firstName: participant.firstName,
+          lastName: participant.lastName,
+          status: participant.status,
+        },
+        session: {
+          studyType,
+          materialTitle,
+          readableSessionTime,
+          hostGroupName:
+            request.hostGroupName ||
+            request.churchName ||
+            "Court of Compassion",
+          scheduledStart: scheduledStart.toISOString(),
+          timezone:
+            meeting.timezone ||
+            request.timezone ||
+            "America/Los_Angeles",
+          joinWindowOpensAt:
+            joinWindowOpensAt.toISOString(),
+          canJoinNow,
+          usesZoomRegistration: Boolean(registrationUrl),
+
+         // Allow advance Zoom registration for registered participants.
+// Restrict direct Zoom joining to the 15-minute entry window.
+joinUrl: canJoinNow ? joinUrl || null : null,
+registrationUrl: registrationUrl || null, 
+        },
+      });
+    } catch (err) {
+      console.error(
+        "GET participant-access error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: "Unable to load participant access",
+      });
+    }
+  }
+);
+
 
 // =====================================================
 // Public: submit Court Study participant registration
@@ -19100,18 +19460,21 @@ const podcastUrl =
     : String(recording?.podcastUrl || "").trim();
 
 const bookExcerptText = isBookStudy
-  ? String(courtStudyRequest.bookExcerptHtml || "")
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<\/p>/gi, "\n\n")
-      .replace(/<[^>]+>/g, "")
-      .replace(/&nbsp;/gi, " ")
-      .replace(/&amp;/gi, "&")
-      .replace(/&lt;/gi, "<")
-      .replace(/&gt;/gi, ">")
-      .replace(/&quot;/gi, '"')
-      .replace(/&#39;|&#039;/gi, "'")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim()
+  ? convert(
+      String(courtStudyRequest.bookExcerptHtml || ""),
+      {
+        wordwrap: false,
+        selectors: [
+          {
+            selector: "p",
+            options: {
+              leadingLineBreaks: 0,
+              trailingLineBreaks: 2,
+            },
+          },
+        ],
+      }
+    ).trim()
   : "";
 
 const bookExcerptPreviewText =
