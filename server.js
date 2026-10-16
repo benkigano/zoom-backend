@@ -17630,6 +17630,48 @@ app.get(
         meeting.zoomRegistrationUrl || ""
       ).trim();
 
+            let personalJoinUrl = null;
+
+      if (registrationUrl) {
+        const participantEmail = String(
+          participant.email || ""
+        ).trim().toLowerCase();
+
+        if (participantEmail) {
+          const zoomRegistrants =
+            await prisma.zoomRegistrant.findMany({
+              where: {
+                courtStudyMeetingId: meeting.id,
+                email: {
+                  equals: participantEmail,
+                  mode: "insensitive",
+                },
+                registrationStatus: {
+                  equals: "approved",
+                  mode: "insensitive",
+                },
+                canceledAt: null,
+                lastEventType: {
+                  notIn: [
+                    "meeting.registration_cancelled",
+                    "meeting.registration_denied",
+                  ],
+                },
+              },
+              select: {
+                joinUrl: true,
+              },
+              take: 2,
+            });
+
+          if (zoomRegistrants.length === 1) {
+            personalJoinUrl = String(
+              zoomRegistrants[0].joinUrl || ""
+            ).trim() || null;
+          }
+        }
+      }
+      
       const canJoinNow =
         Boolean(joinUrl || registrationUrl) &&
         Date.now() >= joinWindowOpensAt.getTime();
@@ -17737,7 +17779,7 @@ const readableSessionTime =
          // Allow advance Zoom registration for registered participants.
 // Restrict direct Zoom joining to the 15-minute entry window.
 joinUrl: canJoinNow ? joinUrl || null : null,
-personalJoinUrl: null,         
+ personalJoinUrl: canJoinNow ? personalJoinUrl : null,        
 registrationUrl: registrationUrl || null, 
         },
       });
