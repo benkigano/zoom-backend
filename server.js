@@ -16215,96 +16215,8 @@ const interviewTitle = isRulesStudy
   }
 );
 
-// =====================================================
-// Public: display full Book Study excerpt by invitation token
-// =====================================================
-app.get(
-  "/book-study/excerpt/:token",
-  async (req, res) => {
-    try {
-      const token = String(
-        req.params.token || ""
-      ).trim();
-
-      if (!token) {
-        return res.status(400).send(
-          "Book Study invitation token is required."
-        );
-      }
-
-      const meeting =
-        await prisma.courtStudyMeeting.findUnique({
-          where: {
-            publicInvitationToken: token,
-          },
-          include: {
-            courtStudyRequest: true,
-          },
-        });
-
-      if (
-        !meeting ||
-        !meeting.courtStudyRequest
-      ) {
-        return res.status(404).send(
-          "Book Study excerpt not found."
-        );
-      }
-
-      const courtStudyRequest =
-        meeting.courtStudyRequest;
-            
-      if (
-        String(
-          courtStudyRequest.studyFocusType || ""
-        )
-          .trim()
-          .toUpperCase() !== "BOOK_STUDY"
-      ) {
-        return res.status(404).send(
-          "Book Study excerpt not found."
-        );
-      }
-
-      const bookExcerptText = String(
-        courtStudyRequest.bookExcerptHtml || ""
-      )
-        .replace(/<br\s*\/?>/gi, "\n")
-        .replace(/<\/p>/gi, "\n\n")
-        .replace(/<[^>]+>/g, "")
-        .replace(/&nbsp;/gi, " ")
-        .replace(/&amp;/gi, "&")
-        .replace(/&lt;/gi, "<")
-        .replace(/&gt;/gi, ">")
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;|&#039;/gi, "'")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
-
-      if (!bookExcerptText) {
-        return res.status(404).send(
-          "The selected Book Study excerpt is unavailable."
-        );
-      }
-
-      const materialTitle = [
-        "Emet the Amicus",
-        courtStudyRequest.bookPartNumber
-          ? `Part ${courtStudyRequest.bookPartNumber}`
-          : null,
-        courtStudyRequest.bookPartTitle || null,
-        courtStudyRequest.bookChapterNumber
-          ? `Chapter ${courtStudyRequest.bookChapterNumber}`
-          : null,
-      ]
-        .filter(Boolean)
-        .join(" — ");
-
-      return res
-        .status(200)
-        .type("html")
-        .send(`
-<!doctype html>
+function renderBookStudyExcerptHtml(materialTitle, bookExcerptText) {
+  return <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -16414,8 +16326,101 @@ app.get(
 </div>
   </main>
 </body>
-</html>
-        `);
+</html>`;
+}
+
+// =====================================================
+// Public: display full Book Study excerpt by invitation token
+// =====================================================
+app.get(
+  "/book-study/excerpt/:token",
+  async (req, res) => {
+    try {
+      const token = String(
+        req.params.token || ""
+      ).trim();
+
+      if (!token) {
+        return res.status(400).send(
+          "Book Study invitation token is required."
+        );
+      }
+
+      const meeting =
+        await prisma.courtStudyMeeting.findUnique({
+          where: {
+            publicInvitationToken: token,
+          },
+          include: {
+            courtStudyRequest: true,
+          },
+        });
+
+      if (
+        !meeting ||
+        !meeting.courtStudyRequest
+      ) {
+        return res.status(404).send(
+          "Book Study excerpt not found."
+        );
+      }
+
+      const courtStudyRequest =
+        meeting.courtStudyRequest;
+            
+      if (
+        String(
+          courtStudyRequest.studyFocusType || ""
+        )
+          .trim()
+          .toUpperCase() !== "BOOK_STUDY"
+      ) {
+        return res.status(404).send(
+          "Book Study excerpt not found."
+        );
+      }
+
+      const bookExcerptText = String(
+        courtStudyRequest.bookExcerptHtml || ""
+      )
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<\/p>/gi, "\n\n")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "&")
+        .replace(/&lt;/gi, "<")
+        .replace(/&gt;/gi, ">")
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;|&#039;/gi, "'")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+
+      if (!bookExcerptText) {
+        return res.status(404).send(
+          "The selected Book Study excerpt is unavailable."
+        );
+      }
+
+      const materialTitle = [
+        "Emet the Amicus",
+        courtStudyRequest.bookPartNumber
+          ? `Part ${courtStudyRequest.bookPartNumber}`
+          : null,
+        courtStudyRequest.bookPartTitle || null,
+        courtStudyRequest.bookChapterNumber
+          ? `Chapter ${courtStudyRequest.bookChapterNumber}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" — ");
+
+    return res
+  .status(200)
+  .type("html")
+  .send(
+    renderBookStudyExcerptHtml(materialTitle, bookExcerptText)
+  );
+      
     } catch (error) {
       console.error(
         "❌ BOOK STUDY FULL EXCERPT ERROR:",
