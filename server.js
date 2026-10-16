@@ -17523,11 +17523,10 @@ app.get(
           canJoinNow,
           usesZoomRegistration: Boolean(registrationUrl),
 
-          // Never return Zoom access URLs before
-          // the participant entry window opens.
-          joinUrl: canJoinNow ? joinUrl || null : null,
-          registrationUrl:
-            canJoinNow ? registrationUrl || null : null,
+         // Allow advance Zoom registration for registered participants.
+// Restrict direct Zoom joining to the 15-minute entry window.
+joinUrl: canJoinNow ? joinUrl || null : null,
+registrationUrl: registrationUrl || null, 
         },
       });
     } catch (err) {
