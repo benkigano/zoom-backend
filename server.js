@@ -17425,7 +17425,11 @@ app.get(
           include: {
             courtStudyMeeting: {
               include: {
-                courtStudyRequest: true,
+               courtStudyRequest: {
+                include: {
+                 recording: true,
+                 },
+               }, 
               },
             },
           },
@@ -17500,6 +17504,74 @@ app.get(
             ? "RULES"
             : request.studyFocusType || "COURT_STUDY";
 
+      const selectedRulesSections = (() => {
+  try {
+    const raw = request.selectedRulesSections;
+    const parsed =
+      typeof raw === "string" ? JSON.parse(raw) : raw;
+    return Array.isArray(parsed) ? parsed : parsed ? [parsed] : [];
+  } catch {
+    return [];
+  }
+})();
+
+const selectedRulesSection =
+  selectedRulesSections.find(
+    (section) => String(section?.videoUrl || "").trim()
+  ) ||
+  selectedRulesSections[0] ||
+  null;
+
+const materialTitle =
+  studyType === "BOOK_STUDY"
+    ? [
+        "Emet the Amicus",
+        request.bookPartNumber
+          ? `Part ${request.bookPartNumber}`
+          : null,
+        request.bookPartTitle || null,
+        request.bookChapterNumber
+          ? `Chapter ${request.bookChapterNumber}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" — ")
+    : selectedRulesSection
+      ? [
+          selectedRulesSection.chapterTitle,
+          selectedRulesSection.sectionTitle,
+        ]
+          .filter(Boolean)
+          .join(" — ") ||
+        meeting.title ||
+        "Court Study"
+      : request.recording?.title ||
+        meeting.title ||
+        "Court of Compassion Interview";
+
+  const timezone =
+  meeting.timezone ||
+  request.timezone ||
+  "America/Los_Angeles";
+
+const formattedDateTime = new Intl.DateTimeFormat("en-US", {
+  timeZone: timezone,
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+}).format(scheduledStart);
+
+const timezoneLabel =
+  timezone === "America/Los_Angeles"
+    ? "Pacific Time"
+    : timezone;
+
+const readableSessionTime =
+  `${formattedDateTime} (${timezoneLabel})`;
+      
       return res.status(200).json({
         success: true,
         participant: {
@@ -17509,6 +17581,8 @@ app.get(
         },
         session: {
           studyType,
+          materialTitle,
+          readableSessionTime,
           hostGroupName:
             request.hostGroupName ||
             request.churchName ||
