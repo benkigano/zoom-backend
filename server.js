@@ -17938,7 +17938,7 @@ const readableSessionTime =
 
          // Allow advance Zoom registration for registered participants.
 // Restrict direct Zoom joining to the 15-minute entry window.
-joinUrl: canJoinNow ? joinUrl || null : null,
+joinUrl: canJoinNow && !registrationUrl ? joinUrl || null : null,
  personalJoinUrl: canJoinNow ? personalJoinUrl : null,        
 registrationUrl: registrationUrl || null, 
         },
