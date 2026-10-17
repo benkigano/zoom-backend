@@ -10955,6 +10955,37 @@ if (Buffer.isBuffer(req.body)) {
     );
   }
 }
+
+   if (body?.event === "meeting.registration_denied") {
+  const meeting = body.payload?.object || {};
+  const registrant = meeting.registrant || {};
+
+  const zoomMeetingId = String(meeting.id || "");
+  const zoomRegistrantId = String(registrant.id || "");
+
+  if (!zoomMeetingId || !zoomRegistrantId) {
+    console.warn(
+      "Zoom denial missing meeting or registrant ID."
+    );
+  } else {
+    const result = await prisma.zoomRegistrant.updateMany({
+      where: {
+        zoomMeetingId,
+        zoomRegistrantId,
+      },
+      data: {
+        registrationStatus: "denied",
+        joinUrl: null,
+        lastEventType: body.event,
+      },
+    });
+
+    console.log(
+      "Zoom registration denial processed:",
+      result.count
+    );
+  }
+} 
     
     return res.status(200).send("ok");
   } catch (err) {
