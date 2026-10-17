@@ -5939,6 +5939,18 @@ app.post(
   }
 );
 
+// Preserve original Zoom webhook request bodies
+// for HMAC signature verification.
+app.use(
+  [
+    "/zoom/webhook",
+    "/zoom/s2s-webhook",
+    "/zoom/connect-webhook",
+    "/zoom/connect-webhook/dev",
+  ],
+  express.raw({ type: "application/json" })
+);
+
 app.use(express.json());
 
 // ============================================================
@@ -10591,12 +10603,17 @@ app.get("/zoom/webhook", (req, res) => {
 });
 
 app.post(
-  ["/zoom/webhook", "/zoom/s2s-webhook"],
+  [
+  "/zoom/webhook",
+  "/zoom/s2s-webhook",
+  "/zoom/connect-webhook",
+  "/zoom/connect-webhook/dev",
+],
   express.raw({ type: "application/json" }),
   async (req, res) => {
   try {
    let body = {};
-
+  function parseZoomWebhookBody() {
 if (Buffer.isBuffer(req.body)) {
   const raw = req.body.toString("utf8");
   body = raw ? JSON.parse(raw) : {};
@@ -10607,14 +10624,18 @@ if (Buffer.isBuffer(req.body)) {
 }
 
     console.log("📩 ZOOM WEBHOOK HIT:", body?.event || "(no event)");
-
+}
     // Zoom URL validation handshake
-    if (body?.event === "endpoint.url_validation") {
+    function handleZoomUrlValidation() {
       const plainToken = body?.payload?.plainToken;
-      const secret =
+     const secret =
   req.path === "/zoom/s2s-webhook"
     ? process.env.ZOOM_S2S_WEBHOOK_SECRET_TOKEN || ""
-    : process.env.ZOOM_WEBHOOK_SECRET || "";
+    : req.path === "/zoom/connect-webhook/dev"
+      ? process.env.ZOOM_CONNECT_DEV_WEBHOOK_SECRET_TOKEN || ""
+      : req.path === "/zoom/connect-webhook"
+        ? process.env.ZOOM_CONNECT_WEBHOOK_SECRET_TOKEN || ""
+        : process.env.ZOOM_WEBHOOK_SECRET || "";
 
       if (!plainToken || !secret) {
        console.log("❌ Missing plainToken or Zoom webhook secret"); 
@@ -10628,7 +10649,83 @@ if (Buffer.isBuffer(req.body)) {
 
       return res.status(200).json({ plainToken, encryptedToken });
     }
+    // Select the correct secret for incoming Zoom webhooks.
+    const webhookSecret =
+      req.path === "/zoom/s2s-webhook"
+        ? process.env.ZOOM_S2S_WEBHOOK_SECRET_TOKEN || ""
+        : req.path === "/zoom/connect-webhook/dev"
+          ? process.env.ZOOM_CONNECT_DEV_WEBHOOK_SECRET_TOKEN || ""
+          : req.path === "/zoom/connect-webhook"
+            ? process.env.ZOOM_CONNECT_WEBHOOK_SECRET_TOKEN || ""
+            : process.env.ZOOM_WEBHOOK_SECRET || "";
 
+    if (!webhookSecret) {
+      console.error("Zoom webhook secret is not configured.");
+      return res.status(503).json({
+        error: "Webhook authentication unavailable",
+      });
+    }
+
+        const timestampHeader = String(
+      req.headers["x-zm-request-timestamp"] || ""
+    ).trim();
+
+    const signatureHeader = String(
+      req.headers["x-zm-signature"] || ""
+    ).trim();
+
+    const timestampSeconds = Number(timestampHeader);
+
+    const rawBody = Buffer.isBuffer(req.body)
+      ? req.body
+      : null;
+
+    if (
+      !rawBody ||
+      !/^\d+$/.test(timestampHeader) ||
+      !Number.isSafeInteger(timestampSeconds) ||
+      Math.abs(Date.now() / 1000 - timestampSeconds) > 300
+    ) {
+      console.warn("Zoom webhook body or timestamp invalid.");
+      return res.status(401).json({
+        error: "Invalid webhook authentication",
+      });
+    }
+
+        const expectedSignature =
+      "v0=" +
+      crypto
+        .createHmac("sha256", webhookSecret)
+        .update(`v0:${timestampHeader}:`)
+        .update(rawBody)
+        .digest("hex");
+
+    const receivedBuffer = Buffer.from(signatureHeader);
+    const expectedBuffer = Buffer.from(expectedSignature);
+
+    if (
+      receivedBuffer.length !== expectedBuffer.length ||
+      !crypto.timingSafeEqual(receivedBuffer, expectedBuffer)
+    ) {
+      console.warn("Zoom webhook signature verification failed.");
+      return res.status(401).json({
+        error: "Invalid webhook signature",
+      });
+    }
+
+        try {
+      parseZoomWebhookBody();
+    } catch (err) {
+      console.warn("Zoom webhook JSON payload invalid.");
+      return res.status(400).json({
+        error: "Invalid webhook JSON",
+      });
+    }
+
+    if (body?.event === "endpoint.url_validation") {
+  return handleZoomUrlValidation();
+}
+    
     // Normal events
 
   if (body?.event === "meeting.ended") {
