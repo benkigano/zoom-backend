@@ -10923,6 +10923,38 @@ if (Buffer.isBuffer(req.body)) {
     }
   }
 }
+
+  if (body?.event === "meeting.registration_cancelled") {
+  const meeting = body.payload?.object || {};
+  const registrant = meeting.registrant || {};
+
+  const zoomMeetingId = String(meeting.id || "");
+  const zoomRegistrantId = String(registrant.id || "");
+
+  if (!zoomMeetingId || !zoomRegistrantId) {
+    console.warn(
+      "Zoom cancellation missing meeting or registrant ID."
+    );
+  } else {
+    const result = await prisma.zoomRegistrant.updateMany({
+      where: {
+        zoomMeetingId,
+        zoomRegistrantId,
+      },
+      data: {
+        registrationStatus: "cancelled",
+        canceledAt: new Date(),
+        joinUrl: null,
+        lastEventType: body.event,
+      },
+    });
+
+    console.log(
+      "Zoom registration cancellation processed:",
+      result.count
+    );
+  }
+}
     
     return res.status(200).send("ok");
   } catch (err) {
