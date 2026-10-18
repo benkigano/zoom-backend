@@ -10872,6 +10872,30 @@ if (Buffer.isBuffer(req.body)) {
           )
         : new Date();
 
+// TODO: Replace unconditional upsert with timestamp-guarded
+// registration processing to prevent older Zoom events
+// from reversing newer cancellations or denials.
+
+      const registrationUpdateData = {
+  zoomMeetingUuid: meeting.uuid
+    ? String(meeting.uuid)
+    : null,
+  accountId: payload.account_id
+    ? String(payload.account_id)
+    : null,
+  firstName: registrant.first_name || null,
+  lastName: registrant.last_name || null,
+  email,
+  registrationStatus: registrant.status || "approved",
+  joinUrl: registrant.join_url
+    ? String(registrant.join_url)
+    : null,
+  lastEventType: body.event,
+  registeredAt,
+  lastZoomEventTs: zoomEventTimestamp,
+  canceledAt: null,
+};
+      
       const savedRegistrant =
         await prisma.zoomRegistrant.upsert({
           where: {
@@ -10881,26 +10905,7 @@ if (Buffer.isBuffer(req.body)) {
             },
           },
 
-          update: {
-            zoomMeetingUuid: meeting.uuid
-              ? String(meeting.uuid)
-              : null,
-            accountId: payload.account_id
-              ? String(payload.account_id)
-              : null,
-            firstName: registrant.first_name || null,
-            lastName: registrant.last_name || null,
-            email,
-            registrationStatus:
-              registrant.status || "approved",
-            joinUrl: registrant.join_url
-  ? String(registrant.join_url)
-  : null,
-            lastEventType: body.event,
-            registeredAt,
-            lastZoomEventTs: zoomEventTimestamp,
-            canceledAt: null,
-          },
+          update: {},
 
           create: {
             courtStudyMeetingId: courtStudyMeeting.id,
@@ -10926,6 +10931,26 @@ if (Buffer.isBuffer(req.body)) {
           },
         });
 
+       if (zoomEventTimestamp === null) {
+  console.warn(
+    "Zoom registration-created event has no valid timestamp; " +
+    "existing registrant will not be overwritten."
+  );
+}
+      
+      if (zoomEventTimestamp !== null) {
+  await prisma.zoomRegistrant.updateMany({
+    where: {
+      id: savedRegistrant.id,
+      OR: [
+        { lastZoomEventTs: null },
+        { lastZoomEventTs: { lt: zoomEventTimestamp } },
+      ],
+    },
+    data: registrationUpdateData,
+  });
+}
+      
       console.log("💾 ZOOM REGISTRANT SAVED:", {
         id: savedRegistrant.id,
         courtStudyMeetingId:
@@ -10955,12 +10980,21 @@ if (Buffer.isBuffer(req.body)) {
       where: {
         zoomMeetingId,
         zoomRegistrantId,
+       ...(zoomEventTimestamp !== null
+  ? {
+      OR: [
+        { lastZoomEventTs: null },
+        { lastZoomEventTs: { lt: zoomEventTimestamp } },
+      ],
+    }
+  : { id: "__invalid_missing_timestamp__" }),
       },
       data: {
         registrationStatus: "cancelled",
         canceledAt: new Date(),
         joinUrl: null,
         lastEventType: body.event,
+        lastZoomEventTs: zoomEventTimestamp,
       },
     });
 
@@ -10984,14 +11018,26 @@ if (Buffer.isBuffer(req.body)) {
     );
   } else {
     const result = await prisma.zoomRegistrant.updateMany({
-      where: {
-        zoomMeetingId,
-        zoomRegistrantId,
-      },
+      
+       where: {
+         zoomMeetingId,
+         zoomRegistrantId,
+         ...(zoomEventTimestamp !== null
+  ? {
+      OR: [
+        { lastZoomEventTs: null },
+        { lastZoomEventTs: { lt: zoomEventTimestamp } },
+      ],
+    }
+  : { id: "__invalid_missing_timestamp__" }),
+},
+        
+     
       data: {
         registrationStatus: "denied",
         joinUrl: null,
         lastEventType: body.event,
+        lastZoomEventTs: zoomEventTimestamp,
       },
     });
 
