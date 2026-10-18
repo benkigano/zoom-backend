@@ -490,6 +490,7 @@ model ZoomRegistrant {
   registrationStatus   String?
   joinUrl String?
   lastEventType        String   @default("meeting.registration_created")
+  lastZoomEventTs BigInt?
   registeredAt         DateTime @default(now())
   canceledAt           DateTime?
   createdAt            DateTime @default(now())
