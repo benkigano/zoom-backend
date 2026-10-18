@@ -16896,9 +16896,17 @@ const recordingUrl = isRulesStudy
   scheduledStart.getTime() - 15 * 60 * 1000
 );
 
+     const scheduledEndMs = meeting.scheduledEnd
+  ? new Date(meeting.scheduledEnd).getTime()
+  : NaN;
+
+const nowMs = Date.now();
+
 const canJoinNow =
   Boolean(joinUrl || registrationUrl) &&
-  Date.now() >= joinWindowOpensAt.getTime();
+  Number.isFinite(scheduledEndMs) &&
+  nowMs >= joinWindowOpensAt.getTime() &&
+  nowMs < scheduledEndMs;
       
       const formattedDateTime =
         new Intl.DateTimeFormat("en-US", {
@@ -17893,9 +17901,17 @@ app.get(
         }
       }
       
-      const canJoinNow =
-        Boolean(joinUrl || registrationUrl) &&
-        Date.now() >= joinWindowOpensAt.getTime();
+      const scheduledEndMs = meeting.scheduledEnd
+  ? new Date(meeting.scheduledEnd).getTime()
+  : NaN;
+
+const nowMs = Date.now();
+
+const canJoinNow =
+  Boolean(joinUrl || registrationUrl) &&
+  Number.isFinite(scheduledEndMs) &&
+  nowMs >= joinWindowOpensAt.getTime() &&
+  nowMs < scheduledEndMs;
 
       const studyType =
         request.studyFocusType === "BOOK_STUDY"
