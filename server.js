@@ -10725,6 +10725,19 @@ if (Buffer.isBuffer(req.body)) {
     if (body?.event === "endpoint.url_validation") {
   return handleZoomUrlValidation();
 }
+
+    // Normalize Zoom event timestamps to milliseconds.
+    const rawZoomEventTs = Number(body?.event_ts);
+
+    const zoomEventTimestamp =
+      Number.isSafeInteger(rawZoomEventTs) &&
+      rawZoomEventTs > 0
+        ? BigInt(
+            rawZoomEventTs < 1000000000000
+              ? rawZoomEventTs * 1000
+              : rawZoomEventTs
+          )
+        : null;
     
     // Normal events
 
