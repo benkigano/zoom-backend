@@ -10898,6 +10898,7 @@ if (Buffer.isBuffer(req.body)) {
   : null,
             lastEventType: body.event,
             registeredAt,
+            lastZoomEventTs: zoomEventTimestamp,
             canceledAt: null,
           },
 
@@ -10921,6 +10922,7 @@ if (Buffer.isBuffer(req.body)) {
   : null,
             lastEventType: body.event,
             registeredAt,
+            lastZoomEventTs: zoomEventTimestamp,
           },
         });
 
