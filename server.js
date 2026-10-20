@@ -17267,6 +17267,9 @@ const subject =
 const participantRegistrationUrlPlaceholder =
   "__COURT_STUDY_PARTICIPANT_REGISTRATION_URL__";
 
+const participantVideoUrlPlaceholder =
+  "__COURT_STUDY_PARTICIPANT_VIDEO_URL__";
+
 const plainTextBody = isBookStudy
   ? [
       "Dear Book Study Participant,",
@@ -17302,7 +17305,7 @@ const plainTextBody = isBookStudy
       ...(recordingUrl
         ? [
             "Watch Court Study Video:",
-            recordingUrl,
+            participantVideoUrlPlaceholder,
             "",
           ]
         : []),
@@ -17445,7 +17448,7 @@ ${isBookStudy
                             ? `
                               <p style="margin:0 0 12px 0;">
                                 <a
-                                  href="${isBookStudy ? safeBookExcerptUrl : safeRecordingUrl}"
+                                 href="${isBookStudy ? safeBookExcerptUrl : participantVideoUrlPlaceholder}" 
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   style="
@@ -17566,20 +17569,36 @@ ${isBookStudy
       `https://courtofcompassion.com/court-study/participant-register` +
       `?token=${encodeURIComponent(participant.invitationToken)}`;
 
+    const courtVideoUrl =
+     `${courtRegistrationUrl}&video=1`;
+
+    const safeCourtVideoUrl =
+     safeEmailWebUrl(courtVideoUrl);
+
     const safeCourtRegistrationUrl =
       safeEmailWebUrl(courtRegistrationUrl);
 
     const participantPlainTextBody =
-      plainTextBody.replaceAll(
-        participantRegistrationUrlPlaceholder,
-        courtRegistrationUrl
-      );
+     plainTextBody
+      .replaceAll(
+       participantRegistrationUrlPlaceholder,
+       courtRegistrationUrl
+    )
+    .replaceAll(
+      participantVideoUrlPlaceholder,
+      courtVideoUrl
+    );
 
     const participantHtmlBody =
-      htmlBody.replaceAll(
-        participantRegistrationUrlPlaceholder,
-        safeCourtRegistrationUrl
-      );
+      htmlBody
+       .replaceAll(
+         participantRegistrationUrlPlaceholder,
+         safeCourtRegistrationUrl
+    )
+    .replaceAll(
+      participantVideoUrlPlaceholder,
+      safeCourtVideoUrl
+    );
 
     await sendEmail(
       email,
