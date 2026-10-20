@@ -17707,6 +17707,17 @@ app.get(
 
       const isRulesStudy = Boolean(selectedRulesSection);
 
+      const isBookStudy =
+        courtStudyRequest.studyFocusType === "BOOK_STUDY";
+
+     const participantRecordingUrl = isBookStudy
+       ? ""
+       : isRulesStudy
+       ? String(selectedRulesSection?.videoUrl || "").trim()
+       : String(
+          courtStudyRequest.recording?.recordingUrl || ""
+        ).trim();
+
       const materialTitle = isRulesStudy
         ? [
             selectedRulesSection?.chapterTitle,
@@ -17739,6 +17750,7 @@ app.get(
         },
         courtStudy: {
           hostGroupName,
+          recordingUrl: participantRecordingUrl || null,
           ...(courtStudyRequest.studyFocusType === "BOOK_STUDY" ? { organizerName: String(courtStudyRequest.organizerName || "").trim() } : {}),
           studyFocusType: courtStudyRequest.studyFocusType,
           materialTitle,
