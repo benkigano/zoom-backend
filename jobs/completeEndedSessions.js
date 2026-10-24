@@ -69,6 +69,46 @@ async function main() {
     });
   }
 
+    // =====================================================
+  // Inspect outstanding post-session invitations.
+  // READ ONLY — no emails are sent.
+  // =====================================================
+
+  const pendingInvitations =
+    await prisma.courtStudyParticipant.findMany({
+      where: {
+        status: "REGISTERED",
+        postSurveyInvitedAt: null,
+        courtStudyMeeting: {
+          is: {
+            scheduledEnd: {
+              lte: now,
+            },
+            courtStudyRequest: {
+              is: {
+                status: "COMPLETED",
+                studyFocusType: {
+                  in: [
+                    "RULES_OF_PROCEDURE",
+                    "BOOK_STUDY",
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+      select: {
+        id: true,
+        courtStudyMeetingId: true,
+      },
+    });
+
+  console.log(
+    "Pending invitations for completed sessions:",
+    pendingInvitations.length
+  );
+  
   console.log(
     "Dry run complete. No records were modified."
   );
