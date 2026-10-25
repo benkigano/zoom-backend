@@ -45,3 +45,52 @@ export async function findSessionsAwaitingCompletion({
     },
   });
 }
+
+// =====================================================
+// Complete one eligible Court Study or Book Study.
+//
+// This function is not called by the dry-run job yet.
+// =====================================================
+
+export async function completeEligibleSession({
+  requestId,
+  now = new Date(),
+} = {}) {
+  const id = String(requestId || "").trim();
+
+  if (!id) {
+    throw new Error(
+      "A Court Study request ID is required."
+    );
+  }
+
+  const result =
+    await prisma.courtStudyRequest.updateMany({
+      where: {
+        id,
+        status: "SESSION_READY",
+        studyFocusType: {
+          in: [
+            "RULES_OF_PROCEDURE",
+            "BOOK_STUDY",
+          ],
+        },
+        courtStudyMeeting: {
+          is: {
+            scheduledEnd: {
+              lte: now,
+            },
+          },
+        },
+      },
+      data: {
+        status: "COMPLETED",
+      },
+    });
+
+  return {
+    requestId: id,
+    completed: result.count === 1,
+    updatedCount: result.count,
+  };
+}
