@@ -19,6 +19,7 @@
    "escape-html": "^1.0.3",
    "html-to-text": "^10.0.1", 
   "nodemailer": "^6.9.13",
+  "pg": "^8.16.3",
   "prisma": "^6.19.0",
   "stripe": "^18.5.0"
 }
