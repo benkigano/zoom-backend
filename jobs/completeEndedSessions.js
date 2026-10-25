@@ -151,9 +151,44 @@ select: {
     "Completed sessions awaiting reflection invitations:",
     pendingRequestIds.length
   );
+
+  if (LIVE_MODE) {
+    for (const requestId of pendingRequestIds) {
+      try {
+        const result =
+          await sendCourtStudyPostSurveyInvitations({
+            requestId,
+          });
+
+        console.log(
+          "AUTOMATIC REFLECTION INVITATION RESULT:",
+          requestId,
+          result
+        );
+
+        if (
+          result?.failedCount > 0 ||
+          result?.skippedReason ===
+            "INVITATION_PROCESSING_LOCKED"
+        ) {
+          process.exitCode = 1;
+        }
+      } catch (error) {
+        console.error(
+          "AUTOMATIC REFLECTION INVITATION FAILED:",
+          requestId,
+          error
+        );
+
+        process.exitCode = 1;
+      }
+    }
+  }
   
-  console.log(
-    "Dry run complete. No records were modified."
+    console.log(
+    LIVE_MODE
+      ? "Live session completion and invitation processing finished."
+      : "Dry run complete. No records were modified."
   );
 }
 
