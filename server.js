@@ -8,6 +8,10 @@ import { prisma } from "./prisma/client.js";
 import escapeHtml from "escape-html";
 import { convert } from "html-to-text";
 import Stripe from "stripe";
+import {
+  sendCourtStudyPostSurveyInvitations as
+    sendLockedCourtStudyPostSurveyInvitations,
+} from "./services/postSessionCompletion.js";
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
@@ -15529,9 +15533,9 @@ if (
   if (requestedStatus === "COMPLETED") {
   try {
     postSurveyInvitationResult =
-      await sendCourtStudyPostSurveyInvitations({
-        requestId,
-      });
+     await sendLockedCourtStudyPostSurveyInvitations({
+      requestId,
+  });
 
     console.log(
       "✅ COURT STUDY POST-SESSION INVITATIONS PROCESSED:",
