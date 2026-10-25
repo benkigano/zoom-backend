@@ -118,15 +118,38 @@ async function main() {
           },
         },
       },
-      select: {
-        id: true,
-        courtStudyMeetingId: true,
-      },
-    });
+
+select: {
+  id: true,
+  courtStudyMeetingId: true,
+  courtStudyMeeting: {
+    select: {
+      courtStudyRequestId: true,
+    },
+  },
+},
+});
 
   console.log(
     "Pending invitations for completed sessions:",
     pendingInvitations.length
+  );
+
+    const pendingRequestIds = [
+    ...new Set(
+      pendingInvitations
+        .map(
+          participant =>
+            participant.courtStudyMeeting
+              ?.courtStudyRequestId
+        )
+        .filter(Boolean)
+    ),
+  ];
+
+  console.log(
+    "Completed sessions awaiting reflection invitations:",
+    pendingRequestIds.length
   );
   
   console.log(
