@@ -13,7 +13,9 @@ import {
   safeEmailHtml,
   safeEmailWebUrl,
 } from "./emailUtilities.js";
-
+import {
+  withPostSessionInvitationLock,
+} from "./invitationLock.js";
 export async function findSessionsAwaitingCompletion({
   now = new Date(),
 } = {}) {
@@ -104,6 +106,11 @@ export async function completeEligibleSession({
 export async function sendCourtStudyPostSurveyInvitations({
   requestId,
 }) {
+
+    const lockResult = await withPostSessionInvitationLock({
+    requestId,
+    callback: async () => {
+  
   const courtStudyRequest =
     await prisma.courtStudyRequest.findUnique({
       where: {
@@ -498,10 +505,23 @@ export async function sendCourtStudyPostSurveyInvitations({
     }
   }
 
-  return {
+    return {
     sentCount,
     failedCount: failedEmails.length,
     failedEmails,
     skippedReason: null,
   };
+    },
+  });
+
+  if (!lockResult.acquired) {
+    return {
+      sentCount: 0,
+      failedCount: 0,
+      failedEmails: [],
+      skippedReason: "INVITATION_PROCESSING_LOCKED",
+    };
+  }
+
+  return lockResult.result;
 }
