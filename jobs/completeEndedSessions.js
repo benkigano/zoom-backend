@@ -1,12 +1,16 @@
 // =====================================================
 // Court of Compassion
-// Automatic Session Completion — Phase 1: Dry Run
+// Automatic Session Completion and Reflection Invitations
 //
-// READ ONLY:
-// - Does not change request statuses
-// - Does not send reflection invitations
+// DEFAULT MODE: DRY RUN
+// - Inspects eligible sessions and pending invitations.
+// - Does not modify records or send emails.
+//
+// LIVE MODE: Requires explicit environment configuration.
+// - Completes eligible Court Study and Book Study sessions.
+// - Sends outstanding post-session reflection invitations.
+// - Uses PostgreSQL advisory locks for invitation processing.
 // =====================================================
-
 import "dotenv/config";
 import { prisma } from "../prisma/client.js";
 
