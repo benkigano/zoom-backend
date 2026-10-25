@@ -12,8 +12,9 @@ import { prisma } from "../prisma/client.js";
 
 import {
   findSessionsAwaitingCompletion,
+  completeEligibleSession,
+  sendCourtStudyPostSurveyInvitations,
 } from "../services/postSessionCompletion.js";
-
 async function main() {
   const now = new Date();
 
