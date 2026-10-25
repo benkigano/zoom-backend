@@ -60,11 +60,34 @@ async function main() {
     console.log(
       "DRY RUN: Automatic completion is disabled."
     );
+
   } else {
-    console.log(
-      "LIVE MODE: Completion processing is not yet implemented."
-    );
+  console.log(
+    "LIVE MODE: Processing eligible session completions."
+  );
+
+  for (const request of eligibleRequests) {
+    try {
+      const result = await completeEligibleSession({
+        requestId: request.id,
+        now,
+      });
+
+      console.log(
+        "AUTOMATIC SESSION COMPLETION RESULT:",
+        result
+      );
+    } catch (error) {
+      console.error(
+        "AUTOMATIC SESSION COMPLETION FAILED:",
+        request.id,
+        error
+      );
+
+      process.exitCode = 1;
+    }
   }
+}
   
   // =====================================================
   // Inspect outstanding post-session invitations.
