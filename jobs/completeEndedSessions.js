@@ -31,6 +31,16 @@ const LIVE_MODE =
   process.env.COURT_SESSION_AUTO_COMPLETE_MODE ===
   "LIVE";
 
+// Explicit test mode: complete one selected session only.
+// Reflection invitations remain disabled in this mode.
+const COMPLETION_TEST_MODE =
+  process.env.COURT_SESSION_AUTO_COMPLETE_MODE ===
+  "COMPLETION_TEST";
+
+const COMPLETION_TEST_REQUEST_ID = String(
+  process.env.COURT_SESSION_TEST_REQUEST_ID || ""
+).trim();
+
 async function main() {
   const now = new Date();
 
@@ -60,10 +70,37 @@ async function main() {
     });
   }
 
-      if (!LIVE_MODE) {
-    console.log(
-      "DRY RUN: Automatic completion is disabled."
+if (COMPLETION_TEST_MODE) {
+  if (!COMPLETION_TEST_REQUEST_ID) {
+    throw new Error(
+      "COMPLETION_TEST requires COURT_SESSION_TEST_REQUEST_ID."
     );
+  }
+
+  const selectedRequest = eligibleRequests.find(
+    request => request.id === COMPLETION_TEST_REQUEST_ID
+  );
+
+  if (!selectedRequest) {
+    console.log(
+      "COMPLETION TEST: Selected request is not eligible.",
+      COMPLETION_TEST_REQUEST_ID
+    );
+  } else {
+    const result = await completeEligibleSession({
+      requestId: selectedRequest.id,
+      now,
+    });
+
+    console.log(
+      "COMPLETION TEST RESULT:",
+      result
+    );
+  }
+} else if (!LIVE_MODE) {
+  console.log(
+    "DRY RUN: Automatic completion is disabled."
+  );   
 
   } else {
   console.log(
@@ -189,11 +226,13 @@ select: {
     }
   }
   
-    console.log(
-    LIVE_MODE
+  console.log(
+  COMPLETION_TEST_MODE
+    ? "Completion-only test finished. Reflection emails were not sent."
+    : LIVE_MODE
       ? "Live session completion and invitation processing finished."
       : "Dry run complete. No records were modified."
-  );
+);  
 }
 
 main()
