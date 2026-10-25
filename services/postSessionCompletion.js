@@ -8,6 +8,12 @@
 
 import { prisma } from "../prisma/client.js";
 
+import {
+  sendEmail,
+  safeEmailHtml,
+  safeEmailWebUrl,
+} from "./emailUtilities.js";
+
 export async function findSessionsAwaitingCompletion({
   now = new Date(),
 } = {}) {
