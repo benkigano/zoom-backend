@@ -248,6 +248,8 @@ export async function sendCourtStudyPostSurveyInvitations({
       continue;
     }
 
+    let emailAcceptedBySmtp = false;
+    
     try {
       const participantName =
         [
@@ -484,6 +486,8 @@ export async function sendCourtStudyPostSurveyInvitations({
         html
       );
 
+      emailAcceptedBySmtp = true;
+
       await prisma.courtStudyParticipant.update({
         where: {
           id: participant.id,
@@ -495,14 +499,28 @@ export async function sendCourtStudyPostSurveyInvitations({
 
       sentCount += 1;
     } catch (sendError) {
-      console.error(
-        "❌ Court Study post-session invitation failed:",
-        email,
-        sendError
-      );
+  if (emailAcceptedBySmtp) {
+    console.error(
+      "POST-SESSION INVITATION RECORDING FAILED AFTER SMTP ACCEPTANCE:",
+      email,
+      participant.id,
+      sendError
+    );
 
-      failedEmails.push(email);
-    }
+    throw new Error(
+      "POST_SESSION_INVITATION_RECORDING_UNCERTAIN",
+      { cause: sendError }
+    );
+  }
+
+  console.error(
+    "Court Study post-session invitation delivery failed:",
+    email,
+    sendError
+  );
+
+  failedEmails.push(email);
+}
   }
 
     return {
