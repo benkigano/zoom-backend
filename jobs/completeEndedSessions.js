@@ -10,6 +10,10 @@
 import "dotenv/config";
 import { prisma } from "../prisma/client.js";
 
+import {
+  findSessionsAwaitingCompletion,
+} from "../services/postSessionCompletion.js";
+
 async function main() {
   const now = new Date();
 
@@ -19,41 +23,11 @@ async function main() {
 
   console.log("Current UTC time:", now.toISOString());
 
-  const eligibleRequests =
-    await prisma.courtStudyRequest.findMany({
-      where: {
-        status: "SESSION_READY",
-        studyFocusType: {
-          in: [
-            "RULES_OF_PROCEDURE",
-            "BOOK_STUDY",
-          ],
-        },
-        courtStudyMeeting: {
-          is: {
-            scheduledEnd: {
-              lte: now,
-            },
-          },
-        },
-      },
-      select: {
-        id: true,
-        status: true,
-        studyFocusType: true,
-        courtStudyMeeting: {
-          select: {
-            id: true,
-            scheduledStart: true,
-            scheduledEnd: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: "asc",
-      },
+    const eligibleRequests =
+    await findSessionsAwaitingCompletion({
+      now,
     });
-
+  
   console.log(
     "Eligible requests found:",
     eligibleRequests.length
