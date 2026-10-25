@@ -56,7 +56,17 @@ async function main() {
     });
   }
 
-    // =====================================================
+      if (!LIVE_MODE) {
+    console.log(
+      "DRY RUN: Automatic completion is disabled."
+    );
+  } else {
+    console.log(
+      "LIVE MODE: Completion processing is not yet implemented."
+    );
+  }
+  
+  // =====================================================
   // Inspect outstanding post-session invitations.
   // READ ONLY — no emails are sent.
   // =====================================================
