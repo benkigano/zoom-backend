@@ -15,6 +15,18 @@ import {
   completeEligibleSession,
   sendCourtStudyPostSurveyInvitations,
 } from "../services/postSessionCompletion.js";
+
+// =====================================================
+// Automatic completion execution mode
+//
+// Default: DRY RUN
+// Live processing requires explicit configuration.
+// =====================================================
+
+const LIVE_MODE =
+  process.env.COURT_SESSION_AUTO_COMPLETE_MODE ===
+  "LIVE";
+
 async function main() {
   const now = new Date();
 
