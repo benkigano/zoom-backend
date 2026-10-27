@@ -31,6 +31,31 @@ const LIVE_MODE =
   process.env.COURT_SESSION_AUTO_COMPLETE_MODE ===
   "LIVE";
 
+// =====================================================
+// Automatic session completion activation cutoff.
+//
+// Historical sessions before this date are excluded
+// from automatic completion and email delivery.
+// This restriction applies to the Cron Job only.
+// =====================================================
+
+const AUTO_COMPLETE_AFTER_RAW = String(
+  process.env.COURT_SESSION_AUTO_COMPLETE_AFTER || ""
+).trim();
+
+const AUTO_COMPLETE_AFTER = AUTO_COMPLETE_AFTER_RAW
+  ? new Date(AUTO_COMPLETE_AFTER_RAW)
+  : null;
+
+if (
+  !AUTO_COMPLETE_AFTER ||
+  !Number.isFinite(AUTO_COMPLETE_AFTER.getTime())
+) {
+  throw new Error(
+    "COURT_SESSION_AUTO_COMPLETE_AFTER must be a valid ISO date."
+  );
+}
+
 // Explicit test mode: complete one selected session only.
 // Reflection invitations remain disabled in this mode.
 const COMPLETION_TEST_MODE =
@@ -50,10 +75,23 @@ async function main() {
 
   console.log("Current UTC time:", now.toISOString());
 
-    const eligibleRequests =
-    await findSessionsAwaitingCompletion({
-      now,
-    });
+  const allEligibleRequests =
+  await findSessionsAwaitingCompletion({
+    now,
+  });
+
+const eligibleRequests = allEligibleRequests.filter(
+  (request) => {
+    const scheduledEnd =
+      request.courtStudyMeeting?.scheduledEnd;
+
+    return (
+      scheduledEnd &&
+      new Date(scheduledEnd).getTime() >=
+        AUTO_COMPLETE_AFTER.getTime()
+    );
+  }
+); 
   
   console.log(
     "Eligible requests found:",
@@ -142,9 +180,10 @@ if (COMPLETION_TEST_MODE) {
         postSurveyInvitedAt: null,
         courtStudyMeeting: {
           is: {
-            scheduledEnd: {
-              lte: now,
-            },
+           scheduledEnd: {
+            gte: AUTO_COMPLETE_AFTER,
+            lte: now,
+          }, 
             courtStudyRequest: {
               is: {
                 status: "COMPLETED",
