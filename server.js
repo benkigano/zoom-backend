@@ -6421,6 +6421,21 @@ const requestedPlan =
         });
       }
 
+            const token = String(
+        req.body?.token || ""
+      ).trim();
+
+      if (
+        !token ||
+        !verifyCourtStudyContinuationToken(requestId, token)
+      ) {
+        return res.status(403).json({
+          success: false,
+          error:
+            "This Court Study continuation link is invalid or incomplete.",
+        });
+      }
+      
       const priceByPlan = {
         BASIC: String(
           process.env.STRIPE_PRICE_BASIC || ""
