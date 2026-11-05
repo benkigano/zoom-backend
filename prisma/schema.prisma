@@ -664,3 +664,31 @@ recording Recording? @relation(fields: [recordingId], references: [id], onDelete
   @@index([status])
   @@index([preferredStart])
 }
+
+model MembershipEnrollment {
+  id                       String    @id @default(cuid())
+
+  email                    String
+  plan                     String    @default("BASIC")
+  status                   String    @default("PENDING_VERIFICATION")
+
+  verificationTokenHash    String?   @unique
+  verificationExpiresAt    DateTime?
+  verifiedAt               DateTime?
+
+  checkoutAttemptKey       String?   @unique
+  checkoutSessionId        String?   @unique
+  checkoutExpiresAt        DateTime?
+
+  stripeCustomerId         String?
+  stripeSubscriptionId     String?   @unique
+
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  completedAt              DateTime?
+
+  @@index([email, status])
+  @@index([checkoutExpiresAt])
+  @@index([createdAt])
+}
+
