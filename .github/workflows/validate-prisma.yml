@@ -1,0 +1,33 @@
+
+name: Validate Prisma Schema
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Prisma
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: postgresql://prisma_validation:unused@localhost:5432/validation
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+     
