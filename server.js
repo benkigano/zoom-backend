@@ -6892,6 +6892,19 @@ app.post(
         });
       }
 
+// Generate a separate, short-lived checkout credential.
+// The raw token is returned only after successful verification.
+const checkoutAccessToken = crypto.randomBytes(32).toString("hex");
+
+const checkoutAccessTokenHash = crypto
+  .createHash("sha256")
+  .update(checkoutAccessToken)
+  .digest("hex");
+
+const checkoutAccessExpiresAt = new Date(
+  Date.now() + 15 * 60 * 1000
+); 
+      
       const verified = await prisma.membershipEnrollment.updateMany({
         where: {
           id: enrollment.id,
@@ -6901,12 +6914,14 @@ app.post(
             gt: new Date(),
           },
         },
-        data: {
-          status: "EMAIL_VERIFIED",
-          verifiedAt: new Date(),
-          verificationTokenHash: null,
-          verificationExpiresAt: null,
-        },
+       data: {
+  status: "EMAIL_VERIFIED",
+  verifiedAt: new Date(),
+  verificationTokenHash: null,
+  verificationExpiresAt: null,
+  checkoutAccessTokenHash,
+  checkoutExpiresAt: checkoutAccessExpiresAt,
+}, 
       });
 
       if (verified.count !== 1) {
@@ -6918,12 +6933,15 @@ app.post(
         });
       }
 
-      return res.status(200).json({
-        success: true,
-        status: "EMAIL_VERIFIED",
-        message:
-          "Your email address has been verified. You may now continue to Basic Membership checkout.",
-      });
+     return res.status(200).json({
+  success: true,
+  status: "EMAIL_VERIFIED",
+  message:
+    "Your email address has been verified. Select Continue to Payment to begin Basic Membership checkout.",
+  checkoutAccessToken,
+  checkoutAccessExpiresAt:
+    checkoutAccessExpiresAt.toISOString(),
+}); 
     } catch (error) {
       console.error(
         "Basic Membership verification failed:",
