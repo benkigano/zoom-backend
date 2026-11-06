@@ -6577,6 +6577,40 @@ const requestedPlan =
 );
 
 // ============================================================
+// BASIC MEMBERSHIP — EMAIL VERIFICATION AND ENROLLMENT
+// ============================================================
+
+const MEMBERSHIP_VERIFICATION_TTL_MS = 30 * 60 * 1000;
+
+const membershipEnrollmentRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: "Too many enrollment requests. Please try again later.",
+  },
+});
+
+function createMembershipVerificationToken() {
+  const token = crypto.randomBytes(32).toString("hex");
+
+  const tokenHash = crypto
+    .createHash("sha256")
+    .update(token)
+    .digest("hex");
+
+  return {
+    token,
+    tokenHash,
+    expiresAt: new Date(
+      Date.now() + MEMBERSHIP_VERIFICATION_TTL_MS
+    ),
+  };
+}
+
+// ============================================================
 // MYZOOM AUTHENTICATION API
 // ============================================================
 
