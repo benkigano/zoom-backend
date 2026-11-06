@@ -13,6 +13,7 @@ CREATE TABLE "MembershipEnrollment" (
     "verificationExpiresAt" TIMESTAMP(3),
     "verifiedAt" TIMESTAMP(3),
 
+    "checkoutAccessTokenHash" TEXT,
     "checkoutAttemptKey" TEXT,
     "checkoutSessionId" TEXT,
     "checkoutExpiresAt" TIMESTAMP(3),
@@ -33,6 +34,10 @@ CREATE TABLE "MembershipEnrollment" (
 CREATE UNIQUE INDEX
     "MembershipEnrollment_verificationTokenHash_key"
 ON "MembershipEnrollment"("verificationTokenHash");
+
+CREATE UNIQUE INDEX
+    "MembershipEnrollment_checkoutAccessTokenHash_key"
+ON "MembershipEnrollment"("checkoutAccessTokenHash");
 
 CREATE UNIQUE INDEX
     "MembershipEnrollment_checkoutAttemptKey_key"
