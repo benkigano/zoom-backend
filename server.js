@@ -6610,6 +6610,336 @@ function createMembershipVerificationToken() {
   };
 }
 
+
+const MEMBERSHIP_PENDING_STATUSES = [
+  "PENDING_VERIFICATION",
+  "EMAIL_VERIFIED",
+  "CHECKOUT_PENDING",
+  "CHECKOUT_RECONCILIATION_PENDING",
+];
+
+const MEMBERSHIP_EMAIL_COOLDOWN_MS = 60 * 1000;
+
+const membershipVerificationResponse = {
+  success: true,
+  message:
+    "If this email is eligible, a verification message will be sent. " +
+    "The link is valid for 30 minutes. If it expires, request a new one.",
+};
+
+function normalizeMembershipEmail(value) {
+  const email = String(value || "").trim().toLowerCase();
+
+  if (
+    email.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  ) {
+    return null;
+  }
+
+  return email;
+}
+
+function hashMembershipToken(token) {
+  return crypto
+    .createHash("sha256")
+    .update(token)
+    .digest("hex");
+}
+
+async function sendMembershipVerificationEmail(email, token) {
+  const verificationUrl = new URL(
+    "/membership/verify",
+    "https://www.courtofcompassion.com"
+  );
+
+  verificationUrl.searchParams.set("token", token);
+
+  const body = [
+    "Court of Compassion — Basic Membership",
+    "",
+    "Please verify your email address to continue your enrollment.",
+    "",
+    verificationUrl.toString(),
+    "",
+    "This verification link expires in 30 minutes.",
+    "",
+    "If it expires, return to the Membership page and request",
+    "a new verification email. You do not need to pay or start over.",
+    "",
+    "If you did not request membership, you may ignore this email.",
+  ].join("\n");
+
+  await sendEmail(
+    email,
+    "Verify your Court of Compassion Basic Membership email",
+    body
+  );
+}
+
+async function requestMembershipVerification(email) {
+  const activeSubscriber = await isActiveSubscriberEmail(email);
+
+  if (activeSubscriber) {
+    return;
+  }
+
+  const existing = await prisma.membershipEnrollment.findFirst({
+    where: {
+      email,
+      plan: "BASIC",
+      status: {
+        in: MEMBERSHIP_PENDING_STATUSES,
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  if (
+    existing &&
+    existing.status !== "PENDING_VERIFICATION"
+  ) {
+    return;
+  }
+
+  if (
+    existing &&
+    existing.updatedAt &&
+    Date.now() - existing.updatedAt.getTime() <
+      MEMBERSHIP_EMAIL_COOLDOWN_MS
+  ) {
+    return;
+  }
+
+  const verification = createMembershipVerificationToken();
+
+  if (existing) {
+    const updated = await prisma.membershipEnrollment.updateMany({
+      where: {
+        id: existing.id,
+        status: "PENDING_VERIFICATION",
+        updatedAt: existing.updatedAt,
+      },
+      data: {
+        verificationTokenHash: verification.tokenHash,
+        verificationExpiresAt: verification.expiresAt,
+      },
+    });
+
+    if (updated.count !== 1) {
+      return;
+    }
+  } else {
+    try {
+      await prisma.membershipEnrollment.create({
+        data: {
+          email,
+          plan: "BASIC",
+          status: "PENDING_VERIFICATION",
+          verificationTokenHash: verification.tokenHash,
+          verificationExpiresAt: verification.expiresAt,
+        },
+      });
+    } catch (error) {
+      if (error?.code === "P2002") {
+        return;
+      }
+
+      throw error;
+    }
+  }
+
+  await sendMembershipVerificationEmail(
+    email,
+    verification.token
+  );
+}
+
+// Start Basic Membership enrollment.
+// No Stripe payment is initiated by this endpoint.
+app.post(
+  "/api/membership/enroll",
+  membershipEnrollmentRateLimiter,
+  async (req, res) => {
+    const email = normalizeMembershipEmail(req.body?.email);
+
+    const plan = String(req.body?.plan || "BASIC")
+      .trim()
+      .toUpperCase();
+
+    if (!email || plan !== "BASIC") {
+      return res.status(400).json({
+        success: false,
+        error: "A valid email and Basic Membership plan are required.",
+      });
+    }
+
+    try {
+      await requestMembershipVerification(email);
+
+      return res.status(200).json(
+        membershipVerificationResponse
+      );
+    } catch (error) {
+      console.error(
+        "Basic Membership enrollment failed:",
+        error?.code || error?.message || "Unknown error"
+      );
+
+      return res.status(503).json({
+        success: false,
+        error:
+          "Membership enrollment is temporarily unavailable. Please try again.",
+      });
+    }
+  }
+);
+
+// Request another verification email.
+// Previous verification links become invalid when a new token is stored.
+app.post(
+  "/api/membership/resend-verification",
+  membershipEnrollmentRateLimiter,
+  async (req, res) => {
+    const email = normalizeMembershipEmail(req.body?.email);
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: "A valid email address is required.",
+      });
+    }
+
+    try {
+      await requestMembershipVerification(email);
+
+      return res.status(200).json(
+        membershipVerificationResponse
+      );
+    } catch (error) {
+      console.error(
+        "Membership verification resend failed:",
+        error?.code || error?.message || "Unknown error"
+      );
+
+      return res.status(503).json({
+        success: false,
+        error:
+          "Unable to process this request right now. Please try again.",
+      });
+    }
+  }
+);
+
+// Verify the email address.
+// A valid token changes enrollment status to EMAIL_VERIFIED.
+app.post(
+  "/api/membership/verify",
+  membershipEnrollmentRateLimiter,
+  async (req, res) => {
+    const token = String(req.body?.token || "").trim();
+
+    if (!/^[a-f0-9]{64}$/i.test(token)) {
+      return res.status(400).json({
+        success: false,
+        status: "INVALID_LINK",
+        error: "This verification link is invalid.",
+      });
+    }
+
+    try {
+      const tokenHash = hashMembershipToken(token);
+
+      const enrollment =
+        await prisma.membershipEnrollment.findUnique({
+          where: {
+            verificationTokenHash: tokenHash,
+          },
+        });
+
+      if (!enrollment) {
+        return res.status(400).json({
+          success: false,
+          status: "INVALID_LINK",
+          error:
+            "This verification link is invalid or has already been used.",
+        });
+      }
+
+      if (
+        enrollment.status !== "PENDING_VERIFICATION"
+      ) {
+        return res.status(400).json({
+          success: false,
+          status: "INVALID_LINK",
+          error:
+            "This verification link is no longer available.",
+        });
+      }
+
+      if (
+        !enrollment.verificationExpiresAt ||
+        enrollment.verificationExpiresAt.getTime() <= Date.now()
+      ) {
+        return res.status(410).json({
+          success: false,
+          status: "EXPIRED_LINK",
+          error:
+            "This verification link has expired. Your enrollment is preserved. " +
+            "Request a new verification email to continue. No payment has been collected.",
+        });
+      }
+
+      const verified = await prisma.membershipEnrollment.updateMany({
+        where: {
+          id: enrollment.id,
+          status: "PENDING_VERIFICATION",
+          verificationTokenHash: tokenHash,
+          verificationExpiresAt: {
+            gt: new Date(),
+          },
+        },
+        data: {
+          status: "EMAIL_VERIFIED",
+          verifiedAt: new Date(),
+          verificationTokenHash: null,
+          verificationExpiresAt: null,
+        },
+      });
+
+      if (verified.count !== 1) {
+        return res.status(409).json({
+          success: false,
+          status: "INVALID_LINK",
+          error:
+            "This verification link is no longer available.",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        status: "EMAIL_VERIFIED",
+        message:
+          "Your email address has been verified. You may now continue to Basic Membership checkout.",
+      });
+    } catch (error) {
+      console.error(
+        "Basic Membership verification failed:",
+        error?.code || error?.message || "Unknown error"
+      );
+
+      return res.status(503).json({
+        success: false,
+        error:
+          "Email verification is temporarily unavailable. Please try again.",
+      });
+    }
+  }
+);
+
+
 // ============================================================
 // MYZOOM AUTHENTICATION API
 // ============================================================
