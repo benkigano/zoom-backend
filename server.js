@@ -7373,57 +7373,130 @@ async function sendMembershipVerificationEmail(email, token) {
   );
 }
 
+
 async function requestMembershipVerification(email) {
-  const activeSubscriber = await isActiveSubscriberEmail(email);
+  const activeSubscriber =
+    await isActiveSubscriberEmail(email);
 
   if (activeSubscriber) {
     return;
   }
 
-  const existing = await prisma.membershipEnrollment.findFirst({
-    where: {
-      email,
-      plan: "BASIC",
-      status: {
-        in: MEMBERSHIP_PENDING_STATUSES,
+  const existing =
+    await prisma.membershipEnrollment.findFirst({
+      where: {
+        email,
+        plan: "BASIC",
+        status: {
+          in: MEMBERSHIP_PENDING_STATUSES,
+        },
       },
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
 
+  // Retain the existing protection against repeated emails.
   if (
-    existing &&
-    existing.status !== "PENDING_VERIFICATION"
-  ) {
-    return;
-  }
-
-  if (
-    existing &&
-    existing.updatedAt &&
+    existing?.updatedAt &&
     Date.now() - existing.updatedAt.getTime() <
       MEMBERSHIP_EMAIL_COOLDOWN_MS
   ) {
     return;
   }
 
-  const verification = createMembershipVerificationToken();
+  let recoveryAllowed = false;
 
   if (existing) {
-    const updated = await prisma.membershipEnrollment.updateMany({
-      where: {
-        id: existing.id,
-        status: "PENDING_VERIFICATION",
-        updatedAt: existing.updatedAt,
-      },
-      data: {
-        verificationTokenHash: verification.tokenHash,
-        verificationExpiresAt: verification.expiresAt,
-      },
-    });
+    if (existing.status === "PENDING_VERIFICATION") {
+      // Ordinary resend: replace the previous verification link.
+    } else if (existing.status === "EMAIL_VERIFIED") {
+      // No Stripe Checkout Session was started.
+      // Reauthorize without creating another enrollment.
+      if (
+        existing.checkoutSessionId ||
+        existing.checkoutAttemptKey ||
+        existing.stripeSubscriptionId ||
+        existing.stripeCustomerId
+      ) {
+        return;
+      }
 
+      recoveryAllowed = true;
+    } else if (existing.status === "CHECKOUT_PENDING") {
+      // Never reset an in-progress or completed checkout.
+      if (
+        !stripe ||
+        !existing.checkoutSessionId ||
+        existing.stripeSubscriptionId ||
+        existing.stripeCustomerId
+      ) {
+        return;
+      }
+
+      const session =
+        await stripe.checkout.sessions.retrieve(
+          existing.checkoutSessionId
+        );
+
+      // Recovery requires a positively identified,
+      // expired, unpaid Basic Membership session.
+      if (
+        session.id !== existing.checkoutSessionId ||
+        session.status !== "expired" ||
+        session.payment_status !== "unpaid" ||
+        session.mode !== "subscription" ||
+        session.subscription ||
+        session.client_reference_id !== existing.id ||
+        session.metadata?.paymentPurpose !==
+          "GENERAL_MEMBERSHIP_SUBSCRIPTION" ||
+        session.metadata?.subscriptionPlan !== "BASIC" ||
+        session.metadata?.membershipEnrollmentId !==
+          existing.id
+      ) {
+        return;
+      }
+
+      recoveryAllowed = true;
+    } else {
+      // Reconciliation-pending or unknown states require
+      // review, not automatic reauthorization.
+      return;
+    }
+  }
+
+  const verification =
+    createMembershipVerificationToken();
+
+  if (existing) {
+    const updated =
+      await prisma.membershipEnrollment.updateMany({
+        where: {
+          id: existing.id,
+          status: existing.status,
+          updatedAt: existing.updatedAt,
+          checkoutSessionId: existing.checkoutSessionId,
+        },
+        data: {
+          verificationTokenHash:
+            verification.tokenHash,
+          verificationExpiresAt:
+            verification.expiresAt,
+
+          ...(recoveryAllowed
+            ? {
+                status: "PENDING_VERIFICATION",
+                checkoutAccessTokenHash: null,
+                checkoutExpiresAt: null,
+                checkoutAttemptKey: null,
+                checkoutSessionId: null,
+              }
+            : {}),
+        },
+      });
+
+    // Another request may have changed this enrollment.
+    // Do not send a token that was not successfully saved.
     if (updated.count !== 1) {
       return;
     }
@@ -7434,8 +7507,10 @@ async function requestMembershipVerification(email) {
           email,
           plan: "BASIC",
           status: "PENDING_VERIFICATION",
-          verificationTokenHash: verification.tokenHash,
-          verificationExpiresAt: verification.expiresAt,
+          verificationTokenHash:
+            verification.tokenHash,
+          verificationExpiresAt:
+            verification.expiresAt,
         },
       });
     } catch (error) {
@@ -7452,6 +7527,7 @@ async function requestMembershipVerification(email) {
     verification.token
   );
 }
+
 
 // Start Basic Membership enrollment.
 // No Stripe payment is initiated by this endpoint.
@@ -7752,12 +7828,48 @@ app.post(
           });
         }
 
+        
+        // A completed checkout must be reconciled before
+        // another payment attempt is permitted.
+        if (
+          existingSession.status === "complete" ||
+          existingSession.payment_status === "paid"
+        ) {
+          return res.status(409).json({
+            success: false,
+            status: "PAYMENT_REVIEW_REQUIRED",
+            error:
+              "Your previous checkout has completed. " +
+              "Your payment and membership status must be " +
+              "confirmed before another payment can begin.",
+          });
+        }
+
+        // An expired unpaid session requires a new,
+        // securely verified checkout authorization.
+        if (
+          existingSession.status === "expired" &&
+          existingSession.payment_status === "unpaid"
+        ) {
+          return res.status(409).json({
+            success: false,
+            status: "CHECKOUT_REAUTH_REQUIRED",
+            error:
+              "Your previous checkout has expired. " +
+              "A new email verification is required " +
+              "before restarting payment.",
+          });
+        }
+
+        // Unknown combinations must not create a new charge.
         return res.status(409).json({
           success: false,
+          status: "CHECKOUT_REVIEW_REQUIRED",
           error:
-            "The previous checkout session is no longer open. " +
-            "A new authorization is required.",
+            "Your previous checkout status needs review. " +
+            "Please do not start another payment.",
         });
+
       }
 
       let attemptKey = enrollment.checkoutAttemptKey;
