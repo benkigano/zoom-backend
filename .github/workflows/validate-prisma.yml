@@ -1,7 +1,10 @@
 
-name: Validate Prisma Schema
+name: Validate Membership Feature Branch
 
 on:
+  push:
+    branches:
+      - feature/basic-membership-enrollment
   workflow_dispatch:
 
 permissions:
@@ -9,7 +12,7 @@ permissions:
 
 jobs:
   validate:
-    name: Validate Prisma
+    name: Validate JavaScript and Prisma
     runs-on: ubuntu-latest
 
     env:
@@ -24,10 +27,11 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Check server.js syntax
+        run: node --check server.js
+
       - name: Install dependencies
-        run: npm ci
+        run: npm install --package-lock=false
 
       - name: Validate Prisma schema
-        run: npx prisma validate
-
-     
+        run: npx --no-install prisma validate
