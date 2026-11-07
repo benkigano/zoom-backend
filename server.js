@@ -5191,106 +5191,719 @@ app.post(
       return normalizeStripeEmail(customer.email);
     };
 
-    const syncStripeSubscription = async (
-      subscription,
-      fallbackEmail = ""
-    ) => {
-      const stripeSubscriptionId = String(
-        subscription?.id || ""
-      ).trim();
+    
+const syncStripeSubscription = async (
+  subscription,
+  fallbackEmail = ""
+) => {
+  const stripeSubscriptionId = String(
+    subscription?.id || ""
+  ).trim();
 
-      const stripeCustomerId =
-        typeof subscription?.customer === "string"
-          ? subscription.customer
-          : String(subscription?.customer?.id || "").trim();
+  if (!stripeSubscriptionId) {
+    throw new Error("Stripe subscription ID is missing");
+  }
 
-      const firstItem = subscription?.items?.data?.[0] || null;
+  // Retrieve the current state rather than relying on
+  // webhook events arriving in chronological order.
+  const currentSubscription =
+    await stripe.subscriptions.retrieve(
+      stripeSubscriptionId
+    );
 
-      const stripePriceId = String(
-        firstItem?.price?.id || ""
-      ).trim();
+  const paymentPurpose = String(
+    currentSubscription?.metadata?.paymentPurpose || ""
+  ).trim();
 
-      const plan = getStripePlanFromPriceId(stripePriceId);
+  // New general memberships must be reconciled against
+  // their verified MembershipEnrollment records.
+  // Never allow this legacy synchronization function
+  // to activate them or overwrite Court Study records.
+  if (
+    paymentPurpose ===
+    "GENERAL_MEMBERSHIP_SUBSCRIPTION"
+  ) {
+    console.log(
+      "General membership awaiting dedicated reconciliation:",
+      stripeSubscriptionId
+    );
 
-      const email = await getStripeCustomerEmail(
-        stripeCustomerId,
-        fallbackEmail
+    return {
+      handled: false,
+      reason: "MEMBERSHIP_RECONCILIATION_REQUIRED",
+    };
+  }
+
+  const stripeCustomerId =
+    typeof currentSubscription?.customer === "string"
+      ? currentSubscription.customer
+      : String(
+          currentSubscription?.customer?.id || ""
+        ).trim();
+
+  const firstItem =
+    currentSubscription?.items?.data?.[0] || null;
+
+  const stripePriceId = String(
+    firstItem?.price?.id || ""
+  ).trim();
+
+  const plan = getStripePlanFromPriceId(
+    stripePriceId
+  );
+
+  const email = await getStripeCustomerEmail(
+    stripeCustomerId,
+    fallbackEmail
+  );
+
+  if (!stripeCustomerId || !email) {
+    throw new Error(
+      "Stripe subscription is missing customer ID or email"
+    );
+  }
+
+  const normalizedStatus = String(
+    currentSubscription?.status || ""
+  )
+    .trim()
+    .toUpperCase();
+
+  const status =
+    normalizedStatus === "ACTIVE"
+      ? "ACTIVE"
+      : normalizedStatus || "UNKNOWN";
+
+  const periodEndSeconds =
+    currentSubscription?.current_period_end ??
+    firstItem?.current_period_end ??
+    null;
+
+  const currentPeriodEnd =
+    Number.isFinite(Number(periodEndSeconds)) &&
+    Number(periodEndSeconds) > 0
+      ? new Date(Number(periodEndSeconds) * 1000)
+      : null;
+
+  const subscriptionData = {
+    email,
+    stripeCustomerId,
+    stripeSubscriptionId,
+    stripePriceId: stripePriceId || null,
+    plan,
+    status,
+    currentPeriodEnd,
+    cancelAtPeriodEnd:
+      currentSubscription?.cancel_at_period_end === true,
+  };
+
+  // First identify an existing record by the exact
+  // Stripe subscription ID, not merely by email.
+  const existingBySubscriptionId =
+    await prisma.subscription.findUnique({
+      where: {
+        stripeSubscriptionId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+  if (existingBySubscriptionId) {
+    await prisma.subscription.update({
+      where: {
+        id: existingBySubscriptionId.id,
+      },
+      data: subscriptionData,
+    });
+
+    return {
+      handled: true,
+      action: "UPDATED",
+    };
+  }
+
+  // Do not overwrite another subscription's identity.
+  // A different Stripe ID requires explicit
+  // reconciliation or a deliberate plan-change flow.
+  const [existingByEmail, existingByCustomer] =
+    await Promise.all([
+      prisma.subscription.findUnique({
+        where: {
+          email,
+        },
+        select: {
+          id: true,
+          stripeSubscriptionId: true,
+        },
+      }),
+      prisma.subscription.findUnique({
+        where: {
+          stripeCustomerId,
+        },
+        select: {
+          id: true,
+          stripeSubscriptionId: true,
+        },
+      }),
+    ]);
+
+  if (existingByEmail || existingByCustomer) {
+    console.warn(
+      "Stripe subscription identity conflict; record preserved:",
+      {
+        incomingSubscriptionId: stripeSubscriptionId,
+        existingSubscriptionId:
+          existingByEmail?.stripeSubscriptionId ||
+          existingByCustomer?.stripeSubscriptionId ||
+          null,
+      }
+    );
+
+    return {
+      handled: false,
+      reason: "SUBSCRIPTION_ID_CONFLICT",
+    };
+  }
+
+  try {
+    await prisma.subscription.create({
+      data: subscriptionData,
+    });
+  } catch (error) {
+    // A competing webhook may have created a record.
+    // Preserve it rather than overwriting its identity.
+    if (error?.code === "P2002") {
+      console.warn(
+        "Stripe subscription uniqueness conflict; reconciliation required:",
+        stripeSubscriptionId
       );
 
-      if (!stripeSubscriptionId || !stripeCustomerId || !email) {
+      return {
+        handled: false,
+        reason: "UNIQUE_CONSTRAINT_CONFLICT",
+      };
+    }
+
+    throw error;
+  }
+
+  return {
+    handled: true,
+    action: "CREATED",
+  };
+};
+
+
+    // =====================================================
+    // BASIC MEMBERSHIP - STRIPE PAYMENT RECONCILIATION
+    // =====================================================
+    // Called only from verified Stripe webhook processing.
+    // Does not rely on the applicant visiting a success page.
+
+    const reconcileBasicMembershipCheckoutSession = async (
+      checkoutSessionId
+    ) => {
+      if (!stripe) {
+        throw new Error("Stripe is not configured");
+      }
+
+      const sessionId = String(
+        checkoutSessionId || ""
+      ).trim();
+
+      if (!sessionId) {
+        throw new Error("Checkout Session ID is missing");
+      }
+
+      const session =
+        await stripe.checkout.sessions.retrieve(sessionId);
+
+      const metadata = session.metadata || {};
+
+      if (
+        metadata.paymentPurpose !==
+          "GENERAL_MEMBERSHIP_SUBSCRIPTION" ||
+        metadata.subscriptionPlan !== "BASIC"
+      ) {
+        return {
+          handled: false,
+          reason: "NOT_BASIC_MEMBERSHIP",
+        };
+      }
+
+      if (
+        session.mode !== "subscription" ||
+        session.status !== "complete" ||
+        session.payment_status !== "paid"
+      ) {
+        return {
+          handled: false,
+          reason: "PAYMENT_NOT_CONFIRMED",
+        };
+      }
+
+      const enrollmentId = String(
+        metadata.membershipEnrollmentId || ""
+      ).trim();
+
+      if (
+        !enrollmentId ||
+        session.client_reference_id !== enrollmentId
+      ) {
         throw new Error(
-          "Stripe subscription is missing subscription ID, customer ID, or email"
+          "Checkout Session enrollment identity mismatch"
         );
       }
 
-      const normalizedStatus = String(
-        subscription?.status || ""
+      const stripeSubscriptionId =
+        typeof session.subscription === "string"
+          ? session.subscription
+          : String(
+              session.subscription?.id || ""
+            ).trim();
+
+      if (!stripeSubscriptionId) {
+        throw new Error(
+          "Completed checkout has no subscription ID"
+        );
+      }
+
+      const subscription =
+        await stripe.subscriptions.retrieve(
+          stripeSubscriptionId
+        );
+
+      const subscriptionMetadata =
+        subscription.metadata || {};
+
+      if (
+        subscriptionMetadata.paymentPurpose !==
+          "GENERAL_MEMBERSHIP_SUBSCRIPTION" ||
+        subscriptionMetadata.subscriptionPlan !== "BASIC" ||
+        subscriptionMetadata.membershipEnrollmentId !==
+          enrollmentId
+      ) {
+        throw new Error(
+          "Stripe subscription metadata mismatch"
+        );
+      }
+
+      const stripeCustomerId =
+        typeof subscription.customer === "string"
+          ? subscription.customer
+          : String(
+              subscription.customer?.id || ""
+            ).trim();
+
+      const sessionCustomerId =
+        typeof session.customer === "string"
+          ? session.customer
+          : String(session.customer?.id || "").trim();
+
+      if (
+        !stripeCustomerId ||
+        !sessionCustomerId ||
+        stripeCustomerId !== sessionCustomerId
+      ) {
+        throw new Error(
+          "Stripe customer identity mismatch"
+        );
+      }
+
+      const item =
+        subscription.items?.data?.[0] || null;
+
+      const stripePriceId = String(
+        item?.price?.id || ""
+      ).trim();
+
+      const expectedPriceId = String(
+        process.env.STRIPE_PRICE_BASIC || ""
+      ).trim();
+
+      if (
+        !expectedPriceId ||
+        stripePriceId !== expectedPriceId
+      ) {
+        throw new Error(
+          "Basic Membership Stripe price mismatch"
+        );
+      }
+
+      if (subscription.status !== "active") {
+        return {
+          handled: false,
+          reason: "SUBSCRIPTION_NOT_ACTIVE",
+        };
+      }
+
+      const periodEndSeconds = Number(
+        item?.current_period_end ??
+          subscription.current_period_end
+      );
+
+      if (
+        !Number.isFinite(periodEndSeconds) ||
+        periodEndSeconds * 1000 <= Date.now()
+      ) {
+        throw new Error(
+          "Active subscription has no valid future period end"
+        );
+      }
+
+      const currentPeriodEnd = new Date(
+        periodEndSeconds * 1000
+      );
+
+      return prisma.$transaction(async (tx) => {
+        const enrollment =
+          await tx.membershipEnrollment.findUnique({
+            where: {
+              id: enrollmentId,
+            },
+          });
+
+        if (!enrollment || enrollment.plan !== "BASIC") {
+          throw new Error(
+            "Basic Membership enrollment not found"
+          );
+        }
+
+        // An already reconciled Stripe webhook is harmless.
+        if (enrollment.status === "COMPLETED") {
+          if (
+            enrollment.stripeSubscriptionId ===
+            stripeSubscriptionId
+          ) {
+            return {
+              handled: true,
+              alreadyCompleted: true,
+            };
+          }
+
+          throw new Error(
+            "Enrollment belongs to another subscription"
+          );
+        }
+
+        if (
+          ![
+            "CHECKOUT_PENDING",
+            "CHECKOUT_RECONCILIATION_PENDING",
+          ].includes(enrollment.status)
+        ) {
+          throw new Error(
+            "Enrollment is not awaiting payment"
+          );
+        }
+
+        if (
+          enrollment.checkoutSessionId &&
+          enrollment.checkoutSessionId !== sessionId
+        ) {
+          throw new Error(
+            "Checkout Session does not match enrollment"
+          );
+        }
+
+        const checkoutEmail = String(
+          session.customer_details?.email ||
+            session.customer_email ||
+            ""
+        )
+          .trim()
+          .toLowerCase();
+
+        if (
+          checkoutEmail &&
+          checkoutEmail !== enrollment.email
+        ) {
+          throw new Error(
+            "Checkout email does not match enrollment"
+          );
+        }
+
+        const existing =
+          await tx.subscription.findUnique({
+            where: {
+              email: enrollment.email,
+            },
+          });
+
+        // A different active subscription must never be
+        // silently replaced by a new Checkout payment.
+        if (
+          existing &&
+          existing.stripeSubscriptionId !==
+            stripeSubscriptionId &&
+          existing.status === "ACTIVE" &&
+          (
+            !existing.currentPeriodEnd ||
+            existing.currentPeriodEnd.getTime() >
+              Date.now()
+          )
+        ) {
+          throw new Error(
+            "Another active membership already exists"
+          );
+        }
+
+        const subscriptionData = {
+          email: enrollment.email,
+          stripeCustomerId,
+          stripeSubscriptionId,
+          stripePriceId,
+          plan: "BASIC",
+          status: "ACTIVE",
+          currentPeriodEnd,
+          cancelAtPeriodEnd:
+            subscription.cancel_at_period_end === true,
+        };
+
+        // Claim completion before updating the subscription.
+        // The surrounding transaction rolls back both changes
+        // if any operation fails.
+        const completed =
+          await tx.membershipEnrollment.updateMany({
+            where: {
+              id: enrollmentId,
+              status: {
+                in: [
+                  "CHECKOUT_PENDING",
+                  "CHECKOUT_RECONCILIATION_PENDING",
+                ],
+              },
+              checkoutSessionId: sessionId,
+            },
+            data: {
+              status: "COMPLETED",
+              stripeCustomerId,
+              stripeSubscriptionId,
+              completedAt: new Date(),
+              checkoutAccessTokenHash: null,
+              checkoutExpiresAt: null,
+              checkoutAttemptKey: null,
+            },
+          });
+
+        if (completed.count !== 1) {
+          throw new Error(
+            "Enrollment completion conflict"
+          );
+        }
+
+        if (existing) {
+          await tx.subscription.update({
+            where: {
+              id: existing.id,
+            },
+            data: subscriptionData,
+          });
+        } else {
+          await tx.subscription.create({
+            data: subscriptionData,
+          });
+        }
+
+        return {
+          handled: true,
+          alreadyCompleted: false,
+        };
+      });
+    };
+
+    
+    // =====================================================
+    // BASIC MEMBERSHIP - SUBSCRIPTION LIFECYCLE
+    // =====================================================
+    // Synchronizes renewals, plan changes, and cancellations.
+    // Never activates an enrollment before checkout reconciliation.
+    // Never updates a different Stripe subscription record.
+
+    const syncGeneralMembershipSubscription = async (
+      eventSubscription
+    ) => {
+      const subscriptionId = String(
+        eventSubscription?.id || ""
+      ).trim();
+
+      if (!stripe || !subscriptionId) {
+        throw new Error(
+          "General membership subscription is unavailable"
+        );
+      }
+
+      // Fetch current Stripe state so an older webhook
+      // cannot restore an outdated subscription status.
+      const current =
+        await stripe.subscriptions.retrieve(subscriptionId);
+
+      const metadata = current.metadata || {};
+
+      if (
+        metadata.paymentPurpose !==
+        "GENERAL_MEMBERSHIP_SUBSCRIPTION"
+      ) {
+        return {
+          handled: false,
+          reason: "NOT_GENERAL_MEMBERSHIP",
+        };
+      }
+
+      const enrollmentId = String(
+        metadata.membershipEnrollmentId || ""
+      ).trim();
+
+      if (!enrollmentId) {
+        throw new Error(
+          "General membership enrollment ID is missing"
+        );
+      }
+
+      const stripeCustomerId =
+        typeof current.customer === "string"
+          ? current.customer
+          : String(current.customer?.id || "").trim();
+
+      if (!stripeCustomerId) {
+        throw new Error(
+          "General membership customer ID is missing"
+        );
+      }
+
+      const item = current.items?.data?.[0] || null;
+
+      const stripePriceId = String(
+        item?.price?.id || ""
+      ).trim();
+
+      const recognizedPlan =
+        getStripePlanFromPriceId(stripePriceId);
+
+      const periodEndSeconds = Number(
+        item?.current_period_end ??
+          current.current_period_end ??
+          0
+      );
+
+      const hasValidPeriod =
+        Number.isFinite(periodEndSeconds) &&
+        periodEndSeconds * 1000 > Date.now();
+
+      const currentPeriodEnd =
+        Number.isFinite(periodEndSeconds) &&
+        periodEndSeconds > 0
+          ? new Date(periodEndSeconds * 1000)
+          : null;
+
+      const stripeStatus = String(
+        current.status || ""
       )
         .trim()
         .toUpperCase();
 
+      // Fail closed if Stripe says ACTIVE but we cannot
+      // recognize the plan or establish its billing period.
       const status =
-        normalizedStatus === "ACTIVE"
-          ? "ACTIVE"
-          : normalizedStatus || "UNKNOWN";
+        stripeStatus === "ACTIVE" &&
+        (!recognizedPlan || !hasValidPeriod)
+          ? "RECONCILIATION_REQUIRED"
+          : stripeStatus || "UNKNOWN";
 
-      const periodEndSeconds =
-        subscription?.current_period_end ??
-        firstItem?.current_period_end ??
-        null;
+      return prisma.$transaction(async (tx) => {
+        const enrollment =
+          await tx.membershipEnrollment.findUnique({
+            where: {
+              id: enrollmentId,
+            },
+          });
 
-      const currentPeriodEnd =
-        Number.isFinite(Number(periodEndSeconds)) &&
-        Number(periodEndSeconds) > 0
-          ? new Date(Number(periodEndSeconds) * 1000)
-          : null;
+        if (!enrollment) {
+          throw new Error(
+            "General membership enrollment not found"
+          );
+        }
 
-      const subscriptionData = {
-        email,
-        stripeCustomerId,
-        stripeSubscriptionId,
-        stripePriceId: stripePriceId || null,
-        plan,
-        status,
-        currentPeriodEnd,
-        cancelAtPeriodEnd:
-          subscription?.cancel_at_period_end === true,
-      };
+        // Initial checkout completion establishes the
+        // membership first. Earlier subscription events
+        // must not grant access prematurely.
+        if (
+          enrollment.status !== "COMPLETED" &&
+          [
+            "CHECKOUT_PENDING",
+            "CHECKOUT_RECONCILIATION_PENDING",
+          ].includes(enrollment.status) &&
+          !enrollment.stripeSubscriptionId
+        ) {
+          return {
+            handled: true,
+            deferred: true,
+          };
+        }
 
-      const existingSubscription =
-        await prisma.subscription.findFirst({
-          where: {
-            OR: [
-              {
-                stripeSubscriptionId,
-              },
-              {
-                stripeCustomerId,
-              },
-              {
-                email,
-              },
-            ],
-          },
-          select: {
-            id: true,
-          },
-        });
+        if (
+          enrollment.status !== "COMPLETED" ||
+          enrollment.stripeSubscriptionId !==
+            subscriptionId ||
+          enrollment.stripeCustomerId !==
+            stripeCustomerId
+        ) {
+          throw new Error(
+            "General membership subscription identity mismatch"
+          );
+        }
 
-      if (existingSubscription) {
-        await prisma.subscription.update({
-          where: {
-            id: existingSubscription.id,
-          },
-          data: subscriptionData,
-        });
-      } else {
-        await prisma.subscription.create({
-          data: subscriptionData,
-        });
-      }
+        const existing =
+          await tx.subscription.findUnique({
+            where: {
+              stripeSubscriptionId: subscriptionId,
+            },
+          });
+
+        if (
+          !existing ||
+          existing.email !== enrollment.email ||
+          existing.stripeCustomerId !== stripeCustomerId
+        ) {
+          throw new Error(
+            "General membership subscription record mismatch"
+          );
+        }
+
+        const updated =
+          await tx.subscription.updateMany({
+            where: {
+              id: existing.id,
+              stripeSubscriptionId: subscriptionId,
+              email: enrollment.email,
+            },
+            data: {
+              stripePriceId: stripePriceId || null,
+              plan: recognizedPlan || existing.plan,
+              status,
+              currentPeriodEnd,
+              cancelAtPeriodEnd:
+                current.cancel_at_period_end === true,
+            },
+          });
+
+        if (updated.count !== 1) {
+          throw new Error(
+            "General membership subscription update conflict"
+          );
+        }
+
+        return {
+          handled: true,
+          deferred: false,
+          status,
+          plan: recognizedPlan || existing.plan,
+        };
+      });
     };
 
+    
     const releaseCourtStudyForActiveSubscriber = async (
   courtStudyRequestId
 ) => {
@@ -5562,6 +6175,39 @@ app.post(
 
             break;
           }
+
+          
+          // Reconcile general membership separately from
+          // the existing Court Study subscription workflow.
+          const membershipPaymentPurpose = String(
+            session?.metadata?.paymentPurpose || ""
+          ).trim();
+
+          if (
+            membershipPaymentPurpose ===
+            "GENERAL_MEMBERSHIP_SUBSCRIPTION"
+          ) {
+            const membershipResult =
+              await reconcileBasicMembershipCheckoutSession(
+                session.id
+              );
+
+            if (!membershipResult.handled) {
+  console.error(
+    "Basic Membership reconciliation remains pending:",
+    session.id,
+    membershipResult.reason
+  );
+
+  throw new Error(
+    "Basic Membership payment reconciliation incomplete: " +
+    membershipResult.reason
+  );
+}
+
+            break;
+          }
+
           
           const stripeSubscriptionId =
             typeof session?.subscription === "string"
@@ -5627,6 +6273,30 @@ console.log(
 case "customer.subscription.updated": {
   const subscription = event.data.object;
 
+// Route general membership subscription events separately.
+const generalMembershipPurpose = String(
+  subscription?.metadata?.paymentPurpose || ""
+).trim();
+
+if (
+  generalMembershipPurpose ===
+  "GENERAL_MEMBERSHIP_SUBSCRIPTION"
+) {
+  const membershipLifecycleResult =
+    await syncGeneralMembershipSubscription(
+      subscription
+    );
+
+  if (!membershipLifecycleResult.handled) {
+    throw new Error(
+      "General membership lifecycle reconciliation failed: " +
+      membershipLifecycleResult.reason
+    );
+  }
+
+  break;
+}
+  
   await syncStripeSubscription(subscription);
 
   const paymentPurpose = String(
@@ -5658,10 +6328,36 @@ case "customer.subscription.updated": {
 }
 
 case "customer.subscription.deleted": {
-  await syncStripeSubscription(event.data.object);
-  break;
-}   
+  const subscription = event.data.object;
 
+  const generalMembershipPurpose = String(
+    subscription?.metadata?.paymentPurpose || ""
+  ).trim();
+
+  if (
+    generalMembershipPurpose ===
+    "GENERAL_MEMBERSHIP_SUBSCRIPTION"
+  ) {
+    const membershipLifecycleResult =
+      await syncGeneralMembershipSubscription(
+        subscription
+      );
+
+    if (!membershipLifecycleResult.handled) {
+      throw new Error(
+        "General membership cancellation reconciliation failed: " +
+        membershipLifecycleResult.reason
+      );
+    }
+
+    break;
+  }
+
+  // Preserve the existing Court Study subscription flow.
+  await syncStripeSubscription(subscription);
+  break;
+}
+          
         default:
           console.log(
             "ℹ️ Stripe webhook event ignored:",
