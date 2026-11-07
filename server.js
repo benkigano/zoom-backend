@@ -6957,6 +6957,247 @@ const checkoutAccessExpiresAt = new Date(
   }
 );
 
+// =====================================================
+// BASIC MEMBERSHIP - STRIPE SUBSCRIPTION CHECKOUT
+// =====================================================
+// Requires a valid checkout credential issued after email
+// verification. Does not activate membership or collect
+// payment directly. Stripe handles the hosted checkout.
+
+app.post(
+  "/api/membership/checkout",
+  membershipEnrollmentRateLimiter,
+  async (req, res) => {
+    const accessToken = String(
+      req.body?.checkoutAccessToken || ""
+    ).trim();
+
+    if (!/^[a-f0-9]{64}$/i.test(accessToken)) {
+      return res.status(403).json({
+        success: false,
+        error: "Invalid or expired checkout authorization.",
+      });
+    }
+
+    const basicPriceId = String(
+      process.env.STRIPE_PRICE_BASIC || ""
+    ).trim();
+
+    if (!stripe || !basicPriceId) {
+      return res.status(503).json({
+        success: false,
+        error: "Basic Membership checkout is unavailable.",
+      });
+    }
+
+    try {
+      const accessTokenHash = hashMembershipToken(
+        accessToken
+      );
+
+      const enrollment =
+        await prisma.membershipEnrollment.findUnique({
+          where: {
+            checkoutAccessTokenHash: accessTokenHash,
+          },
+        });
+
+      if (
+        !enrollment ||
+        enrollment.plan !== "BASIC" ||
+        !enrollment.checkoutExpiresAt ||
+        enrollment.checkoutExpiresAt.getTime() <= Date.now()
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: "Invalid or expired checkout authorization.",
+        });
+      }
+
+      if (
+        ![
+          "EMAIL_VERIFIED",
+          "CHECKOUT_PENDING",
+        ].includes(enrollment.status)
+      ) {
+        return res.status(409).json({
+          success: false,
+          error: "This enrollment cannot begin checkout.",
+        });
+      }
+
+      const alreadySubscribed =
+        await isActiveSubscriberEmail(enrollment.email);
+
+      if (alreadySubscribed) {
+        return res.status(409).json({
+          success: false,
+          error:
+            "An active membership already exists. " +
+            "Use the membership plan-change process instead.",
+        });
+      }
+
+      // Repeated requests reuse an existing open session.
+      if (enrollment.checkoutSessionId) {
+        const existingSession =
+          await stripe.checkout.sessions.retrieve(
+            enrollment.checkoutSessionId
+          );
+
+        if (
+          existingSession.status === "open" &&
+          existingSession.url
+        ) {
+          return res.status(200).json({
+            success: true,
+            status: "CHECKOUT_PENDING",
+            checkoutUrl: existingSession.url,
+          });
+        }
+
+        return res.status(409).json({
+          success: false,
+          error:
+            "The previous checkout session is no longer open. " +
+            "A new authorization is required.",
+        });
+      }
+
+      let attemptKey = enrollment.checkoutAttemptKey;
+
+      // Atomically claim the right to start checkout.
+      if (enrollment.status === "EMAIL_VERIFIED") {
+        attemptKey = crypto.randomUUID();
+
+        const claimed =
+          await prisma.membershipEnrollment.updateMany({
+            where: {
+              id: enrollment.id,
+              status: "EMAIL_VERIFIED",
+              checkoutAccessTokenHash: accessTokenHash,
+              checkoutExpiresAt: {
+                gt: new Date(),
+              },
+              checkoutAttemptKey: null,
+              checkoutSessionId: null,
+            },
+            data: {
+              status: "CHECKOUT_PENDING",
+              checkoutAttemptKey: attemptKey,
+            },
+          });
+
+        if (claimed.count !== 1) {
+          return res.status(409).json({
+            success: false,
+            error:
+              "Checkout is already being prepared. Please retry.",
+          });
+        }
+      }
+
+      if (!attemptKey) {
+        return res.status(409).json({
+          success: false,
+          error: "Checkout authorization is not available.",
+        });
+      }
+
+      const membershipMetadata = {
+        membershipEnrollmentId: enrollment.id,
+        paymentPurpose: "GENERAL_MEMBERSHIP_SUBSCRIPTION",
+        subscriptionPlan: "BASIC",
+      };
+
+      // A stable idempotency key prevents retries from
+      // creating different Stripe Checkout Sessions.
+      const checkoutSession =
+        await stripe.checkout.sessions.create(
+          {
+            mode: "subscription",
+            customer_email: enrollment.email,
+            client_reference_id: enrollment.id,
+            line_items: [
+              {
+                price: basicPriceId,
+                quantity: 1,
+              },
+            ],
+            metadata: membershipMetadata,
+            subscription_data: {
+              metadata: membershipMetadata,
+            },
+            success_url:
+              "https://www.courtofcompassion.com/" +
+              "membership/success" +
+              "?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url:
+              "https://www.courtofcompassion.com/" +
+              "membership/cancelled",
+          },
+          {
+            idempotencyKey:
+              `basic-membership-${enrollment.id}-${attemptKey}`,
+          }
+        );
+
+      if (!checkoutSession.id || !checkoutSession.url) {
+        throw new Error(
+          "Stripe did not return a usable Checkout Session"
+        );
+      }
+
+      // Save the session before exposing its payment URL.
+      const saved =
+        await prisma.membershipEnrollment.updateMany({
+          where: {
+            id: enrollment.id,
+            status: "CHECKOUT_PENDING",
+            checkoutAttemptKey: attemptKey,
+            checkoutSessionId: null,
+          },
+          data: {
+            checkoutSessionId: checkoutSession.id,
+          },
+        });
+
+      if (saved.count !== 1) {
+        const latest =
+          await prisma.membershipEnrollment.findUnique({
+            where: {
+              id: enrollment.id,
+            },
+          });
+
+        if (
+          latest?.checkoutSessionId !== checkoutSession.id
+        ) {
+          throw new Error(
+            "Checkout Session could not be reconciled"
+          );
+        }
+      }
+
+      return res.status(201).json({
+        success: true,
+        status: "CHECKOUT_PENDING",
+        checkoutUrl: checkoutSession.url,
+      });
+    } catch (error) {
+      console.error(
+        "Basic Membership checkout failed:",
+        error?.code || error?.message || "Unknown error"
+      );
+
+      return res.status(503).json({
+        success: false,
+        error:
+          "Checkout could not be started. Please retry.",
+      });
+    }
+  }
+);
 
 // ============================================================
 // MYZOOM AUTHENTICATION API
