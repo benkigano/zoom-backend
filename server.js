@@ -5164,6 +5164,21 @@ app.post(
         return "CHURCH_GROUP";
       }
 
+     
+    // Organizer Membership
+    const organizerPriceId = String(
+      process.env.STRIPE_PRICE_ORGANIZER || ""
+    ).trim();
+
+    if (
+      organizerPriceId &&
+      normalizedPriceId === organizerPriceId
+    ) {
+      return "ORGANIZER";
+    }
+
+
+      
       return null;
     };
 
