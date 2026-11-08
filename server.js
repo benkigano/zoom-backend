@@ -7441,23 +7441,46 @@ async function requestMembershipVerification(email) {
 
       // Recovery requires a positively identified,
       // expired, unpaid Basic Membership session.
-      if (
-        session.id !== existing.checkoutSessionId ||
-        session.status !== "expired" ||
-        session.payment_status !== "unpaid" ||
-        session.mode !== "subscription" ||
-        session.subscription ||
-        session.client_reference_id !== existing.id ||
-        session.metadata?.paymentPurpose !==
-          "GENERAL_MEMBERSHIP_SUBSCRIPTION" ||
-        session.metadata?.subscriptionPlan !== "BASIC" ||
-        session.metadata?.membershipEnrollmentId !==
-          existing.id
-      ) {
+      
+      // Confirm that this session belongs to the
+      // same verified Basic Membership enrollment.
+      const belongsToEnrollment =
+        session.id === existing.checkoutSessionId &&
+        session.mode === "subscription" &&
+        !session.subscription &&
+        session.client_reference_id === existing.id &&
+        session.metadata?.paymentPurpose ===
+          "GENERAL_MEMBERSHIP_SUBSCRIPTION" &&
+        session.metadata?.subscriptionPlan === "BASIC" &&
+        session.metadata?.membershipEnrollmentId ===
+          existing.id;
+
+      if (!belongsToEnrollment) {
         return;
       }
 
-      recoveryAllowed = true;
+      if (
+        session.status === "expired" &&
+        session.payment_status === "unpaid"
+      ) {
+        // Expired and unpaid: reset the enrollment to
+        // PENDING_VERIFICATION using the existing
+        // recoveryAllowed logic below.
+        recoveryAllowed = true;
+      } else if (
+        session.status === "open" &&
+        session.payment_status === "unpaid"
+      ) {
+        // Still open: issue a fresh verification email
+        // without changing CHECKOUT_PENDING or clearing
+        // checkoutSessionId or checkoutAttemptKey.
+        recoveryAllowed = false;
+      } else {
+        // Completed, paid, or uncertain sessions must
+        // not be reauthorized through this function.
+        return;
+      }
+
     } else {
       // Reconciliation-pending or unknown states require
       // review, not automatic reauthorization.
@@ -7607,6 +7630,7 @@ app.post(
 
 // Verify the email address.
 // A valid token changes enrollment status to EMAIL_VERIFIED.
+
 app.post(
   "/api/membership/verify",
   membershipEnrollmentRateLimiter,
@@ -7640,8 +7664,14 @@ app.post(
         });
       }
 
+      const isCheckoutResumption =
+        enrollment.status === "CHECKOUT_PENDING";
+
       if (
-        enrollment.status !== "PENDING_VERIFICATION"
+        ![
+          "PENDING_VERIFICATION",
+          "CHECKOUT_PENDING",
+        ].includes(enrollment.status)
       ) {
         return res.status(400).json({
           success: false,
@@ -7659,42 +7689,103 @@ app.post(
           success: false,
           status: "EXPIRED_LINK",
           error:
-            "This verification link has expired. Your enrollment is preserved. " +
-            "Request a new verification email to continue. No payment has been collected.",
+            "This verification link has expired. " +
+            "Your enrollment is preserved. " +
+            "Request another verification email.",
         });
       }
 
-// Generate a separate, short-lived checkout credential.
-// The raw token is returned only after successful verification.
-const checkoutAccessToken = crypto.randomBytes(32).toString("hex");
+      // A pending checkout can be reauthorized only
+      // while its original Stripe session is still open.
+      if (isCheckoutResumption) {
+        if (
+          !stripe ||
+          !enrollment.checkoutSessionId ||
+          enrollment.stripeSubscriptionId ||
+          enrollment.stripeCustomerId
+        ) {
+          return res.status(409).json({
+            success: false,
+            status: "CHECKOUT_REVIEW_REQUIRED",
+            error:
+              "Your checkout status requires review.",
+          });
+        }
 
-const checkoutAccessTokenHash = crypto
-  .createHash("sha256")
-  .update(checkoutAccessToken)
-  .digest("hex");
+        const session =
+          await stripe.checkout.sessions.retrieve(
+            enrollment.checkoutSessionId
+          );
 
-const checkoutAccessExpiresAt = new Date(
-  Date.now() + 15 * 60 * 1000
-); 
-      
-      const verified = await prisma.membershipEnrollment.updateMany({
-        where: {
-          id: enrollment.id,
-          status: "PENDING_VERIFICATION",
-          verificationTokenHash: tokenHash,
-          verificationExpiresAt: {
-            gt: new Date(),
+        if (
+          session.id !== enrollment.checkoutSessionId ||
+          session.status !== "open" ||
+          session.payment_status !== "unpaid" ||
+          session.mode !== "subscription" ||
+          session.subscription ||
+          session.client_reference_id !== enrollment.id ||
+          session.metadata?.paymentPurpose !==
+            "GENERAL_MEMBERSHIP_SUBSCRIPTION" ||
+          session.metadata?.subscriptionPlan !== "BASIC" ||
+          session.metadata?.membershipEnrollmentId !==
+            enrollment.id
+        ) {
+          return res.status(409).json({
+            success: false,
+            status: "CHECKOUT_REVIEW_REQUIRED",
+            error:
+              "The previous checkout is no longer " +
+              "eligible for resumption.",
+          });
+        }
+      }
+
+      const checkoutAccessToken =
+        crypto.randomBytes(32).toString("hex");
+
+      const checkoutAccessTokenHash =
+        hashMembershipToken(checkoutAccessToken);
+
+      const checkoutAccessExpiresAt = new Date(
+        Date.now() + 15 * 60 * 1000
+      );
+
+      // Preserve CHECKOUT_PENDING and the Stripe
+      // Session ID when resuming an open checkout.
+      // For first-time verification, advance to
+      // EMAIL_VERIFIED as before.
+      const verified =
+        await prisma.membershipEnrollment.updateMany({
+          where: {
+            id: enrollment.id,
+            status: enrollment.status,
+            verificationTokenHash: tokenHash,
+            verificationExpiresAt: {
+              gt: new Date(),
+            },
+            checkoutSessionId:
+              isCheckoutResumption
+                ? enrollment.checkoutSessionId
+                : null,
           },
-        },
-       data: {
-  status: "EMAIL_VERIFIED",
-  verifiedAt: new Date(),
-  verificationTokenHash: null,
-  verificationExpiresAt: null,
-  checkoutAccessTokenHash,
-  checkoutExpiresAt: checkoutAccessExpiresAt,
-}, 
-      });
+          data: {
+            status: isCheckoutResumption
+              ? "CHECKOUT_PENDING"
+              : "EMAIL_VERIFIED",
+
+            ...(!isCheckoutResumption
+              ? {
+                  verifiedAt: new Date(),
+                }
+              : {}),
+
+            verificationTokenHash: null,
+            verificationExpiresAt: null,
+            checkoutAccessTokenHash,
+            checkoutExpiresAt:
+              checkoutAccessExpiresAt,
+          },
+        });
 
       if (verified.count !== 1) {
         return res.status(409).json({
@@ -7705,25 +7796,35 @@ const checkoutAccessExpiresAt = new Date(
         });
       }
 
-     return res.status(200).json({
-  success: true,
-  status: "EMAIL_VERIFIED",
-  message:
-    "Your email address has been verified. Select Continue to Payment to begin Basic Membership checkout.",
-  checkoutAccessToken,
-  checkoutAccessExpiresAt:
-    checkoutAccessExpiresAt.toISOString(),
-}); 
+      return res.status(200).json({
+        success: true,
+        status: isCheckoutResumption
+          ? "CHECKOUT_PENDING"
+          : "EMAIL_VERIFIED",
+        message: isCheckoutResumption
+          ? "Your email has been reauthorized. " +
+            "Select Continue to Payment to resume " +
+            "your existing checkout."
+          : "Your email address has been verified. " +
+            "Select Continue to Payment to begin " +
+            "Basic Membership checkout.",
+        checkoutAccessToken,
+        checkoutAccessExpiresAt:
+          checkoutAccessExpiresAt.toISOString(),
+      });
     } catch (error) {
       console.error(
         "Basic Membership verification failed:",
-        error?.code || error?.message || "Unknown error"
+        error?.code ||
+          error?.message ||
+          "Unknown error"
       );
 
       return res.status(503).json({
         success: false,
         error:
-          "Email verification is temporarily unavailable. Please try again.",
+          "Email verification is temporarily unavailable. " +
+          "Please try again.",
       });
     }
   }
