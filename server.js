@@ -7899,17 +7899,34 @@ app.post(
         });
       }
 
-      const alreadySubscribed =
-        await isActiveSubscriberEmail(enrollment.email);
+      
+      // A new membership checkout must not replace or
+      // duplicate an existing subscription record.
+      // Plan changes and reactivation are separate workflows.
+      const existingBillingRecord =
+        await prisma.subscription.findUnique({
+          where: {
+            email: enrollment.email,
+          },
+          select: {
+            id: true,
+            status: true,
+            stripeSubscriptionId: true,
+          },
+        });
 
-      if (alreadySubscribed) {
+      if (existingBillingRecord) {
         return res.status(409).json({
           success: false,
+          status: "EXISTING_MEMBERSHIP_REVIEW_REQUIRED",
           error:
-            "An active membership already exists. " +
-            "Use the membership plan-change process instead.",
+            "A subscription record already exists for " +
+            "this email address. Please manage or " +
+            "restore your existing membership instead " +
+            "of starting another subscription.",
         });
       }
+
 
       // Repeated requests reuse an existing open session.
       if (enrollment.checkoutSessionId) {
