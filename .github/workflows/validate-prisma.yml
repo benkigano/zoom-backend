@@ -30,6 +30,11 @@ jobs:
       - name: Check server.js syntax
         run: node --check server.js
 
+      
+      - name: Run isolated Basic Membership tests
+        run: node --test test/membership-guards.test.js
+
+
       - name: Install dependencies
         run: npm install --package-lock=false
 
