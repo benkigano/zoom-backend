@@ -8,6 +8,7 @@ import { prisma } from "./prisma/client.js";
 import escapeHtml from "escape-html";
 import { convert } from "html-to-text";
 import Stripe from "stripe";
+import { normalizeMembershipEmail } from "./membership/guards.js";
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
@@ -7338,18 +7339,6 @@ const membershipVerificationResponse = {
     "The link is valid for 30 minutes. If it expires, request a new one.",
 };
 
-function normalizeMembershipEmail(value) {
-  const email = String(value || "").trim().toLowerCase();
-
-  if (
-    email.length > 254 ||
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-  ) {
-    return null;
-  }
-
-  return email;
-}
 
 function hashMembershipToken(token) {
   return crypto
