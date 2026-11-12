@@ -8,7 +8,12 @@ import { prisma } from "./prisma/client.js";
 import escapeHtml from "escape-html";
 import { convert } from "html-to-text";
 import Stripe from "stripe";
-import { normalizeMembershipEmail } from "./membership/guards.js";
+
+import {
+  normalizeMembershipEmail,
+  isBasicMembershipCheckoutEligible,
+} from "./membership/guards.js";
+
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
@@ -7892,17 +7897,14 @@ app.post(
         });
       }
 
-      if (
-        ![
-          "EMAIL_VERIFIED",
-          "CHECKOUT_PENDING",
-        ].includes(enrollment.status)
-      ) {
-        return res.status(409).json({
-          success: false,
-          error: "This enrollment cannot begin checkout.",
-        });
-      }
+     
+if (!isBasicMembershipCheckoutEligible(enrollment)) {
+  return res.status(409).json({
+    success: false,
+    error: "This enrollment cannot begin checkout.",
+  });
+}
+ 
 
       
       // A new membership checkout must not replace or
