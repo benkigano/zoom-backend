@@ -7891,11 +7891,12 @@ app.post(
         });
 
       if (
-        !enrollment ||
-        enrollment.plan !== "BASIC" ||
-        !enrollment.checkoutExpiresAt ||
-        enrollment.checkoutExpiresAt.getTime() <= Date.now()
-      ) {
+  !enrollment ||
+  enrollment.plan !== "BASIC" ||
+  !enrollment.verifiedAt ||
+  !enrollment.checkoutExpiresAt ||
+  enrollment.checkoutExpiresAt.getTime() <= Date.now()
+) {
         return res.status(403).json({
           success: false,
           error: "Invalid or expired checkout authorization.",
