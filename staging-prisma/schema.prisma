@@ -1,0 +1,695 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/**
+ * PHASE 1 ENUMS
+ */
+
+enum AvailabilityStatus {
+  AVAILABLE
+  HELD
+  BOOKED
+  CANCELLED
+}
+
+enum ZoomMeetingStatus {
+  CREATED
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum EmailLogStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum EmailType {
+  REQUEST_RECEIVED
+  REQUEST_APPROVED
+  REQUEST_REJECTED
+  ZOOM_DETAILS
+  JOURNALIST_NOTIFICATION
+  ADMIN_NOTIFICATION
+  GENERAL
+}
+enum ZoomConnectionStatus {
+  CONNECTED
+  REAUTHORIZATION_REQUIRED
+  REVOKED
+  DISCONNECTED
+}
+
+enum CourtStudyMeetingStatus {
+  DRAFT
+  PENDING
+  CREATING
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum CourtStudyDiscussionType {
+  RULES_OF_PROCEDURE
+  INTERVIEW_RECORDING
+  BOOK_STUDY
+}
+
+enum GuestDistributionCampaignStatus {
+  DRAFT
+  READY
+  SENT_TO_GUEST
+  ACTIVE
+  CLOSED
+}
+
+enum CourtStudyRequestStatus {
+  PENDING
+  APPROVED
+  ZOOM_CONNECTED
+  AWAITING_MEETING_DETAILS
+  MEETING_DETAILS_SUBMITTED 
+  MEETING_APPROVED
+  SESSION_READY
+  SESSION_REVIEW_PENDING
+  DECLINED
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum CourtStudyHostMode {
+  COURT_HOSTED
+  PASTOR_HOSTED
+  COMMUNITY_HOSTED
+  IN_PERSON
+  HYBRID
+}
+
+enum CourtStudySessionFormat {
+  ONLINE
+  IN_PERSON
+  HYBRID
+}
+
+/**
+ * PHASE 1 TABLES
+ */
+
+/**
+ * PHASE 1 TABLES
+ */
+
+model Journalist {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  roleTitle String?
+  bio       String?
+  isActive  Boolean  @default(true)
+
+  availabilitySlots JournalistAvailability[]
+  zoomMeetings      ZoomMeeting[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Church {
+  id           String  @id @default(cuid())
+  name         String
+  denomination String?
+  diocese      String?
+  country      String? @default("USA")
+  websiteUrl   String?
+  notes        String?
+
+  contacts ChurchContact[]
+  distributionLogs DistributionLog[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ChurchContact {
+  id                   String  @id @default(cuid())
+  churchId             String
+  fullName             String
+  email                String?
+  phone                String?
+  roleTitle            String?
+  isPrimary            Boolean @default(false)
+  canReceiveRecordings Boolean @default(true)
+  canCreateCourtStudyMeetings Boolean @default(false)
+  courtStudyApproved          Boolean @default(false)
+  church Church @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  distributionLogs DistributionLog[]
+  zoomConnections ChurchContactZoomConnection[]
+  courtStudyMeetings CourtStudyMeeting[]
+  oauthInvitations   ZoomOAuthInvitation[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([churchId])
+  @@index([email])
+}
+
+model InterviewRequest {
+  id String @id @default(cuid())
+
+  // Existing live database fields — do not rename yet
+  name  String
+  email String
+  topic String
+
+  applicantBio         String?
+  selectedJournalistId String?
+  status               String  @default("pending")
+
+  // New optional Phase 1 fields
+  organizationName String?
+  approvedAt       DateTime?
+  scheduledAt      DateTime?
+  requestedDateTime  DateTime?
+
+  zoomMeeting ZoomMeeting?
+  emailLogs   EmailLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([email])
+  @@index([selectedJournalistId])
+}
+
+model JournalistAvailability {
+  id           String             @id @default(cuid())
+  journalistId String
+  startTime    DateTime
+  endTime      DateTime
+  status       AvailabilityStatus @default(AVAILABLE)
+  notes        String?
+
+  journalist Journalist @relation(fields: [journalistId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([journalistId])
+  @@index([startTime])
+  @@index([status])
+}
+
+model Subscription {
+  id                   String   @id @default(cuid())
+
+  email                String   @unique
+
+  stripeCustomerId     String?  @unique
+  stripeSubscriptionId String?  @unique
+  stripePriceId        String?
+
+  plan                 String?
+  status               String
+
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean  @default(false)
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([status])
+  @@index([currentPeriodEnd])
+}
+
+model ZoomMeeting {
+  id                 String @id @default(cuid())
+  interviewRequestId String @unique
+  journalistId       String?
+
+  zoomMeetingId      String?
+  joinUrl            String?
+  startUrl           String?
+  topic              String
+  scheduledStartTime DateTime?
+  durationMinutes    Int?
+  status             ZoomMeetingStatus @default(CREATED)
+
+  interviewRequest InterviewRequest @relation(fields: [interviewRequestId], references: [id], onDelete: Cascade)
+  journalist       Journalist?      @relation(fields: [journalistId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([journalistId])
+  @@index([zoomMeetingId])
+  @@index([status])
+}
+
+model EmailLog {
+  id                 String  @id @default(cuid())
+  interviewRequestId String?
+
+  toEmail      String
+  subject      String
+  bodyPreview  String?
+  emailType    EmailType      @default(GENERAL)
+  status       EmailLogStatus @default(PENDING)
+  errorMessage String?
+  sentAt       DateTime?
+
+  interviewRequest InterviewRequest? @relation(fields: [interviewRequestId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([interviewRequestId])
+  @@index([toEmail])
+  @@index([status])
+  @@index([emailType])
+}
+enum RecordingStatus {
+  DRAFT
+  READY
+  SENT
+  ARCHIVED
+}
+
+enum DistributionStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model Recording {
+  id                 String   @id @default(cuid())
+
+  interviewRequestId String?
+  zoomMeetingId      String?
+
+  title              String
+  description        String?
+  speakerName        String?
+  speakerTitle       String?
+  organizationName   String?
+
+  recordingUrl       String
+  recordingPasscode  String?
+  transcriptUrl      String?
+  thumbnailUrl       String?
+  podcastUrl String?
+
+  status             RecordingStatus @default(DRAFT)
+
+  distributionLogs   DistributionLog[]
+  guestDistributionCampaigns GuestDistributionCampaign[]
+  courtStudyRequests          CourtStudyRequest[]
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([interviewRequestId])
+  @@index([zoomMeetingId])
+  @@index([status])
+}
+
+model DistributionLog {
+  id                 String   @id @default(cuid())
+
+  recordingId        String
+  churchId           String?
+  churchContactId    String?
+
+  toEmail            String
+  subject            String
+  status             DistributionStatus @default(PENDING)
+  sentAt             DateTime?
+  errorMessage       String?
+
+  recording          Recording      @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+  church             Church?        @relation(fields: [churchId], references: [id], onDelete: SetNull)
+  churchContact      ChurchContact? @relation(fields: [churchContactId], references: [id], onDelete: SetNull)
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([recordingId])
+  @@index([churchId])
+  @@index([churchContactId])
+  @@index([status])
+  @@index([toEmail])
+}
+
+model ChurchContactZoomConnection {
+  id                String   @id @default(cuid())
+
+  // Pastor/church host connection.
+  churchContactId   String?
+
+  // Inclusive non-church/community organizer connection.
+  organizerEmail    String?
+
+  // Keeps Development and Production OAuth connections separate.
+  oauthEnvironment  String   @default("PRODUCTION")
+
+  zoomUserId        String
+  zoomAccountId     String?
+  zoomEmail         String?
+
+  accessTokenEncrypted  String
+  refreshTokenEncrypted String
+  tokenExpiresAt        DateTime
+  authorizedScopes      String?
+  status                ZoomConnectionStatus @default(CONNECTED)
+
+  connectedAt       DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  disconnectedAt    DateTime?
+
+  churchContact ChurchContact? @relation(fields: [churchContactId], references: [id], onDelete: Cascade)
+
+  @@unique([churchContactId, oauthEnvironment])
+  @@unique([organizerEmail, oauthEnvironment])
+  @@index([oauthEnvironment])
+}
+
+model ZoomOAuthInvitation {
+  id              String   @id @default(cuid())
+
+  // Pastor/church host authorization.
+  churchContactId String?
+
+  // Inclusive non-church/community organizer authorization.
+  organizerEmail  String?
+
+  // Records which Zoom OAuth environment issued this invitation.
+  oauthEnvironment String @default("PRODUCTION")
+
+  tokenHash       String   @unique
+  expiresAt       DateTime
+  usedAt          DateTime?
+  createdAt       DateTime @default(now())
+
+  churchContact ChurchContact? @relation(fields: [churchContactId], references: [id], onDelete: Cascade)
+
+  @@index([churchContactId])
+  @@index([organizerEmail])
+  @@index([oauthEnvironment])
+  @@index([expiresAt])
+}
+
+model CourtStudyTimeSlot {
+  id              String   @id @default(cuid())
+  startTime       DateTime
+  endTime         DateTime
+  timezone        String
+  capacity        Int?
+  isActive        Boolean  @default(true)
+  bookingDeadline DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  meetings CourtStudyMeeting[]
+
+  @@index([startTime])
+  @@index([isActive])
+}
+
+model CourtStudyMeeting {
+  id                  String @id @default(cuid())
+  churchContactId     String?
+  courtStudyRequestId String? @unique
+  timeSlotId          String?
+
+  title               String
+  description         String?
+  discussionType      CourtStudyDiscussionType
+  selectedChapter     String?
+  selectedSection     String?
+  selectedRecordingId String?
+
+  scheduledStart      DateTime
+  scheduledEnd        DateTime
+  timezone            String
+
+  zoomMeetingId       String?
+  zoomRegistrationUrl String?
+  zoomJoinUrl         String?
+  zoomPasscode              String?
+  zoomMeetingUuid       String?
+  actualSessionStart    DateTime?
+  actualSessionEnd      DateTime?
+  attendanceSyncedAt    DateTime?
+  totalRegistered       Int?
+  totalAttended         Int?
+  sessionCompletedAt    DateTime?
+  pastorSetupToken          String?   @unique
+  pastorSetupTokenExpiresAt DateTime?
+  meetingSetupRequestedAt   DateTime?
+  meetingDetailsSubmittedAt DateTime?
+  invitationSentAt     DateTime?
+  invitationSentTo     String?
+  invitationSendCount  Int       @default(0)
+  invitationLastError  String?
+  publicInvitationToken String?   @unique
+  status              CourtStudyMeetingStatus  @default(DRAFT)
+
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+
+ churchContact     ChurchContact?    @relation(fields: [churchContactId], references: [id], onDelete: SetNull)
+courtStudyRequest CourtStudyRequest? @relation(fields: [courtStudyRequestId], references: [id], onDelete: SetNull)
+timeSlot          CourtStudyTimeSlot? @relation(fields: [timeSlotId], references: [id], onDelete: SetNull)
+zoomRegistrants ZoomRegistrant[]
+  courtParticipants CourtStudyParticipant[]
+  @@index([churchContactId])
+  @@index([timeSlotId])
+  @@index([scheduledStart])
+  @@index([status])
+  @@index([courtStudyRequestId])
+}
+
+model ZoomRegistrant {
+  id                   String   @id @default(cuid())
+  courtStudyMeetingId  String
+  zoomMeetingId        String
+  zoomMeetingUuid      String?
+  zoomRegistrantId     String
+  accountId            String?
+  firstName            String?
+  lastName             String?
+  email                String
+  registrationStatus   String?
+  joinUrl String?
+  lastEventType        String   @default("meeting.registration_created")
+  lastZoomEventTs BigInt?
+  registeredAt         DateTime @default(now())
+  canceledAt           DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  courtStudyMeeting CourtStudyMeeting @relation(fields: [courtStudyMeetingId], references: [id], onDelete: Cascade)
+
+  @@unique([zoomMeetingId, zoomRegistrantId])
+  @@index([courtStudyMeetingId])
+  @@index([zoomMeetingId])
+  @@index([email])
+}
+
+model CourtStudyParticipant {
+  id                  String   @id @default(cuid())
+  courtStudyMeetingId String
+
+  email               String
+  firstName           String?
+  lastName            String?
+
+  invitationToken     String   @unique
+  status              String   @default("INVITED")
+
+  invitedAt           DateTime @default(now())
+  registeredAt        DateTime?
+
+  preSurveyScore       Int?
+  preSurveyStatement   String?
+  preSurveySubmittedAt DateTime?
+
+  postSurveyScore       Int?
+  postSurveyStatement   String?
+  postSurveyInvitedAt   DateTime?
+  postSurveySubmittedAt DateTime?
+
+  createdAt            DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  courtStudyMeeting CourtStudyMeeting @relation(fields: [courtStudyMeetingId], references: [id], onDelete: Cascade)
+  bookStudyReflectionAnswers BookStudyReflectionAnswer[]
+  @@unique([courtStudyMeetingId, email])
+  @@index([courtStudyMeetingId])
+  @@index([email])
+  @@index([status])
+}
+
+model BookStudyReflectionAnswer {
+  id                      String   @id @default(cuid())
+  courtStudyParticipantId  String
+  cmsQuestionId            String
+  questionTextSnapshot     String
+  questionSortOrder        Int
+  responseText             String?
+  responseScore            Int?
+  scaleLabelSnapshot       String?
+  submittedAt              DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  participant CourtStudyParticipant @relation(fields: [courtStudyParticipantId], references: [id], onDelete: Cascade)
+
+  @@unique([courtStudyParticipantId, cmsQuestionId])
+  @@index([courtStudyParticipantId])
+}
+
+model GuestDistributionCampaign {
+  id               String   @id @default(cuid())
+  recordingId      String
+  guestName        String
+  guestEmail       String
+  organizationName String?
+  distributionToken String   @unique
+  status           GuestDistributionCampaignStatus @default(DRAFT)
+  sentAt           DateTime?
+  expiresAt        DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+ recording Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+
+  courtStudyRequests CourtStudyRequest[]
+  pastorInvitations PastorInvitation[]
+  
+  @@index([recordingId])
+  @@index([guestEmail])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model PastorInvitation {
+  id           String   @id @default(cuid())
+  campaignId   String
+  pastorName   String?
+  pastorEmail  String
+  status       String   @default("PENDING")
+  sentAt       DateTime?
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaign GuestDistributionCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([pastorEmail])
+  @@index([status])
+}
+
+model CourtStudyRequest {
+  id String @id @default(cuid())
+
+  // Legacy interview / guest-distribution workflow
+  campaignId  String?
+  recordingId String?
+  pastorName  String?
+  pastorEmail String?
+  roleTitle   String?
+  churchName  String?
+  dioceseOrGroup String?
+  phone       String?
+
+  // Inclusive Court Study Organizer workflow
+  organizerName  String?
+  organizerEmail String?
+  organizerPhone String?
+  organizerRole  String?
+
+  hostGroupName    String?
+  hostGroupType    String?
+  hostGroupWebsite String?
+  hostGroupCity    String?
+  hostGroupState   String?
+  hostGroupZip     String?
+  hostGroupCountry String?
+
+  // Study material
+  studyFocusType       CourtStudyDiscussionType?
+  selectedRulesSections Json?
+
+  // Book Study material
+  bookExcerptId       String?
+  bookPartNumber      Int?
+  bookPartTitle       String?
+  bookChapterNumber   Int?
+  bookExcerptHtml     String?
+  durationMinutes     Int?
+
+  // Requested session details
+  preferredStart      DateTime?
+  timezone            String?
+  meetingFormat       CourtStudyHostMode?
+  sessionFormat       CourtStudySessionFormat?
+  zoomOAuthEnvironment String @default("PRODUCTION")
+  estimatedAttendance Int?
+  notes               String?
+
+  status    CourtStudyRequestStatus @default(PENDING)
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+
+  campaign GuestDistributionCampaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+recording Recording? @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+
+  courtStudyMeeting CourtStudyMeeting?
+
+  @@index([campaignId])
+  @@index([recordingId])
+  @@index([pastorEmail])
+  @@index([organizerEmail])
+  @@index([status])
+  @@index([preferredStart])
+}
+
+model MembershipEnrollment {
+  id                       String    @id @default(cuid())
+
+  email                    String
+  plan                     String    @default("BASIC")
+  status                   String    @default("PENDING_VERIFICATION")
+
+  verificationTokenHash    String?   @unique
+  verificationExpiresAt    DateTime?
+  verifiedAt               DateTime?
+  
+  checkoutAccessTokenHash String? @unique
+  checkoutAttemptKey       String?   @unique
+  checkoutSessionId        String?   @unique
+  checkoutExpiresAt        DateTime?
+
+  stripeCustomerId         String?
+  stripeSubscriptionId     String?   @unique
+
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  completedAt              DateTime?
+
+  @@index([email, status])
+  @@index([checkoutExpiresAt])
+  @@index([createdAt])
+}
+
