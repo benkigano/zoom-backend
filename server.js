@@ -4825,26 +4825,51 @@ app.post(
 );
 
 async function sendEmail(to, subject, body, htmlBody = null) {
+  const emailMode = process.env.EMAIL_DELIVERY_MODE || "gmail";
+
+  if (!["gmail", "mailtrap_sandbox"].includes(emailMode)) {
+    throw new Error("Invalid EMAIL_DELIVERY_MODE configuration.");
+  }
+
+  const useMailtrapSandbox = emailMode === "mailtrap_sandbox";
+
+  if (
+    useMailtrapSandbox &&
+    (!process.env.MAILTRAP_SMTP_USER ||
+      !process.env.MAILTRAP_SMTP_PASSWORD)
+  ) {
+    throw new Error("Mailtrap Sandbox SMTP credentials are missing.");
+  }
+
   const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
+    host: useMailtrapSandbox
+      ? "sandbox.smtp.mailtrap.io"
+      : "smtp.gmail.com",
+    port: useMailtrapSandbox ? 2525 : 465,
+    secure: !useMailtrapSandbox,
     auth: {
-      user: process.env.GMAIL_USER,
-      pass: process.env.GMAIL_APP_PASSWORD,
+      user: useMailtrapSandbox
+        ? process.env.MAILTRAP_SMTP_USER
+        : process.env.GMAIL_USER,
+      pass: useMailtrapSandbox
+        ? process.env.MAILTRAP_SMTP_PASSWORD
+        : process.env.GMAIL_APP_PASSWORD,
     },
   });
 
   await transporter.sendMail({
-    from: `"Court of Compassion" <${process.env.GMAIL_USER}>`,
+    from: useMailtrapSandbox
+      ? '"Court of Compassion Test" <test@example.com>'
+      : `"Court of Compassion" <${process.env.GMAIL_USER}>`,
     to,
     subject,
     text: body,
-   html: htmlBody || escapeHtml(String(body)).replace(/\n/g, "<br>"), 
+    html: htmlBody || escapeHtml(String(body)).replace(/\n/g, "<br>"),
   });
 
-  console.log("✅ DISTRIBUTION EMAIL SENT TO:", to);
+  console.log("DISTRIBUTION EMAIL SENT TO:", to);
 }
+
 const safeEmailHtml = (value) =>
   String(value ?? "")
     .replaceAll("&", "&amp;")
