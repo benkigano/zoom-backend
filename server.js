@@ -7352,10 +7352,14 @@ function hashMembershipToken(token) {
     .digest("hex");
 }
 
+const MEMBERSHIP_SITE_ORIGIN =
+  process.env.MEMBERSHIP_SITE_ORIGIN ||
+  "https://www.courtofcompassion.com";
+
 async function sendMembershipVerificationEmail(email, token) {
-  const verificationUrl = new URL(
+    const verificationUrl = new URL(
     "/membership/verify",
-    "https://www.courtofcompassion.com"
+    MEMBERSHIP_SITE_ORIGIN
   );
 
   verificationUrl.searchParams.set("token", token);
@@ -8061,13 +8065,15 @@ if (!isBasicMembershipCheckoutEligible(enrollment)) {
             subscription_data: {
               metadata: membershipMetadata,
             },
-            success_url:
-              "https://www.courtofcompassion.com/" +
-              "membership/success" +
-              "?session_id={CHECKOUT_SESSION_ID}",
-            cancel_url:
-              "https://www.courtofcompassion.com/" +
-              "membership/cancelled",
+
+          success_url:
+  MEMBERSHIP_SITE_ORIGIN + "/" +
+  "membership/success" +
+  "?session_id={CHECKOUT_SESSION_ID}",
+cancel_url:
+  MEMBERSHIP_SITE_ORIGIN + "/" +
+  "membership/cancelled",
+
           },
           {
             idempotencyKey:
