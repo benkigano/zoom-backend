@@ -7352,9 +7352,25 @@ function hashMembershipToken(token) {
     .digest("hex");
 }
 
-const MEMBERSHIP_SITE_ORIGIN =
+const membershipSiteUrl = new URL(
   process.env.MEMBERSHIP_SITE_ORIGIN ||
-  "https://www.courtofcompassion.com";
+    "https://www.courtofcompassion.com"
+);
+
+if (
+  !["http:", "https:"].includes(membershipSiteUrl.protocol) ||
+  membershipSiteUrl.username ||
+  membershipSiteUrl.password ||
+  membershipSiteUrl.pathname !== "/" ||
+  membershipSiteUrl.search ||
+  membershipSiteUrl.hash
+) {
+  throw new Error(
+    "MEMBERSHIP_SITE_ORIGIN must be a valid HTTP(S) origin"
+  );
+}
+
+const MEMBERSHIP_SITE_ORIGIN = membershipSiteUrl.origin;
 
 async function sendMembershipVerificationEmail(email, token) {
     const verificationUrl = new URL(
@@ -8067,12 +8083,10 @@ if (!isBasicMembershipCheckoutEligible(enrollment)) {
             },
 
           success_url:
-  MEMBERSHIP_SITE_ORIGIN + "/" +
-  "membership/success" +
+  new URL("/membership/success", MEMBERSHIP_SITE_ORIGIN).toString() +
   "?session_id={CHECKOUT_SESSION_ID}",
 cancel_url:
-  MEMBERSHIP_SITE_ORIGIN + "/" +
-  "membership/cancelled",
+  new URL("/membership/cancelled", MEMBERSHIP_SITE_ORIGIN).toString(),
 
           },
           {
