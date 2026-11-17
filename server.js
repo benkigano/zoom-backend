@@ -11,8 +11,15 @@ import Stripe from "stripe";
 
 import {
   normalizeMembershipEmail,
-  isBasicMembershipCheckoutEligible,
+  normalizeMembershipPlan,
+  isMembershipPlan,
+  getMembershipPlanName,
+  getMembershipPriceId,
+  getMembershipPlanFromPriceId,
+  validateMembershipSubscriptionMetadata,
+  isMembershipCheckoutEligible,
 } from "./membership/guards.js";
+import { claimMembershipCheckout } from "./membership/checkout.js";
 
 
 const stripe = process.env.STRIPE_SECRET_KEY
@@ -5442,12 +5449,12 @@ const syncStripeSubscription = async (
 
 
     // =====================================================
-    // BASIC MEMBERSHIP - STRIPE PAYMENT RECONCILIATION
+    // MEMBERSHIP - STRIPE PAYMENT RECONCILIATION
     // =====================================================
     // Called only from verified Stripe webhook processing.
     // Does not rely on the applicant visiting a success page.
 
-    const reconcileBasicMembershipCheckoutSession = async (
+    const reconcileMembershipCheckoutSession = async (
       checkoutSessionId
     ) => {
       if (!stripe) {
@@ -5467,15 +5474,15 @@ const syncStripeSubscription = async (
 
       const metadata = session.metadata || {};
 
-      if (
-        metadata.paymentPurpose !==
-          "GENERAL_MEMBERSHIP_SUBSCRIPTION" ||
-        metadata.subscriptionPlan !== "BASIC"
-      ) {
+      if (metadata.paymentPurpose !== "GENERAL_MEMBERSHIP_SUBSCRIPTION") {
         return {
           handled: false,
-          reason: "NOT_BASIC_MEMBERSHIP",
+          reason: "NOT_GENERAL_MEMBERSHIP",
         };
+      }
+
+      if (!isMembershipPlan(metadata.subscriptionPlan)) {
+        throw new Error("Invalid membership plan in Checkout metadata");
       }
 
       if (
@@ -5523,18 +5530,6 @@ const syncStripeSubscription = async (
       const subscriptionMetadata =
         subscription.metadata || {};
 
-      if (
-        subscriptionMetadata.paymentPurpose !==
-          "GENERAL_MEMBERSHIP_SUBSCRIPTION" ||
-        subscriptionMetadata.subscriptionPlan !== "BASIC" ||
-        subscriptionMetadata.membershipEnrollmentId !==
-          enrollmentId
-      ) {
-        throw new Error(
-          "Stripe subscription metadata mismatch"
-        );
-      }
-
       const stripeCustomerId =
         typeof subscription.customer === "string"
           ? subscription.customer
@@ -5564,18 +5559,11 @@ const syncStripeSubscription = async (
         item?.price?.id || ""
       ).trim();
 
-      const expectedPriceId = String(
-        process.env.STRIPE_PRICE_BASIC || ""
-      ).trim();
-
-      if (
-        !expectedPriceId ||
-        stripePriceId !== expectedPriceId
-      ) {
-        throw new Error(
-          "Basic Membership Stripe price mismatch"
-        );
-      }
+      const membershipPlan = validateMembershipSubscriptionMetadata(
+        metadata,
+        subscriptionMetadata,
+        stripePriceId
+      );
 
       if (subscription.status !== "active") {
         return {
@@ -5610,9 +5598,9 @@ const syncStripeSubscription = async (
             },
           });
 
-        if (!enrollment || enrollment.plan !== "BASIC") {
+        if (!enrollment || enrollment.plan !== membershipPlan) {
           throw new Error(
-            "Basic Membership enrollment not found"
+            "Membership enrollment plan mismatch"
           );
         }
 
@@ -5700,7 +5688,7 @@ const syncStripeSubscription = async (
           stripeCustomerId,
           stripeSubscriptionId,
           stripePriceId,
-          plan: "BASIC",
+          plan: membershipPlan,
           status: "ACTIVE",
           currentPeriodEnd,
           cancelAtPeriodEnd:
@@ -5825,7 +5813,7 @@ const syncStripeSubscription = async (
       ).trim();
 
       const recognizedPlan =
-        getStripePlanFromPriceId(stripePriceId);
+        getMembershipPlanFromPriceId(stripePriceId);
 
       const periodEndSeconds = Number(
         item?.current_period_end ??
@@ -6234,19 +6222,19 @@ const syncStripeSubscription = async (
             "GENERAL_MEMBERSHIP_SUBSCRIPTION"
           ) {
             const membershipResult =
-              await reconcileBasicMembershipCheckoutSession(
+              await reconcileMembershipCheckoutSession(
                 session.id
               );
 
             if (!membershipResult.handled) {
   console.error(
-    "Basic Membership reconciliation remains pending:",
+    "Membership reconciliation remains pending:",
     session.id,
     membershipResult.reason
   );
 
   throw new Error(
-    "Basic Membership payment reconciliation incomplete: " +
+    "Membership payment reconciliation incomplete: " +
     membershipResult.reason
   );
 }
@@ -7319,7 +7307,7 @@ const requestedPlan =
 );
 
 // ============================================================
-// BASIC MEMBERSHIP — EMAIL VERIFICATION AND ENROLLMENT
+// MEMBERSHIP — EMAIL VERIFICATION AND ENROLLMENT
 // ============================================================
 
 const MEMBERSHIP_VERIFICATION_TTL_MS = 30 * 60 * 1000;
@@ -7397,7 +7385,12 @@ if (
 
 const MEMBERSHIP_SITE_ORIGIN = membershipSiteUrl.origin;
 
-async function sendMembershipVerificationEmail(email, token) {
+async function sendMembershipVerificationEmail(email, token, plan) {
+  const planName = getMembershipPlanName(plan);
+  if (!planName) {
+    throw new Error("Invalid membership enrollment plan");
+  }
+
     const verificationUrl = new URL(
     "/membership/verify",
     MEMBERSHIP_SITE_ORIGIN
@@ -7406,7 +7399,7 @@ async function sendMembershipVerificationEmail(email, token) {
   verificationUrl.searchParams.set("token", token);
 
   const body = [
-    "Court of Compassion — Basic Membership",
+    `Court of Compassion — ${planName}`,
     "",
     "Please verify your email address to continue your enrollment.",
     "",
@@ -7422,13 +7415,13 @@ async function sendMembershipVerificationEmail(email, token) {
 
   await sendEmail(
     email,
-    "Verify your Court of Compassion Basic Membership email",
+    `Verify your Court of Compassion ${planName} email`,
     body
   );
 }
 
 
-async function requestMembershipVerification(email) {
+async function requestMembershipVerification(email, plan = null) {
   const activeSubscriber =
     await isActiveSubscriberEmail(email);
 
@@ -7440,7 +7433,7 @@ async function requestMembershipVerification(email) {
     await prisma.membershipEnrollment.findFirst({
       where: {
         email,
-        plan: "BASIC",
+        ...(plan ? { plan } : {}),
         status: {
           in: MEMBERSHIP_PENDING_STATUSES,
         },
@@ -7493,11 +7486,10 @@ async function requestMembershipVerification(email) {
           existing.checkoutSessionId
         );
 
-      // Recovery requires a positively identified,
-      // expired, unpaid Basic Membership session.
+      // Recovery requires a positively identified membership session.
       
       // Confirm that this session belongs to the
-      // same verified Basic Membership enrollment.
+      // same verified membership enrollment.
       const belongsToEnrollment =
         session.id === existing.checkoutSessionId &&
         session.mode === "subscription" &&
@@ -7505,7 +7497,7 @@ async function requestMembershipVerification(email) {
         session.client_reference_id === existing.id &&
         session.metadata?.paymentPurpose ===
           "GENERAL_MEMBERSHIP_SUBSCRIPTION" &&
-        session.metadata?.subscriptionPlan === "BASIC" &&
+        session.metadata?.subscriptionPlan === existing.plan &&
         session.metadata?.membershipEnrollmentId ===
           existing.id;
 
@@ -7582,7 +7574,7 @@ async function requestMembershipVerification(email) {
       await prisma.membershipEnrollment.create({
         data: {
           email,
-          plan: "BASIC",
+          plan: plan || "BASIC",
           status: "PENDING_VERIFICATION",
           verificationTokenHash:
             verification.tokenHash,
@@ -7601,12 +7593,13 @@ async function requestMembershipVerification(email) {
 
   await sendMembershipVerificationEmail(
     email,
-    verification.token
+    verification.token,
+    existing?.plan || plan || "BASIC"
   );
 }
 
 
-// Start Basic Membership enrollment.
+// Start membership enrollment.
 // No Stripe payment is initiated by this endpoint.
 app.post(
   "/api/membership/enroll",
@@ -7614,26 +7607,24 @@ app.post(
   async (req, res) => {
     const email = normalizeMembershipEmail(req.body?.email);
 
-    const plan = String(req.body?.plan || "BASIC")
-      .trim()
-      .toUpperCase();
+    const plan = normalizeMembershipPlan(req.body?.plan);
 
-    if (!email || plan !== "BASIC") {
+    if (!email || !plan) {
       return res.status(400).json({
         success: false,
-        error: "A valid email and Basic Membership plan are required.",
+        error: "A valid email and membership plan are required.",
       });
     }
 
     try {
-      await requestMembershipVerification(email);
+      await requestMembershipVerification(email, plan);
 
       return res.status(200).json(
         membershipVerificationResponse
       );
     } catch (error) {
       console.error(
-        "Basic Membership enrollment failed:",
+        "Membership enrollment failed:",
         error?.code || error?.message || "Unknown error"
       );
 
@@ -7653,16 +7644,19 @@ app.post(
   membershipEnrollmentRateLimiter,
   async (req, res) => {
     const email = normalizeMembershipEmail(req.body?.email);
+    const plan = req.body?.plan === undefined
+      ? null
+      : normalizeMembershipPlan(req.body.plan);
 
-    if (!email) {
+    if (!email || (req.body?.plan !== undefined && !plan)) {
       return res.status(400).json({
         success: false,
-        error: "A valid email address is required.",
+        error: "A valid email address and membership plan are required.",
       });
     }
 
     try {
-      await requestMembershipVerification(email);
+      await requestMembershipVerification(email, plan);
 
       return res.status(200).json(
         membershipVerificationResponse
@@ -7716,6 +7710,10 @@ app.post(
           error:
             "This verification link is invalid or has already been used.",
         });
+      }
+
+      if (!isMembershipPlan(enrollment.plan)) {
+        throw new Error("Invalid membership enrollment plan");
       }
 
       const isCheckoutResumption =
@@ -7780,7 +7778,7 @@ app.post(
           session.client_reference_id !== enrollment.id ||
           session.metadata?.paymentPurpose !==
             "GENERAL_MEMBERSHIP_SUBSCRIPTION" ||
-          session.metadata?.subscriptionPlan !== "BASIC" ||
+          session.metadata?.subscriptionPlan !== enrollment.plan ||
           session.metadata?.membershipEnrollmentId !==
             enrollment.id
         ) {
@@ -7826,7 +7824,6 @@ app.post(
             status: isCheckoutResumption
               ? "CHECKOUT_PENDING"
               : "EMAIL_VERIFIED",
-
             ...(!isCheckoutResumption
               ? {
                   verifiedAt: new Date(),
@@ -7855,20 +7852,21 @@ app.post(
         status: isCheckoutResumption
           ? "CHECKOUT_PENDING"
           : "EMAIL_VERIFIED",
+        plan: enrollment.plan,
         message: isCheckoutResumption
           ? "Your email has been reauthorized. " +
             "Select Continue to Payment to resume " +
             "your existing checkout."
           : "Your email address has been verified. " +
             "Select Continue to Payment to begin " +
-            "Basic Membership checkout.",
+            `${getMembershipPlanName(enrollment.plan)} checkout.`,
         checkoutAccessToken,
         checkoutAccessExpiresAt:
           checkoutAccessExpiresAt.toISOString(),
       });
     } catch (error) {
       console.error(
-        "Basic Membership verification failed:",
+        "Membership verification failed:",
         error?.code ||
           error?.message ||
           "Unknown error"
@@ -7885,7 +7883,7 @@ app.post(
 );
 
 // =====================================================
-// BASIC MEMBERSHIP - STRIPE SUBSCRIPTION CHECKOUT
+// MEMBERSHIP - STRIPE SUBSCRIPTION CHECKOUT
 // =====================================================
 // Requires a valid checkout credential issued after email
 // verification. Does not activate membership or collect
@@ -7906,14 +7904,10 @@ app.post(
       });
     }
 
-    const basicPriceId = String(
-      process.env.STRIPE_PRICE_BASIC || ""
-    ).trim();
-
-    if (!stripe || !basicPriceId) {
+    if (!stripe) {
       return res.status(503).json({
         success: false,
-        error: "Basic Membership checkout is unavailable.",
+        error: "Membership checkout is unavailable.",
       });
     }
 
@@ -7931,7 +7925,7 @@ app.post(
 
       if (
   !enrollment ||
-  enrollment.plan !== "BASIC" ||
+  !isMembershipPlan(enrollment.plan) ||
   !enrollment.verifiedAt ||
   !enrollment.checkoutExpiresAt ||
   enrollment.checkoutExpiresAt.getTime() <= Date.now()
@@ -7943,13 +7937,21 @@ app.post(
       }
 
      
-if (!isBasicMembershipCheckoutEligible(enrollment)) {
+if (!isMembershipCheckoutEligible(enrollment)) {
   return res.status(409).json({
     success: false,
     error: "This enrollment cannot begin checkout.",
   });
 }
  
+      const membershipPriceId = getMembershipPriceId(enrollment.plan);
+      if (!membershipPriceId) {
+        console.error("Membership Stripe price is not configured:", enrollment.plan);
+        return res.status(503).json({
+          success: false,
+          error: "Membership checkout is unavailable.",
+        });
+      }
 
       
       // A new membership checkout must not replace or
@@ -8048,25 +8050,27 @@ if (!isBasicMembershipCheckoutEligible(enrollment)) {
       if (enrollment.status === "EMAIL_VERIFIED") {
         attemptKey = crypto.randomUUID();
 
-        const claimed =
-          await prisma.membershipEnrollment.updateMany({
-            where: {
-              id: enrollment.id,
-              status: "EMAIL_VERIFIED",
-              checkoutAccessTokenHash: accessTokenHash,
-              checkoutExpiresAt: {
-                gt: new Date(),
-              },
-              checkoutAttemptKey: null,
-              checkoutSessionId: null,
-            },
-            data: {
-              status: "CHECKOUT_PENDING",
-              checkoutAttemptKey: attemptKey,
-            },
-          });
+        const claim = await claimMembershipCheckout(
+          prisma, enrollment, accessTokenHash, attemptKey
+        );
 
-        if (claimed.count !== 1) {
+        if (claim === "OTHER_CHECKOUT") {
+          return res.status(409).json({
+            success: false,
+            status: "CHECKOUT_REVIEW_REQUIRED",
+            error: "Another membership checkout is already in progress for this email.",
+          });
+        }
+
+        if (claim === "EXISTING_SUBSCRIPTION") {
+          return res.status(409).json({
+            success: false,
+            status: "EXISTING_MEMBERSHIP_REVIEW_REQUIRED",
+            error: "A subscription record already exists for this email address.",
+          });
+        }
+
+        if (claim !== "CLAIMED") {
           return res.status(409).json({
             success: false,
             error:
@@ -8085,7 +8089,7 @@ if (!isBasicMembershipCheckoutEligible(enrollment)) {
       const membershipMetadata = {
         membershipEnrollmentId: enrollment.id,
         paymentPurpose: "GENERAL_MEMBERSHIP_SUBSCRIPTION",
-        subscriptionPlan: "BASIC",
+        subscriptionPlan: enrollment.plan,
       };
 
       // A stable idempotency key prevents retries from
@@ -8098,7 +8102,7 @@ if (!isBasicMembershipCheckoutEligible(enrollment)) {
             client_reference_id: enrollment.id,
             line_items: [
               {
-                price: basicPriceId,
+                price: membershipPriceId,
                 quantity: 1,
               },
             ],
@@ -8116,7 +8120,7 @@ cancel_url:
           },
           {
             idempotencyKey:
-              `basic-membership-${enrollment.id}-${attemptKey}`,
+              `${enrollment.plan === "BASIC" ? "basic-membership" : "membership"}-${enrollment.id}-${attemptKey}`,
           }
         );
 
@@ -8164,7 +8168,7 @@ cancel_url:
       });
     } catch (error) {
       console.error(
-        "Basic Membership checkout failed:",
+        "Membership checkout failed:",
         error?.code || error?.message || "Unknown error"
       );
 
