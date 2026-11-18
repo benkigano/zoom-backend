@@ -675,7 +675,8 @@ model MembershipEnrollment {
   verificationTokenHash    String?   @unique
   verificationExpiresAt    DateTime?
   verifiedAt               DateTime?
-
+  
+  checkoutAccessTokenHash String? @unique
   checkoutAttemptKey       String?   @unique
   checkoutSessionId        String?   @unique
   checkoutExpiresAt        DateTime?
