@@ -20,6 +20,11 @@ import {
   isMembershipCheckoutEligible,
 } from "./membership/guards.js";
 import { claimMembershipCheckout } from "./membership/checkout.js";
+import {
+  getMembershipDeploymentEnvironment,
+  membershipWebhookRouting,
+  requireMembershipEnvironment,
+} from "./membership/environment.js";
 
 
 const stripe = process.env.STRIPE_SECRET_KEY
@@ -5150,6 +5155,14 @@ app.post(
 
     console.log("📩 STRIPE WEBHOOK HIT:", event.type);
 
+    // Only after Stripe signature verification, reject membership events
+    // not created for this deployment. Legacy Court Study events pass through.
+    const membershipRoute = membershipWebhookRouting(event);
+    if (membershipRoute.membership && !membershipRoute.accept) {
+      console.warn("Membership webhook skipped:", membershipRoute.reason, event.type);
+      return res.status(200).json({ received: true });
+    }
+
         const normalizeStripeEmail = (value) =>
       String(value || "")
         .trim()
@@ -5448,6 +5461,10 @@ const syncStripeSubscription = async (
         await stripe.checkout.sessions.retrieve(sessionId);
 
       const metadata = session.metadata || {};
+
+      if (metadata.paymentPurpose === "GENERAL_MEMBERSHIP_SUBSCRIPTION") {
+        requireMembershipEnvironment(metadata);
+      }
 
       if (metadata.paymentPurpose !== "GENERAL_MEMBERSHIP_SUBSCRIPTION") {
         return {
@@ -5749,6 +5766,10 @@ const syncStripeSubscription = async (
         await stripe.subscriptions.retrieve(subscriptionId);
 
       const metadata = current.metadata || {};
+
+      if (metadata.paymentPurpose === "GENERAL_MEMBERSHIP_SUBSCRIPTION") {
+        requireMembershipEnvironment(metadata);
+      }
 
       if (
         metadata.paymentPurpose !==
@@ -7919,6 +7940,15 @@ if (!isMembershipCheckoutEligible(enrollment)) {
   });
 }
  
+      // Fail closed before claiming checkout or requesting a Stripe session.
+      const membershipEnvironment = getMembershipDeploymentEnvironment();
+      if (!membershipEnvironment) {
+        return res.status(503).json({
+          success: false,
+          error: "Membership checkout is unavailable.",
+        });
+      }
+
       const membershipPriceId = getMembershipPriceId(enrollment.plan);
       if (!membershipPriceId) {
         console.error("Membership Stripe price is not configured:", enrollment.plan);
@@ -8065,6 +8095,7 @@ if (!isMembershipCheckoutEligible(enrollment)) {
         membershipEnrollmentId: enrollment.id,
         paymentPurpose: "GENERAL_MEMBERSHIP_SUBSCRIPTION",
         subscriptionPlan: enrollment.plan,
+        membershipEnvironment,
       };
 
       // A stable idempotency key prevents retries from
