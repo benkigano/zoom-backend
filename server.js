@@ -8,6 +8,7 @@ import { prisma } from "./prisma/client.js";
 import escapeHtml from "escape-html";
 import { convert } from "html-to-text";
 import Stripe from "stripe";
+import { shouldIgnoreGeneralMembershipEvent } from "./webhooks/generalMembershipQuarantine.js";
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
@@ -5133,6 +5134,14 @@ app.post(
         success: false,
         error: "Invalid Stripe webhook signature",
       });
+    }
+
+    // Signed general-membership events belong to the new enrollment workflow.
+    // Until that workflow is released here, never allow legacy subscription
+    // reconciliation to create or overwrite production membership records.
+    if (shouldIgnoreGeneralMembershipEvent(event)) {
+      console.log("General membership Stripe event acknowledged without legacy processing:", event.type);
+      return res.status(200).json({ received: true });
     }
 
     console.log("📩 STRIPE WEBHOOK HIT:", event.type);
