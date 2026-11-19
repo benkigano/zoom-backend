@@ -26,6 +26,11 @@ import {
   membershipWebhookRouting,
   requireMembershipEnvironment,
 } from "./membership/environment.js";
+import {
+  MEMBER_PORTAL_PATH,
+  createMemberPortalAuthenticationMiddleware,
+  createMemberPortalSubscriptionHandler,
+} from "./membership/memberPortal.js";
 
 
 const stripe = process.env.STRIPE_SECRET_KEY
@@ -567,6 +572,13 @@ app.use((req, res, next) => {
     "max-age=31536000; includeSubDomains"
   );
   res.setHeader("X-Content-Type-Options", "nosniff");
+  next();
+});
+
+app.use((req, res, next) => {
+  if (req.path.replace(/\/+$/, "") === MEMBER_PORTAL_PATH) {
+    res.setHeader("Cache-Control", "no-store");
+  }
   next();
 });
 
@@ -7314,6 +7326,24 @@ const requestedPlan =
 // ============================================================
 // MEMBERSHIP — EMAIL VERIFICATION AND ENROLLMENT
 // ============================================================
+
+const memberPortalRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: "Too many requests. Please try again later.",
+  },
+});
+
+app.get(
+  MEMBER_PORTAL_PATH,
+  memberPortalRateLimiter,
+  createMemberPortalAuthenticationMiddleware(),
+  createMemberPortalSubscriptionHandler(prisma)
+);
 
 const MEMBERSHIP_VERIFICATION_TTL_MS = 30 * 60 * 1000;
 
