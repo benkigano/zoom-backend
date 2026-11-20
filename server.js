@@ -31,6 +31,10 @@ import {
   createMemberPortalAuthenticationMiddleware,
   createMemberPortalSubscriptionHandler,
 } from "./membership/memberPortal.js";
+import {
+  sendMembershipActivationConfirmation,
+  createMembershipCheckoutStatusHandler,
+} from "./membership/activation.js";
 
 
 const stripe = process.env.STRIPE_SECRET_KEY
@@ -5756,6 +5760,9 @@ const syncStripeSubscription = async (
         return {
           handled: true,
           alreadyCompleted: false,
+          enrollmentId: enrollment.id,
+          email: enrollment.email,
+          plan: enrollment.plan,
         };
       });
     };
@@ -6255,6 +6262,11 @@ const syncStripeSubscription = async (
     membershipResult.reason
   );
 }
+
+            await sendMembershipActivationConfirmation(
+              membershipResult,
+              sendEmail
+            );
 
             break;
           }
@@ -7357,6 +7369,19 @@ const membershipEnrollmentRateLimiter = rateLimit({
     error: "Too many enrollment requests. Please try again later.",
   },
 });
+
+const membershipCheckoutStatusRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
+
+app.get(
+  "/api/membership/checkout-status",
+  membershipCheckoutStatusRateLimiter,
+  createMembershipCheckoutStatusHandler(prisma)
+);
 
 function createMembershipVerificationToken() {
   const token = crypto.randomBytes(32).toString("hex");
