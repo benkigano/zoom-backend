@@ -35,6 +35,12 @@ import {
   sendMembershipActivationConfirmation,
   createMembershipCheckoutStatusHandler,
 } from "./membership/activation.js";
+import {
+  buildMembershipVerificationUrl,
+  createCourtStudyMembershipEnrollmentHandler,
+  createCourtStudyMembershipContinuationHandler,
+  releaseCourtStudyRequestForActiveSubscriber,
+} from "./membership/courtStudyContinuation.js";
 
 
 const stripe = process.env.STRIPE_SECRET_KEY
@@ -5961,140 +5967,16 @@ const syncStripeSubscription = async (
       });
     };
 
-    
-    const releaseCourtStudyForActiveSubscriber = async (
-  courtStudyRequestId
-) => {
-  const requestId = String(
-    courtStudyRequestId || ""
-  ).trim();
-
-  if (!requestId) {
-    return {
-      released: false,
-      reason: "missing_request_id",
-    };
-  }
-
-  const courtStudyRequest =
-    await prisma.courtStudyRequest.findUnique({
-      where: {
-        id: requestId,
-      },
-    });
-
-  if (!courtStudyRequest) {
-    throw new Error(
-      `Court Study request not found for subscription checkout: ${requestId}`
-    );
-  }
-
-  const existingRequestStatus = String(
-    courtStudyRequest.status || ""
-  )
-    .trim()
-    .toUpperCase();
-
-  if (existingRequestStatus !== "PENDING") {
-    return {
-      released: false,
-      reason: "request_not_pending",
-      status: existingRequestStatus,
-    };
-  }
-
-  const meetingFormat = String(
-    courtStudyRequest.meetingFormat || ""
-  )
-    .trim()
-    .toUpperCase();
-
-  if (meetingFormat !== "COMMUNITY_HOSTED") {
-    throw new Error(
-      `Court Study subscription request ${requestId} is not COMMUNITY_HOSTED.`
-    );
-  }
-
-  const organizerEmail = String(
-    courtStudyRequest.organizerEmail ||
-      courtStudyRequest.pastorEmail ||
-      ""
-  )
-    .trim()
-    .toLowerCase();
-
-  if (!organizerEmail) {
-    throw new Error(
-      `Court Study request ${requestId} does not have an organizer email.`
-    );
-  }
-
-  const isActiveSubscriber =
-    await isActiveSubscriberEmail(
-      organizerEmail
-    );
-
-  if (!isActiveSubscriber) {
-    return {
-      released: false,
-      reason: "subscription_not_active",
-    };
-  }
-
-  const updatedRequest =
-    await prisma.courtStudyRequest.update({
-      where: {
-        id: requestId,
-      },
-      data: {
-        status: "APPROVED",
-      },
-    });
-
-  let zoomConnectionEmailSent = false;
-  let zoomConnectionEmailError = null;
-
-  try {
-    await sendCommunityHostedZoomApprovalEmail({
-      requestId,
-      organizerName:
-        courtStudyRequest.organizerName ||
-        courtStudyRequest.pastorName ||
-        "",
-      organizerEmail:
-        courtStudyRequest.organizerEmail ||
-        courtStudyRequest.pastorEmail ||
-        "",
-      hostGroupName:
-        courtStudyRequest.hostGroupName ||
-        courtStudyRequest.churchName ||
-        "",
-      preferredStart:
-        courtStudyRequest.preferredStart,
-      timezone:
-        courtStudyRequest.timezone,
-    });
-
-    zoomConnectionEmailSent = true;
-  } catch (emailError) {
-    zoomConnectionEmailError = String(
-      emailError?.message || emailError
-    );
-
-    console.error(
-      "❌ SUBSCRIBER COURT STUDY ZOOM APPROVAL EMAIL FAILED:",
-      requestId,
-      emailError
-    );
-  }
-
-  return {
-    released: true,
-    status: updatedRequest.status,
-    zoomConnectionEmailSent,
-    zoomConnectionEmailError,
-  };
-};
+    const releaseCourtStudyForActiveSubscriber = (
+      courtStudyRequestId
+    ) =>
+      releaseCourtStudyRequestForActiveSubscriber({
+        courtStudyRequestId,
+        prisma,
+        isActiveSubscriberEmail,
+        sendApprovalEmail:
+          sendCommunityHostedZoomApprovalEmail,
+      });
     
     try {
       switch (event.type) {
@@ -7113,9 +6995,6 @@ app.post(
             "https://www.courtofcompassion.com/court-study/continue" +
             `?requestId=${encodeURIComponent(
               requestId
-            )}` +
-            `&token=${encodeURIComponent(
-              continuationToken
             )}`,
         });
 
@@ -7445,25 +7324,29 @@ if (
 
 const MEMBERSHIP_SITE_ORIGIN = membershipSiteUrl.origin;
 
-async function sendMembershipVerificationEmail(email, token, plan) {
+async function sendMembershipVerificationEmail(
+  email,
+  token,
+  plan,
+  continuation = null
+) {
   const planName = getMembershipPlanName(plan);
   if (!planName) {
     throw new Error("Invalid membership enrollment plan");
   }
 
-    const verificationUrl = new URL(
-    "/membership/verify",
-    MEMBERSHIP_SITE_ORIGIN
+  const verificationUrl = buildMembershipVerificationUrl(
+    MEMBERSHIP_SITE_ORIGIN,
+    token,
+    continuation
   );
-
-  verificationUrl.searchParams.set("token", token);
 
   const body = [
     `Court of Compassion — ${planName}`,
     "",
     "Please verify your email address to continue your enrollment.",
     "",
-    verificationUrl.toString(),
+    verificationUrl,
     "",
     "This verification link expires in 30 minutes.",
     "",
@@ -7481,12 +7364,16 @@ async function sendMembershipVerificationEmail(email, token, plan) {
 }
 
 
-async function requestMembershipVerification(email, plan = null) {
+async function requestMembershipVerification(
+  email,
+  plan = null,
+  continuation = null
+) {
   const activeSubscriber =
     await isActiveSubscriberEmail(email);
 
   if (activeSubscriber) {
-    return;
+    return false;
   }
 
   const existing =
@@ -7507,9 +7394,10 @@ async function requestMembershipVerification(email, plan = null) {
   if (
     existing?.updatedAt &&
     Date.now() - existing.updatedAt.getTime() <
-      MEMBERSHIP_EMAIL_COOLDOWN_MS
+      MEMBERSHIP_EMAIL_COOLDOWN_MS &&
+    !continuation
   ) {
-    return;
+    return false;
   }
 
   let recoveryAllowed = false;
@@ -7526,7 +7414,7 @@ async function requestMembershipVerification(email, plan = null) {
         existing.stripeSubscriptionId ||
         existing.stripeCustomerId
       ) {
-        return;
+        return false;
       }
 
       recoveryAllowed = true;
@@ -7538,7 +7426,7 @@ async function requestMembershipVerification(email, plan = null) {
         existing.stripeSubscriptionId ||
         existing.stripeCustomerId
       ) {
-        return;
+        return false;
       }
 
       const session =
@@ -7562,7 +7450,7 @@ async function requestMembershipVerification(email, plan = null) {
           existing.id;
 
       if (!belongsToEnrollment) {
-        return;
+        return false;
       }
 
       if (
@@ -7584,13 +7472,13 @@ async function requestMembershipVerification(email, plan = null) {
       } else {
         // Completed, paid, or uncertain sessions must
         // not be reauthorized through this function.
-        return;
+        return false;
       }
 
     } else {
       // Reconciliation-pending or unknown states require
       // review, not automatic reauthorization.
-      return;
+      return false;
     }
   }
 
@@ -7627,7 +7515,7 @@ async function requestMembershipVerification(email, plan = null) {
     // Another request may have changed this enrollment.
     // Do not send a token that was not successfully saved.
     if (updated.count !== 1) {
-      return;
+      return false;
     }
   } else {
     try {
@@ -7644,7 +7532,7 @@ async function requestMembershipVerification(email, plan = null) {
       });
     } catch (error) {
       if (error?.code === "P2002") {
-        return;
+        return false;
       }
 
       throw error;
@@ -7654,10 +7542,39 @@ async function requestMembershipVerification(email, plan = null) {
   await sendMembershipVerificationEmail(
     email,
     verification.token,
-    existing?.plan || plan || "BASIC"
+    existing?.plan || plan || "BASIC",
+    continuation
   );
+  return true;
 }
 
+const courtStudyMembershipEnrollmentHandler =
+  createCourtStudyMembershipEnrollmentHandler({
+    prisma,
+    verifyContinuationToken: verifyCourtStudyContinuationToken,
+    isActiveSubscriberEmail,
+    requestMembershipVerification,
+  });
+
+const courtStudyMembershipContinuationHandler =
+  createCourtStudyMembershipContinuationHandler({
+    prisma,
+    verifyContinuationToken: verifyCourtStudyContinuationToken,
+    isActiveSubscriberEmail,
+    sendApprovalEmail: sendCommunityHostedZoomApprovalEmail,
+  });
+
+app.post(
+  "/api/court-study/membership-enroll",
+  membershipEnrollmentRateLimiter,
+  courtStudyMembershipEnrollmentHandler
+);
+
+app.post(
+  "/api/court-study/membership-continuation",
+  membershipEnrollmentRateLimiter,
+  courtStudyMembershipContinuationHandler
+);
 
 // Start membership enrollment.
 // No Stripe payment is initiated by this endpoint.
