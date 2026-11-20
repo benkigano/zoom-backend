@@ -57,3 +57,48 @@ activation can leave the confirmation unsent; it is not retried automatically.
 `ACTIVE` when the completed enrollment matches an active subscription,
 otherwise `PENDING`. The session ID is a bearer value: anyone holding it can
 check the status, so do not share it. The endpoint does not activate membership.
+
+## Court Study membership continuation
+
+For a pending community-hosted Court Study, Wix can use the existing
+request-specific continuation token to start membership enrollment without
+accepting an email address from the browser:
+
+1. `POST /api/court-study/membership-enroll` with
+   `{"requestId":"...","token":"...","plan":"BASIC"}`. Accepted plans are
+   `BASIC`, `CHURCH_INDIVIDUAL`, and `CHURCH_GROUP`, matching the existing
+   Court Study subscription choices. The backend verifies the continuation,
+   loads the request's stored organizer email, and sends the existing
+   membership verification email to that address. Caller-supplied `email`,
+   `memberEmail`, `memberId`, or `organizerEmail` fields are rejected.
+2. The successful response is either
+   `{"success":true,"status":"VERIFICATION_REQUIRED"}` or
+   `{"success":true,"status":"ACTIVE_SUBSCRIBER","requestId":"..."}`.
+   If the existing enrollment cannot safely continue,
+   `MEMBERSHIP_ENROLLMENT_UNAVAILABLE` is returned with HTTP 409.
+   The former uses the existing `/api/membership/verify` and
+   `/api/membership/checkout` flow. It does not create another checkout
+   system.
+3. The verification email link carries `courtStudyRequestId` and
+   `courtStudyToken` in its URL fragment. Wix must read and retain this pair
+   before submitting the existing verification token. Keep it in
+   `sessionStorage` or another short-lived browser state across the Stripe
+   redirect; do not put the continuation token in a Stripe success or cancel
+   URL, analytics event, or log.
+4. After the existing `/api/membership/checkout-status?session_id=...`
+   returns `{"status":"ACTIVE"}`, or immediately for
+   `ACTIVE_SUBSCRIBER`, call
+   `POST /api/court-study/membership-continuation` with
+   `{"requestId":"...","token":"..."}`. The backend independently checks the
+   active subscription against the email stored on that request before
+   approving it. Success is
+   `{"success":true,"requestId":"...","status":"APPROVED","zoomReady":true}`;
+   an inactive subscription returns HTTP 409 with
+   `{"success":false,"requestId":"...","status":"MEMBERSHIP_NOT_ACTIVE","zoomReady":false}`.
+   Other ineligible requests also remain unapproved.
+
+Both continuation endpoints are rate limited and return `Cache-Control:
+no-store`. If the one-time Court Study Checkout is cancelled, its return URL
+contains only `requestId`; Wix must restore the continuation token from the
+short-lived state saved before leaving for Stripe. No database migration or
+schema change is required.
