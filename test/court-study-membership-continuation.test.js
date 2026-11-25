@@ -131,29 +131,36 @@ const validBody = {
   token: continuationToken,
 };
 
-test("membership enrollment derives the email from the request and carries continuation context", async () => {
-  const setup = createEnrollmentSetup();
+test("membership enrollment accepts eligible plans and carries continuation context", async () => {
+  for (const plan of [
+    "BASIC",
+    "ORGANIZER",
+    "CHURCH_INDIVIDUAL",
+    "CHURCH_GROUP",
+  ]) {
+    const setup = createEnrollmentSetup();
 
-  await setup.run({
-    ...validBody,
-    plan: "CHURCH_INDIVIDUAL",
-  });
+    await setup.run({
+      ...validBody,
+      plan,
+    });
 
-  assert.equal(setup.response.statusCode, 200);
-  assert.deepEqual(setup.response.body, {
-    success: true,
-    status: "VERIFICATION_REQUIRED",
-  });
-  assert.equal(setup.response.headers["Cache-Control"], "no-store");
-  assert.deepEqual(
-    setup.calls.find(([name]) => name === "requestMembershipVerification"),
-    [
-      "requestMembershipVerification",
-      "organizer@example.com",
-      "CHURCH_INDIVIDUAL",
-      { requestId, token: continuationToken },
-    ]
-  );
+    assert.equal(setup.response.statusCode, 200, plan);
+    assert.deepEqual(setup.response.body, {
+      success: true,
+      status: "VERIFICATION_REQUIRED",
+    });
+    assert.equal(setup.response.headers["Cache-Control"], "no-store");
+    assert.deepEqual(
+      setup.calls.find(([name]) => name === "requestMembershipVerification"),
+      [
+        "requestMembershipVerification",
+        "organizer@example.com",
+        plan,
+        { requestId, token: continuationToken },
+      ]
+    );
+  }
 });
 
 test("membership enrollment rejects caller-supplied identity fields", async () => {
@@ -178,21 +185,46 @@ test("membership enrollment requires an explicitly selected eligible plan", asyn
   assert.equal(setup.calls.length, 0);
 });
 
+test("membership enrollment rejects unsupported plan codes", async () => {
+  const setup = createEnrollmentSetup();
+
+  await setup.run({ ...validBody, plan: "UNSUPPORTED" });
+
+  assert.equal(setup.response.statusCode, 400);
+  assert.equal(setup.calls.length, 0);
+});
+
+test("membership enrollment rejects invalid continuation credentials", async () => {
+  const setup = createEnrollmentSetup({ tokenIsValid: false });
+
+  await setup.run({ ...validBody, plan: "ORGANIZER" });
+
+  assert.equal(setup.response.statusCode, 403);
+  assert.equal(setup.calls.length, 0);
+});
+
 test("membership enrollment returns active subscriber state without restarting checkout", async () => {
-  const setup = createEnrollmentSetup({ activeSubscriber: true });
+  for (const plan of [
+    "BASIC",
+    "ORGANIZER",
+    "CHURCH_INDIVIDUAL",
+    "CHURCH_GROUP",
+  ]) {
+    const setup = createEnrollmentSetup({ activeSubscriber: true });
 
-  await setup.run({ ...validBody, plan: "BASIC" });
+    await setup.run({ ...validBody, plan });
 
-  assert.equal(setup.response.statusCode, 200);
-  assert.deepEqual(setup.response.body, {
-    success: true,
-    status: "ACTIVE_SUBSCRIBER",
-    requestId,
-  });
-  assert.equal(
-    setup.calls.some(([name]) => name === "requestMembershipVerification"),
-    false
-  );
+    assert.equal(setup.response.statusCode, 200, plan);
+    assert.deepEqual(setup.response.body, {
+      success: true,
+      status: "ACTIVE_SUBSCRIBER",
+      requestId,
+    });
+    assert.equal(
+      setup.calls.some(([name]) => name === "requestMembershipVerification"),
+      false
+    );
+  }
 });
 
 test("membership enrollment does not report success when the existing flow cannot start", async () => {
