@@ -5,6 +5,7 @@ import {
 
 const COURT_STUDY_MEMBERSHIP_PLANS = new Set([
   "BASIC",
+  "ORGANIZER",
   "CHURCH_INDIVIDUAL",
   "CHURCH_GROUP",
 ]);
