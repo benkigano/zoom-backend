@@ -16,6 +16,7 @@ import {
   formatCourtStudySetupFailure,
   getScheduledDurationMinutes,
   resolveCourtStudyScheduleDuration,
+  resolveCourtStudyInvitationToken,
   resolveZoomCreationDisposition,
   runCourtStudySetupStages,
   runZoomCreationWithClaim,
@@ -183,7 +184,7 @@ function harness({
   };
 }
 
-test("shared creation sends exact UTC payload for Basic Book Study and paid Court Study", async () => {
+test("shared creation sends organizer-local payload for Basic Book Study and paid Court Study", async () => {
   for (const [studyFocusType, accountType, duration] of [
     ["BOOK_STUDY", 1, 40],
     ["RULES_OF_PROCEDURE", 2, 60],
@@ -208,8 +209,8 @@ test("shared creation sends exact UTC payload for Basic Book Study and paid Cour
     const result = await h.setup();
     assert.equal(result.success, true);
     assert.equal(h.payloads.length, 1);
-    assert.equal(h.payloads[0].start_time, "2026-12-05T03:00:00Z");
-    assert.equal(h.payloads[0].timezone, "UTC");
+    assert.equal(h.payloads[0].start_time, "2026-12-04T19:00:00");
+    assert.equal(h.payloads[0].timezone, "America/Los_Angeles");
     assert.equal(h.payloads[0].duration, duration);
     assert.equal(h.meeting.scheduledStart.toISOString(), window.scheduledStart);
     assert.equal(h.meeting.scheduledEnd.toISOString(), window.scheduledEnd);
@@ -218,34 +219,36 @@ test("shared creation sends exact UTC payload for Basic Book Study and paid Cour
   }
 });
 
-test("UTC payload preserves Pacific summer time and both daylight-saving transitions", () => {
+test("local payload preserves instants in supported zones and across daylight-saving transitions", () => {
   const cases = [
-    ["2026-07-01T02:00:00Z", "19:00"],
-    ["2026-03-08T09:30:00Z", "01:30"],
-    ["2026-03-08T10:30:00Z", "03:30"],
-    ["2026-11-01T08:30:00Z", "01:30"],
-    ["2026-11-01T09:30:00Z", "01:30"],
+    ["2026-12-06T03:00:00Z", "America/Los_Angeles", "2026-12-05T19:00:00"],
+    ["2026-12-07T03:00:00Z", "America/Los_Angeles", "2026-12-06T19:00:00"],
+    ["2026-07-01T02:00:00Z", "America/Los_Angeles", "2026-06-30T19:00:00"],
+    ["2026-03-08T09:30:00Z", "America/Los_Angeles", "2026-03-08T01:30:00"],
+    ["2026-03-08T10:30:00Z", "America/Los_Angeles", "2026-03-08T03:30:00"],
+    ["2026-11-01T07:30:00Z", "America/Los_Angeles", "2026-11-01T00:30:00"],
+    ["2026-11-01T10:30:00Z", "America/Los_Angeles", "2026-11-01T02:30:00"],
+    ["2026-12-06T03:00:00Z", "America/Denver", "2026-12-05T20:00:00"],
+    ["2026-12-06T03:00:00Z", "America/Chicago", "2026-12-05T21:00:00"],
+    ["2026-12-06T03:00:00Z", "America/New_York", "2026-12-05T22:00:00"],
+    ["2026-12-06T03:00:00Z", "America/Anchorage", "2026-12-05T18:00:00"],
+    ["2026-12-06T03:00:00Z", "Pacific/Honolulu", "2026-12-05T17:00:00"],
+    ["2026-12-06T03:00:00Z", "Asia/Kathmandu", "2026-12-06T08:45:00"],
+    ["2026-12-06T03:00:00Z", "UTC", "2026-12-06T03:00:00"],
   ];
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Los_Angeles",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  });
-  for (const [instant, pacific] of cases) {
-    const schedule = createCommunityStudyZoomSchedule(new Date(instant), 40);
-    assert.equal(schedule.start_time, instant);
-    assert.equal(schedule.timezone, "UTC");
-    assert.equal(formatter.format(new Date(schedule.start_time)), pacific);
+  for (const [instant, timezone, expectedLocal] of cases) {
+    const schedule = createCommunityStudyZoomSchedule(new Date(instant), 40, timezone);
+    assert.equal(schedule.start_time, expectedLocal);
+    assert.equal(schedule.timezone, timezone);
   }
 });
 
 test("unsupported outbound precision fails before claim or Zoom dispatch", async () => {
   assert.throws(
-    () => createCommunityStudyZoomSchedule(new Date("2026-12-05T03:00:00.001Z"), 40),
+    () => createCommunityStudyZoomSchedule(new Date("2026-12-05T03:00:00.001Z"), 40, "UTC"),
     /whole-second/
   );
-  assert.throws(() => createCommunityStudyZoomSchedule(null, 40), /whole-second/);
+  assert.throws(() => createCommunityStudyZoomSchedule(null, 40, "UTC"), /whole-second/);
   const h = harness();
   h.meeting.scheduledStart = new Date("2026-12-05T03:00:00.001Z");
   h.meeting.scheduledEnd = new Date("2026-12-05T03:40:00.001Z");
@@ -254,6 +257,24 @@ test("unsupported outbound precision fails before claim or Zoom dispatch", async
   assert.equal(h.meeting.status, "SCHEDULED");
   assert.equal(h.payloads.length, 0);
   assert.equal(h.diagnostics[0].classification, "INVALID_OUTBOUND_SCHEDULE");
+});
+
+test("ambiguous fall-back times and invalid zones fail before Zoom dispatch", async () => {
+  for (const instant of ["2026-11-01T08:30:00Z", "2026-11-01T09:30:00Z"]) {
+    const h = harness();
+    h.meeting.scheduledStart = new Date(instant);
+    h.meeting.scheduledEnd = new Date(Date.parse(instant) + 40 * 60000);
+    const result = await h.createZoom();
+    assert.equal(result.statusCode, 409);
+    assert.match(result.responseBody.error, /ambiguous local time/);
+    assert.equal(h.meeting.status, "SCHEDULED");
+    assert.equal(h.payloads.length, 0);
+  }
+  const h = harness();
+  h.meeting.timezone = "Invalid/Zone";
+  assert.equal((await h.createZoom()).statusCode, 409);
+  assert.equal(h.meeting.status, "SCHEDULED");
+  assert.equal(h.payloads.length, 0);
 });
 
 test("equivalent explicit offsets are verified as the same instant", async () => {
@@ -446,6 +467,136 @@ test("invalid non-community meeting duration retains baseline HTTP 500 behavior"
   );
   assert.equal(h.meeting.status, "SCHEDULED");
   assert.equal(h.payloads.length, 0);
+});
+
+test("automatic and admin paths generate both study invitations without Zoom registration", async () => {
+  const invitationStart = source.indexOf("async function sendCourtStudyInvitationInternal(");
+  const invitationEnd = source.indexOf(
+    "\n\n// =====================================================\n// Admin route: manually send/resend Court Study invitation",
+    invitationStart
+  );
+  const adminStart = source.indexOf('app.post(\n  "/api/court-study-requests/:id/send-invitation"', invitationEnd);
+  const adminEnd = source.indexOf("\n\n// =====================================================", adminStart);
+  assert.ok(invitationStart >= 0 && invitationEnd > invitationStart);
+  assert.ok(adminStart > invitationEnd && adminEnd > adminStart);
+
+  const automaticStart = source.indexOf(
+    "  const setupResult =\n    await runCourtStudySetupStages({",
+    source.indexOf("const automaticDurationMinutes")
+  );
+  const automaticEnd = source.indexOf("\n    });", automaticStart) + "\n    });".length;
+  const continuationStart = source.indexOf(
+    "const setupResult =\n  await runCourtStudySetupStages({",
+    source.indexOf('"/api/book-study/use-basic-duration"')
+  );
+  const continuationEnd = source.indexOf("\n  });", continuationStart) + "\n  });".length;
+  assert.ok(automaticStart >= 0 && automaticEnd > automaticStart);
+  assert.ok(continuationStart >= 0 && continuationEnd > continuationStart);
+
+  for (const studyFocusType of ["BOOK_STUDY", "RULES_OF_PROCEDURE"]) {
+    for (const path of ["automatic", "continuation", "admin"]) {
+      const meeting = {
+        id: "local-meeting",
+        status: "SCHEDULED",
+        zoomMeetingId: "mock-zoom",
+        zoomJoinUrl: "https://example.test/join",
+        zoomRegistrationUrl: null,
+        publicInvitationToken: "mock-token",
+        scheduledStart: new Date("2026-12-06T03:00:00Z"),
+        scheduledEnd: new Date("2026-12-06T03:40:00Z"),
+        timezone: "America/Los_Angeles",
+        title: "Test study",
+        invitationSendCount: 0,
+      };
+      const request = {
+        id: "test-request",
+        status: "SCHEDULED",
+        meetingFormat: "COMMUNITY_HOSTED",
+        studyFocusType,
+        organizerName: "Test Organizer",
+        organizerEmail: "organizer@example.test",
+        hostGroupName: "Test Group",
+        selectedRulesSections: [],
+        bookExcerptHtml: "Test excerpt",
+        courtStudyMeeting: meeting,
+      };
+      const sent = [];
+      const tx = {
+        courtStudyRequest: {
+          updateMany: async ({ data }) => {
+            Object.assign(request, data);
+            return { count: 1 };
+          },
+        },
+        courtStudyMeeting: {
+          updateMany: async ({ data }) => {
+            meeting.invitationSendCount += data.invitationSendCount.increment;
+            meeting.invitationSentAt = data.invitationSentAt;
+            return { count: 1 };
+          },
+          findUnique: async () => meeting,
+        },
+      };
+      const prisma = {
+        courtStudyRequest: { findUnique: async () => request },
+        $transaction: async (operation) => operation(tx),
+      };
+      const sendInvitation = runInNewContext(
+        `(${source.slice(invitationStart, invitationEnd).trim()})`,
+        {
+          prisma,
+          getScheduledDurationMinutes,
+          resolveCourtStudyInvitationToken,
+          convert: (text) => text,
+          safeEmailHtml: (text) => text,
+          safeEmailWebUrl: (text) => text,
+          sendEmail: async (...args) => { sent.push(args); },
+          console,
+        }
+      );
+      if (path === "admin") {
+        let handler;
+        runInNewContext(source.slice(adminStart, adminEnd), {
+          app: { post: (_route, _auth, wrapped) => { handler = wrapped; } },
+          requireAdminToken: () => {},
+          withCourtStudyWorkflowGate: (wrapped) => wrapped,
+          sendCourtStudyInvitationInternal: sendInvitation,
+          console,
+        });
+        const response = {
+          status(code) { this.statusCode = code; return this; },
+          json(body) { this.body = body; return this; },
+        };
+        await handler({ params: { id: request.id } }, response);
+        assert.equal(response.statusCode, 200);
+        assert.equal(response.body.success, true);
+      } else {
+        const block = path === "automatic"
+          ? source.slice(automaticStart, automaticEnd)
+          : source.slice(continuationStart, continuationEnd);
+        const execute = runInNewContext(`(async () => { ${block}\nreturn setupResult; })`, {
+          runCourtStudySetupStages,
+          scheduleCourtStudyInternal: async () => ({ success: true, meeting }),
+          createCourtStudyZoomInternal: async () => ({
+            success: true, responseBody: { success: true },
+          }),
+          sendCourtStudyInvitationInternal: sendInvitation,
+          requestId: request.id,
+          scheduleWindow: {},
+          requestTimeZone: meeting.timezone,
+          callbackStage: "",
+          continuationStage: "",
+        });
+        assert.equal((await execute()).success, true);
+      }
+      assert.equal(sent.length, 1, `${studyFocusType} ${path}`);
+      assert.match(sent[0][1], studyFocusType === "BOOK_STUDY" ? /Book Study Session Ready/ : /Court Study Session Ready/);
+      assert.match(sent[0][2], /December 5, 2026 at 7:00 PM Pacific Time \(40 minutes\)/);
+      assert.match(sent[0][2], /https:\/\/example\.test\/join/);
+      assert.equal(request.status, "SESSION_READY");
+      assert.equal(meeting.invitationSendCount, 1);
+    }
+  }
 });
 
 test("diagnostics include only allowlisted safe fields and normalized timestamps", () => {

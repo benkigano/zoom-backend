@@ -18430,7 +18430,8 @@ async function createCourtStudyZoomInternal({
       if (meetingFormat === "COMMUNITY_HOSTED") {
         communityZoomSchedule = createCommunityStudyZoomSchedule(
           scheduledStart,
-          durationMinutes
+          durationMinutes,
+          meeting.timezone || "America/Los_Angeles"
         );
       }
     } catch (durationError) {
@@ -18466,7 +18467,7 @@ async function createCourtStudyZoomInternal({
           requestId,
           stage: "zoom_creation",
           classification: "INVALID_OUTBOUND_SCHEDULE",
-          expectedStart: communityZoomSchedule.start_time,
+          expectedStart: scheduledStart.toISOString(),
           expectedDuration: durationMinutes,
         });
         return {
@@ -18489,7 +18490,7 @@ async function createCourtStudyZoomInternal({
           requestId,
           stage: "zoom_creation",
           classification: "INVALID_OUTBOUND_SCHEDULE",
-          expectedStart: communityZoomSchedule.start_time,
+          expectedStart: scheduledStart.toISOString(),
           expectedDuration: durationMinutes,
         });
         return {
@@ -18692,7 +18693,7 @@ async function createCourtStudyZoomInternal({
           requestId,
           stage: "zoom_creation",
           classification,
-          expectedStart: communityZoomSchedule.start_time,
+          expectedStart: scheduledStart.toISOString(),
           expectedDuration: durationMinutes,
           ...extra,
         });
@@ -22766,6 +22767,11 @@ if (!participantZoomUrl) {
         timezone === "America/Los_Angeles"
           ? "Pacific Time"
           : timezone;
+
+      const meetingDurationMinutes = getScheduledDurationMinutes(
+        meeting.scheduledStart,
+        meeting.scheduledEnd
+      );
 
       const readableSessionTime =
         `${formattedDateTime} ${timezoneLabel} (${meetingDurationMinutes} minutes)`;
