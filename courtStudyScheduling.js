@@ -86,13 +86,55 @@ export function formatZoomUtcStartTime(value) {
   return date.toISOString().replace(".000Z", "Z");
 }
 
-export function createCommunityStudyZoomSchedule(scheduledStart, durationMinutes) {
+export function createCommunityStudyZoomSchedule(scheduledStart, durationMinutes, timezone) {
   if (!Number.isSafeInteger(durationMinutes) || durationMinutes <= 0) {
     throw new Error("Zoom scheduling requires a positive whole-minute duration.");
   }
+  const instant = new Date(formatZoomUtcStartTime(scheduledStart));
+  if (typeof timezone !== "string" || !timezone.trim()) {
+    throw new Error("Zoom scheduling requires a valid time zone.");
+  }
+  const zone = timezone.trim();
+  const formatter = new Intl.DateTimeFormat("en-US-u-ca-iso8601-nu-latn", {
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  const parts = Object.fromEntries(
+    formatter.formatToParts(instant)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  );
+  const { year, month, day, hour, minute, second } = parts;
+  if (!/^\d{4}$/.test(year)) {
+    throw new Error("Zoom scheduling requires a valid whole-second timestamp.");
+  }
+  const localAsUtc = Date.UTC(
+    Number(year), Number(month) - 1, Number(day),
+    Number(hour), Number(minute), Number(second)
+  );
+  const limit = 24 * 60 * 60 * 1000;
+  if (Math.abs(instant.getTime() - localAsUtc) > limit) {
+    throw new Error("Zoom scheduling requires a supported time zone offset.");
+  }
+  const localDisplay = formatter.format(instant);
+  const candidate = new Date(localAsUtc - limit);
+  // Check every possible whole-second instant within the IANA offset bounds.
+  for (let time = localAsUtc - limit; time <= localAsUtc + limit; time += 1000) {
+    if (time === instant.getTime()) continue;
+    candidate.setTime(time);
+    if (formatter.format(candidate) === localDisplay) {
+      throw new Error("Zoom scheduling cannot use an ambiguous local time.");
+    }
+  }
   return {
-    start_time: formatZoomUtcStartTime(scheduledStart),
-    timezone: "UTC",
+    start_time: `${year}-${month}-${day}T${hour}:${minute}:${second}`,
+    timezone: zone,
     duration: durationMinutes,
   };
 }
