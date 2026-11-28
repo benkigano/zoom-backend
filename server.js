@@ -58,6 +58,8 @@ import {
 } from "./membership/courtStudyContinuation.js";
 import {
   createCourtStudyMeetingWithClaim,
+  createCourtStudySchedulingDiagnostic,
+  createCommunityStudyZoomSchedule,
   createUtcScheduleWindow,
   formatCourtStudySetupFailure,
   getScheduledDurationMinutes,
@@ -66,6 +68,7 @@ import {
   resolveZoomCreationDisposition,
   runCourtStudySetupStages,
   runZoomCreationWithClaim,
+  verifyZoomCreatedSchedule,
 } from "./courtStudyScheduling.js";
 import {
   fetchVerifiedZoomMeeting,
@@ -611,6 +614,33 @@ async function queryWixCollection(collectionId) {
 const app = express();
 const courtStudyWorkflowGate =
   createCourtStudyWorkflowGate();
+
+function logCourtStudySchedulingDiagnostic(fields) {
+  const reportFailure = () => {
+    try {
+      const result = process.emitWarning(
+        "Community study scheduling diagnostic unavailable."
+      );
+      if (result && typeof result.then === "function") {
+        Promise.resolve(result).catch(() => {});
+      }
+    } catch {
+      // Logging failures must not change the study operation.
+    }
+  };
+
+  try {
+    const result = console.error(
+      "Community study scheduling diagnostic",
+      createCourtStudySchedulingDiagnostic(fields)
+    );
+    if (result && typeof result.then === "function") {
+      Promise.resolve(result).catch(reportFailure);
+    }
+  } catch {
+    reportFailure();
+  }
+}
 
 app.disable("x-powered-by");
 
@@ -4487,6 +4517,15 @@ if (
     });
 
   if (!setupResult.success) {
+    if (setupResult.failedStage === "INVITATION") {
+      logCourtStudySchedulingDiagnostic({
+        requestId,
+        stage: "invitation_delivery",
+        classification: setupResult.failureType,
+        expectedStart: scheduleWindow.scheduledStart,
+        expectedDuration: automaticDurationMinutes,
+      });
+    }
     callbackStage = String(
       setupResult.failedStage || callbackStage
     ).toLowerCase();
@@ -4954,6 +4993,15 @@ const setupResult =
   });
 
 if (!setupResult.success) {
+  if (setupResult.failedStage === "INVITATION") {
+    logCourtStudySchedulingDiagnostic({
+      requestId,
+      stage: "invitation_delivery",
+      classification: setupResult.failureType,
+      expectedStart: scheduleWindow.scheduledStart,
+      expectedDuration: 40,
+    });
+  }
   continuationStage = String(
     setupResult.failedStage || continuationStage
   ).toLowerCase();
@@ -18361,29 +18409,46 @@ async function createCourtStudyZoomInternal({
     const scheduledStart = new Date(
       meeting.scheduledStart
     );
-    const meetingDurationMinutes =
+    if (meetingFormat !== "COMMUNITY_HOSTED") {
       getScheduledDurationMinutes(
         meeting.scheduledStart,
         meeting.scheduledEnd
       );
-
+    }
     const scheduledEnd = new Date(
       meeting.scheduledEnd
     );
 
     let durationMinutes;
+    let communityZoomSchedule = null;
 
     try {
       durationMinutes = getScheduledDurationMinutes(
         scheduledStart,
         scheduledEnd
       );
+      if (meetingFormat === "COMMUNITY_HOSTED") {
+        communityZoomSchedule = createCommunityStudyZoomSchedule(
+          scheduledStart,
+          durationMinutes
+        );
+      }
     } catch (durationError) {
+      if (meetingFormat === "COMMUNITY_HOSTED") {
+        logCourtStudySchedulingDiagnostic({
+          requestId,
+          stage: "zoom_creation",
+          classification: "INVALID_OUTBOUND_SCHEDULE",
+          expectedStart: Number.isFinite(scheduledStart.getTime())
+            ? scheduledStart.toISOString() : null,
+        });
+      }
       return {
         statusCode: 409,
         responseBody: {
           success: false,
           error: durationError.message,
+          noMeetingCreated: true,
         },
       };
     }
@@ -18397,6 +18462,13 @@ async function createCourtStudyZoomInternal({
             courtStudyRequest
           );
       } catch (durationError) {
+        logCourtStudySchedulingDiagnostic({
+          requestId,
+          stage: "zoom_creation",
+          classification: "INVALID_OUTBOUND_SCHEDULE",
+          expectedStart: communityZoomSchedule.start_time,
+          expectedDuration: durationMinutes,
+        });
         return {
           statusCode: 409,
           responseBody: {
@@ -18413,6 +18485,13 @@ async function createCourtStudyZoomInternal({
           intendedDurationMinutes > 40
         )
       ) {
+        logCourtStudySchedulingDiagnostic({
+          requestId,
+          stage: "zoom_creation",
+          classification: "INVALID_OUTBOUND_SCHEDULE",
+          expectedStart: communityZoomSchedule.start_time,
+          expectedDuration: durationMinutes,
+        });
         return {
           statusCode: 409,
           responseBody: {
@@ -18583,9 +18662,11 @@ async function createCourtStudyZoomInternal({
     const zoomPayload = {
       topic: meeting.title,
       type: 2,
-      start_time: scheduledStart.toISOString(),
-      duration: durationMinutes,
-      timezone: zoomTimeZone,
+      ...(communityZoomSchedule || {
+        start_time: scheduledStart.toISOString(),
+        duration: durationMinutes,
+        timezone: zoomTimeZone,
+      }),
       agenda:
         meeting.description ||
         `Court Study session based on the recorded interview "${
@@ -18605,6 +18686,19 @@ async function createCourtStudyZoomInternal({
       },
     };
 
+    const reportZoomFailure = (classification, extra = {}) => {
+      if (communityZoomSchedule) {
+        logCourtStudySchedulingDiagnostic({
+          requestId,
+          stage: "zoom_creation",
+          classification,
+          expectedStart: communityZoomSchedule.start_time,
+          expectedDuration: durationMinutes,
+          ...extra,
+        });
+      }
+    };
+
     let updatedMeeting = null;
     const creationOperation =
       await runZoomCreationWithClaim({
@@ -18613,20 +18707,35 @@ async function createCourtStudyZoomInternal({
           zoomRequestDispatched = true;
           markDispatched();
 
-          const zoomResponse = await fetch(
-            "https://api.zoom.us/v2/users/me/meetings",
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${accessToken}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify(zoomPayload),
-            }
-          );
-          const zoomData = await zoomResponse
-            .json()
-            .catch(() => ({}));
+          let zoomResponse;
+          try {
+            zoomResponse = await fetch(
+              "https://api.zoom.us/v2/users/me/meetings",
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(zoomPayload),
+              }
+            );
+          } catch (error) {
+            reportZoomFailure("ZOOM_TRANSPORT_FAILURE");
+            throw error;
+          }
+          let zoomData;
+          try {
+            zoomData = await zoomResponse.json();
+          } catch {
+            reportZoomFailure("ZOOM_RESPONSE_INVALID_JSON", {
+              httpStatus: zoomResponse.status,
+            });
+            zoomData = {};
+          }
+          if (!zoomData || typeof zoomData !== "object" || Array.isArray(zoomData)) {
+            zoomData = {};
+          }
 
           if (!zoomResponse.ok) {
             const isDefinitiveRejection =
@@ -18635,6 +18744,12 @@ async function createCourtStudyZoomInternal({
               zoomResponse.status !== 408 &&
               zoomResponse.status !== 409;
 
+            reportZoomFailure(
+              isDefinitiveRejection
+                ? "ZOOM_REQUEST_REJECTED"
+                : "ZOOM_REQUEST_UNCERTAIN",
+              { httpStatus: zoomResponse.status }
+            );
             return {
               success: false,
               definitive: isDefinitiveRejection,
@@ -18647,6 +18762,11 @@ async function createCourtStudyZoomInternal({
           }
 
           if (!zoomData.id || !zoomData.join_url) {
+            reportZoomFailure("ZOOM_RESPONSE_INCOMPLETE", {
+              httpStatus: zoomResponse.status,
+              returnedStart: zoomData.start_time,
+              returnedDuration: zoomData.duration,
+            });
             return {
               success: false,
               definitive: false,
@@ -18662,7 +18782,23 @@ async function createCourtStudyZoomInternal({
           };
         },
         persist: async ({ zoomData }) => {
-          if (zoomData.start_time) {
+          if (communityZoomSchedule) {
+            const verification = verifyZoomCreatedSchedule({
+              scheduledStart,
+              durationMinutes,
+              zoomStartTime: zoomData.start_time,
+              zoomDuration: zoomData.duration,
+            });
+            if (!verification.valid) {
+              reportZoomFailure(verification.classification, {
+                returnedStart: verification.returnedStart,
+                returnedDuration: verification.returnedDuration,
+              });
+              throw new Error(
+                "Zoom meeting schedule could not be verified; reconciliation is required."
+              );
+            }
+          } else if (zoomData.start_time) {
             const zoomStartText = String(
               zoomData.start_time
             ).trim();
@@ -18687,6 +18823,7 @@ async function createCourtStudyZoomInternal({
           }
 
           if (
+            !communityZoomSchedule &&
             zoomData.duration !== undefined &&
             Number(zoomData.duration) !== durationMinutes
           ) {
@@ -18695,50 +18832,58 @@ async function createCourtStudyZoomInternal({
             );
           }
 
-          const meetingUpdate =
-            await prisma.courtStudyMeeting.updateMany({
-              where: {
-                id: meeting.id,
-                courtStudyRequestId: requestId,
-                status: "CREATING",
-                zoomMeetingId: null,
-                courtStudyRequest: {
-                  is: {
-                    id: requestId,
-                    status: "SCHEDULED",
+          try {
+            const meetingUpdate =
+              await prisma.courtStudyMeeting.updateMany({
+                where: {
+                  id: meeting.id,
+                  courtStudyRequestId: requestId,
+                  status: "CREATING",
+                  zoomMeetingId: null,
+                  courtStudyRequest: {
+                    is: {
+                      id: requestId,
+                      status: "SCHEDULED",
+                    },
                   },
                 },
-              },
-              data: {
-                zoomMeetingId: String(zoomData.id),
-                zoomRegistrationUrl:
-                  zoomData.registration_url || null,
-                zoomJoinUrl: zoomData.join_url,
-                zoomPasscode:
-                  zoomData.password || null,
-                scheduledStart,
-                scheduledEnd,
-                status: "SCHEDULED",
-              },
+                data: {
+                  zoomMeetingId: String(zoomData.id),
+                  zoomRegistrationUrl:
+                    zoomData.registration_url || null,
+                  zoomJoinUrl: zoomData.join_url,
+                  zoomPasscode:
+                    zoomData.password || null,
+                  scheduledStart,
+                  scheduledEnd,
+                  status: "SCHEDULED",
+                },
+              });
+
+            if (meetingUpdate.count !== 1) {
+              throw new Error(
+                "Zoom created a meeting, but its details could not be saved to the scheduled record."
+              );
+            }
+
+            updatedMeeting =
+              await prisma.courtStudyMeeting.findUnique({
+                where: {
+                  id: meeting.id,
+                },
+              });
+
+            if (!updatedMeeting) {
+              throw new Error(
+                "Zoom meeting details were saved but could not be reloaded for confirmation."
+              );
+            }
+          } catch (error) {
+            reportZoomFailure("DATABASE_PERSISTENCE_FAILURE", {
+              returnedStart: zoomData.start_time,
+              returnedDuration: zoomData.duration,
             });
-
-          if (meetingUpdate.count !== 1) {
-            throw new Error(
-              "Zoom created a meeting, but its details could not be saved to the scheduled record."
-            );
-          }
-
-          updatedMeeting =
-            await prisma.courtStudyMeeting.findUnique({
-              where: {
-                id: meeting.id,
-              },
-            });
-
-          if (!updatedMeeting) {
-            throw new Error(
-              "Zoom meeting details were saved but could not be reloaded for confirmation."
-            );
+            throw error;
           }
         },
         release: async () => {
