@@ -71,6 +71,146 @@ export function getScheduledDurationMinutes(
   return difference / 60000;
 }
 
+export function formatZoomUtcStartTime(value) {
+  const date = value instanceof Date
+    ? value
+    : new Date(normalizeExplicitTimestamp(value) || NaN);
+  if (
+    !Number.isFinite(date.getTime()) ||
+    date.getUTCMilliseconds() !== 0 ||
+    date.getUTCFullYear() < 1000 ||
+    date.getUTCFullYear() > 9999
+  ) {
+    throw new Error("Zoom scheduling requires a valid whole-second timestamp.");
+  }
+  return date.toISOString().replace(".000Z", "Z");
+}
+
+export function createCommunityStudyZoomSchedule(scheduledStart, durationMinutes) {
+  if (!Number.isSafeInteger(durationMinutes) || durationMinutes <= 0) {
+    throw new Error("Zoom scheduling requires a positive whole-minute duration.");
+  }
+  return {
+    start_time: formatZoomUtcStartTime(scheduledStart),
+    timezone: "UTC",
+    duration: durationMinutes,
+  };
+}
+
+function normalizeExplicitTimestamp(value) {
+  if (typeof value !== "string") return null;
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|[+-]\d{2}:\d{2})$/i
+  );
+  if (!match) return null;
+
+  const [, year, month, day, hour, minute, second, , offset] = match;
+  const numbers = [year, month, day, hour, minute, second].map(Number);
+  if (
+    numbers[0] < 1000 ||
+    numbers[3] > 23 ||
+    numbers[4] > 59 ||
+    numbers[5] > 59 ||
+    (offset.toUpperCase() !== "Z" &&
+      (Number(offset.slice(1, 3)) > 23 || Number(offset.slice(4, 6)) > 59))
+  ) return null;
+
+  const calendar = new Date(Date.UTC(
+    numbers[0], numbers[1] - 1, numbers[2],
+    numbers[3], numbers[4], numbers[5]
+  ));
+  if (
+    calendar.getUTCFullYear() !== numbers[0] ||
+    calendar.getUTCMonth() !== numbers[1] - 1 ||
+    calendar.getUTCDate() !== numbers[2]
+  ) return null;
+
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
+
+function normalizeZoomDuration(value) {
+  if (
+    typeof value !== "number" &&
+    !(typeof value === "string" && /^\d+$/.test(value))
+  ) return null;
+  const duration = Number(value);
+  return Number.isSafeInteger(duration) && duration > 0
+    ? duration
+    : null;
+}
+
+export function verifyZoomCreatedSchedule({
+  scheduledStart,
+  durationMinutes,
+  zoomStartTime,
+  zoomDuration,
+}) {
+  const expectedStart = formatZoomUtcStartTime(scheduledStart);
+  const returnedStart = normalizeExplicitTimestamp(zoomStartTime);
+  const returnedDuration = normalizeZoomDuration(zoomDuration);
+  let classification = null;
+
+  if (zoomStartTime === undefined || zoomStartTime === null || zoomStartTime === "") {
+    classification = "ZOOM_START_MISSING";
+  } else if (!returnedStart) {
+    classification = "ZOOM_START_INVALID";
+  } else if (new Date(returnedStart).getTime() !== new Date(expectedStart).getTime()) {
+    classification = "ZOOM_START_MISMATCH";
+  } else if (zoomDuration === undefined || zoomDuration === null || zoomDuration === "") {
+    classification = "ZOOM_DURATION_MISSING";
+  } else if (returnedDuration === null) {
+    classification = "ZOOM_DURATION_INVALID";
+  } else if (returnedDuration !== durationMinutes) {
+    classification = "ZOOM_DURATION_MISMATCH";
+  }
+
+  return { valid: classification === null, classification, returnedStart, returnedDuration };
+}
+
+const DIAGNOSTIC_CLASSIFICATIONS = new Set([
+  "INVALID_OUTBOUND_SCHEDULE",
+  "ZOOM_TRANSPORT_FAILURE",
+  "ZOOM_REQUEST_REJECTED",
+  "ZOOM_REQUEST_UNCERTAIN",
+  "ZOOM_RESPONSE_INVALID_JSON",
+  "ZOOM_RESPONSE_INCOMPLETE",
+  "ZOOM_START_MISSING",
+  "ZOOM_START_INVALID",
+  "ZOOM_START_MISMATCH",
+  "ZOOM_DURATION_MISSING",
+  "ZOOM_DURATION_INVALID",
+  "ZOOM_DURATION_MISMATCH",
+  "DATABASE_PERSISTENCE_FAILURE",
+  "INVITATION_NOT_SENT",
+  "INVITATION_OUTCOME_UNCERTAIN",
+]);
+
+export function createCourtStudySchedulingDiagnostic({
+  requestId,
+  stage,
+  classification,
+  expectedStart,
+  expectedDuration,
+  returnedStart,
+  returnedDuration,
+  httpStatus,
+}) {
+  return {
+    requestId: typeof requestId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(requestId)
+      ? requestId : null,
+    stage: ["zoom_creation", "invitation_delivery"].includes(stage) ? stage : "unknown",
+    classification: DIAGNOSTIC_CLASSIFICATIONS.has(classification)
+      ? classification : "UNKNOWN_FAILURE",
+    expectedStart: normalizeExplicitTimestamp(expectedStart),
+    expectedDuration: normalizeZoomDuration(expectedDuration),
+    returnedStart: normalizeExplicitTimestamp(returnedStart),
+    returnedDuration: normalizeZoomDuration(returnedDuration),
+    httpStatus: Number.isInteger(httpStatus) && httpStatus >= 100 && httpStatus <= 599
+      ? httpStatus : null,
+  };
+}
+
 export function resolveZoomCreationDisposition({
   requestStatus,
   meetingStatus,
